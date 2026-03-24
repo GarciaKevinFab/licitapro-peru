@@ -1,0 +1,48 @@
+{
+  "name": "LicitaPro - Deadline Alerts (cada 6 horas)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "name": "CRON 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8100/api/check-deadlines",
+        "method": "GET",
+        "options": {}
+      },
+      "name": "Check Plazos",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{ $json.plazos_proximos }}", "operation": "larger", "value2": 0 }]
+        }
+      },
+      "name": "IF Hay Plazos?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ADMIN_ID }}",
+        "text": "⏰ PLAZOS PRÓXIMOS (7 días):\n\n{{ $json.detalle }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "CRON 6h": { "main": [[{ "node": "Check Plazos", "type": "main", "index": 0 }]] },
+    "Check Plazos": { "main": [[{ "node": "IF Hay Plazos?", "type": "main", "index": 0 }]] },
+    "IF Hay Plazos?": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }], []] }
+  }
+}

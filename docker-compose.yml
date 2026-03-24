@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: licitapro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: licitapro
+      POSTGRES_USER: licitapro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-licitapro2026}
+    ports:
+      - "5433:5432"  # 5433 para no chocar con tu PostgreSQL existente
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./shared/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U licitapro"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: licitapro-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # 6380 para no chocar
+    volumes:
+      - ./data/redis:/data
+
+  radar_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitapro-radar
+    restart: unless-stopped
+    command: python -m radar_bot.main
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/bases:/app/data/bases
+      - ./templates:/app/templates
+
+  prep_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitapro-prep
+    restart: unless-stopped
+    command: python -m prep_bot.main
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/bases:/app/data/bases
+      - ./data/expedientes:/app/data/expedientes
+      - ./templates:/app/templates
+
+  win_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitapro-win
+    restart: unless-stopped
+    command: python -m win_bot.main
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/expedientes:/app/data/expedientes
+      - ./templates:/app/templates

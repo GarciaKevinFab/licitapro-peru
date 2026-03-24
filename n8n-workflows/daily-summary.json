@@ -1,0 +1,65 @@
+{
+  "name": "LicitaPro - Resumen Diario + Check Buena Pro",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      },
+      "id": "cron-daily",
+      "name": "Diario 8:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8100/api/daily-summary",
+        "method": "GET",
+        "options": { "timeout": 60000 }
+      },
+      "id": "get-summary",
+      "name": "Generar Resumen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8100/api/check-wins",
+        "method": "POST",
+        "options": { "timeout": 60000 }
+      },
+      "id": "check-wins",
+      "name": "Verificar Buena Pro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8100/api/check-deadlines",
+        "method": "GET",
+        "options": { "timeout": 30000 }
+      },
+      "id": "check-deadlines",
+      "name": "Verificar Plazos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    }
+  ],
+  "connections": {
+    "Diario 8:00 AM": {
+      "main": [
+        [
+          { "node": "Generar Resumen", "type": "main", "index": 0 },
+          { "node": "Verificar Buena Pro", "type": "main", "index": 0 },
+          { "node": "Verificar Plazos", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

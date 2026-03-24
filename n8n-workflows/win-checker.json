@@ -1,0 +1,48 @@
+{
+  "name": "LicitaPro - Win Checker (cada 30 min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 30 }] }
+      },
+      "name": "CRON 30min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8100/api/check-wins",
+        "method": "POST",
+        "options": {}
+      },
+      "name": "Check Adjudicaciones",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{ $json.wins }}", "operation": "larger", "value2": 0 }]
+        }
+      },
+      "name": "IF Ganamos?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ADMIN_ID }}",
+        "text": "🏆 ¡BUENA PRO DETECTADA!\n\n{{ $json.detalle }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "CRON 30min": { "main": [[{ "node": "Check Adjudicaciones", "type": "main", "index": 0 }]] },
+    "Check Adjudicaciones": { "main": [[{ "node": "IF Ganamos?", "type": "main", "index": 0 }]] },
+    "IF Ganamos?": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }], []] }
+  }
+}
