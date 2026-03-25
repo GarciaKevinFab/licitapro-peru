@@ -18,6 +18,7 @@ from shared.db import (
     kb_get, kb_set, get_empresa, get_empresas_activas, connection,
 )
 from shared.config import format_monto, format_fecha, ADMIN_ID
+from shared.firma_manager import guardar_firma, obtener_todas_firmas
 
 
 # ─── Check for new proposals to prepare ──────────────────
@@ -307,6 +308,97 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ─── Firma/Sello/Logo handlers ──────────────────────────
+async def cmd_firma(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Gestionar firmas: /firma [empresa_id] o /firma para ver estado."""
+    # Si no hay args, mostrar estado de firmas de todas las empresas
+    empresas = await get_empresas_activas()
+
+    if not ctx.args:
+        texto = "📝 **Firmas, sellos y logos registrados:**\n\n"
+        for emp in empresas:
+            firmas = await obtener_todas_firmas(emp["id"])
+            firma_ok = "✅" if firmas["firma"]["existe"] else "❌"
+            sello_ok = "✅" if firmas["sello"]["existe"] else "❌"
+            logo_ok = "✅" if firmas["logo"]["existe"] else "❌"
+            texto += (
+                f"🏢 **{emp['razon_social']}** (ID: {emp['id']})\n"
+                f"  Firma: {firma_ok}  Sello: {sello_ok}  Logo: {logo_ok}\n\n"
+            )
+        texto += (
+            "Para subir, envía una **imagen** con el caption:\n"
+            "`firma [empresa_id]` — Firma del representante\n"
+            "`sello [empresa_id]` — Sello de la empresa\n"
+            "`logo [empresa_id]` — Logo de la empresa\n\n"
+            "Ejemplo: envía foto con caption `firma 1`"
+        )
+        await update.message.reply_text(texto, parse_mode="Markdown")
+        return
+
+    # Si tiene args, mostrar firma específica
+    try:
+        emp_id = int(ctx.args[0])
+        emp = await get_empresa(emp_id)
+        if not emp:
+            await update.message.reply_text("❌ Empresa no encontrada")
+            return
+        firmas = await obtener_todas_firmas(emp_id)
+        texto = f"🏢 **{emp['razon_social']}**\n\n"
+        for tipo, info in firmas.items():
+            estado = f"✅ {info['path']}" if info["existe"] else "❌ No registrado"
+            texto += f"  {tipo}: {estado}\n"
+        await update.message.reply_text(texto, parse_mode="Markdown")
+    except ValueError:
+        await update.message.reply_text("Uso: /firma [empresa_id]")
+
+
+async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Maneja fotos enviadas — para subir firmas/sellos/logos."""
+    caption = (update.message.caption or "").strip().lower()
+    if not caption:
+        return
+
+    # Parsear caption: "firma 1", "sello 2", "logo 1"
+    parts = caption.split()
+    if len(parts) < 2 or parts[0] not in ("firma", "sello", "logo"):
+        return
+
+    tipo = parts[0]
+    try:
+        empresa_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ Formato: `firma [empresa_id]`", parse_mode="Markdown")
+        return
+
+    # Verificar empresa
+    emp = await get_empresa(empresa_id)
+    if not emp:
+        await update.message.reply_text("❌ Empresa no encontrada")
+        return
+
+    # Descargar foto
+    photo = update.message.photo[-1]  # Mayor resolución
+    file = await ctx.bot.get_file(photo.file_id)
+
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp.close()
+    await file.download_to_drive(tmp.name)
+
+    # Guardar firma
+    path = await guardar_firma(empresa_id, tipo, tmp.name)
+
+    # Limpiar temporal
+    os.unlink(tmp.name)
+
+    await update.message.reply_text(
+        f"✅ **{tipo.capitalize()} guardado** para {emp['razon_social']}\n\n"
+        f"📎 {path}\n"
+        f"Se usará automáticamente en todos los documentos generados.",
+        parse_mode="Markdown",
+    )
+
+
 # ─── Main ────────────────────────────────────────────────
 def main():
     token = os.getenv("PREP_BOT_TOKEN")
@@ -324,6 +416,8 @@ def main():
     app.add_handler(CommandHandler("r", cmd_responder))
     app.add_handler(CommandHandler("datos", cmd_datos))
     app.add_handler(CommandHandler("aprobar", cmd_aprobar))
+    app.add_handler(CommandHandler("firma", cmd_firma))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(CallbackQueryHandler(callback_handler))
 
     # Check for new proposals every 30 seconds

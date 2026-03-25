@@ -8,6 +8,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from shared.db import connection, get_empresa
 from shared.config import format_monto, format_fecha
+from shared.firma_manager import obtener_firma, insertar_imagen_en_docx
 
 log = logging.getLogger("win.invoice")
 
@@ -129,6 +130,15 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
 
     doc.add_paragraph(f"\nTitular: {contrato['razon_social']}")
     doc.add_paragraph(f"RUC: {contrato['ruc']}")
+
+    # Firma y sello
+    doc.add_paragraph()
+    firma_path = await obtener_firma(contrato["empresa_id"], 'firma')
+    if firma_path:
+        insertar_imagen_en_docx(doc, firma_path, width_cm=4.0)
+    sello_path = await obtener_firma(contrato["empresa_id"], 'sello')
+    if sello_path:
+        insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
     # Guardar
     output_dir = os.path.join(TEMPLATES_DIR, "output", "facturas")

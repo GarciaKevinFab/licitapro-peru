@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS empresas (
     rnp_vigencia DATE,
     rubros TEXT[] DEFAULT '{}',
     activa BOOLEAN DEFAULT TRUE,
+    firma_representante_path TEXT,    -- Imagen de firma del representante legal
+    sello_empresa_path TEXT,          -- Imagen del sello de la empresa
+    logo_empresa_path TEXT,           -- Logo de la empresa
     datos_extra JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW()
 );

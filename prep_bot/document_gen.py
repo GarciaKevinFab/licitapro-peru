@@ -8,6 +8,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from shared.db import connection, kb_get, get_empresa
 from shared.config import format_monto, format_fecha
+from shared.firma_manager import obtener_firma, insertar_imagen_en_docx
 
 log = logging.getLogger("prep.docgen")
 
@@ -75,14 +76,25 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     doc.add_paragraph()
     doc.add_paragraph("Atentamente,")
     doc.add_paragraph()
-    doc.add_paragraph()
 
-    firma = doc.add_paragraph()
-    firma.add_run("_" * 40)
+    # Insertar firma del representante (imagen)
+    firma_path = await obtener_firma(empresa_id, 'firma')
+    if firma_path:
+        insertar_imagen_en_docx(doc, firma_path, width_cm=4.0)
+    else:
+        doc.add_paragraph()
+        p_line = doc.add_paragraph()
+        p_line.add_run("_" * 40)
+
     doc.add_paragraph(f"{representante}")
     doc.add_paragraph(f"{cargo}")
     doc.add_paragraph(f"{razon}")
     doc.add_paragraph(f"RUC: {ruc}")
+
+    # Insertar sello si existe
+    sello_path = await obtener_firma(empresa_id, 'sello')
+    if sello_path:
+        insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
     path = os.path.join(TEMPLATES_DIR, "output", f"carta_presentacion_{propuesta_id}.docx")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -130,12 +142,22 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     doc.add_paragraph()
     doc.add_paragraph(f"{datos.get('legal.domicilio_legal', '')}, {date.today().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
-    doc.add_paragraph()
-    firma = doc.add_paragraph()
-    firma.add_run("_" * 40)
+
+    # Firma del representante
+    firma_path = await obtener_firma(empresa_id, 'firma')
+    if firma_path:
+        insertar_imagen_en_docx(doc, firma_path, width_cm=4.0)
+    else:
+        doc.add_paragraph()
+        doc.add_paragraph("_" * 40)
+
     doc.add_paragraph(f"{representante}")
     doc.add_paragraph(f"Representante Legal")
     doc.add_paragraph(f"{razon}")
+
+    sello_path = await obtener_firma(empresa_id, 'sello')
+    if sello_path:
+        insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
     path = os.path.join(TEMPLATES_DIR, "output", f"declaracion_jurada_{propuesta_id}.docx")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -230,10 +252,20 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     doc.add_paragraph()
     doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
-    firma = doc.add_paragraph()
-    firma.add_run("_" * 40)
+
+    firma_path = await obtener_firma(empresa_id, 'firma')
+    if firma_path:
+        insertar_imagen_en_docx(doc, firma_path, width_cm=4.0)
+    else:
+        firma = doc.add_paragraph()
+        firma.add_run("_" * 40)
+
     doc.add_paragraph(f"{representante}")
     doc.add_paragraph(f"{empresa['razon_social']} | RUC: {empresa['ruc']}")
+
+    sello_path = await obtener_firma(empresa_id, 'sello')
+    if sello_path:
+        insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
     path = os.path.join(TEMPLATES_DIR, "output", f"propuesta_economica_{propuesta_id}.docx")
     os.makedirs(os.path.dirname(path), exist_ok=True)
