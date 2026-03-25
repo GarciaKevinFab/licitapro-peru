@@ -15,7 +15,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/scrape",
+        "url": "http://host.docker.internal:8100/api/scrape",
         "method": "POST",
         "sendBody": true,
         "bodyParameters": {
@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/scrape",
+        "url": "http://host.docker.internal:8100/api/scrape",
         "method": "POST",
         "sendBody": true,
         "bodyParameters": {

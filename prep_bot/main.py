@@ -243,17 +243,29 @@ async def cmd_responder(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_datos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     empresas = await get_empresas_activas()
+    if not empresas:
+        await update.message.reply_text("No hay empresas registradas.")
+        return
     for emp in empresas:
-        await update.message.reply_text(
-            f"🏢 **{emp['razon_social']}**\n"
-            f"RUC: {emp['ruc'] or '—'}\n"
-            f"Representante: {emp['representante_legal'] or '⚠️ Sin registrar'}\n"
-            f"Email: {emp['email'] or '—'}\n"
-            f"Rubros: {', '.join(emp['rubros']) if emp['rubros'] else '—'}\n"
-            f"RNP: {emp['rnp_numero'] or '⚠️ Sin registrar'}\n\n"
-            f"_Editar: /editar\\_empresa {emp['id']} [campo] [valor]_",
-            parse_mode="Markdown",
-        )
+        rubros_text = ', '.join(emp['rubros'][:3]) if emp['rubros'] else '—'
+        try:
+            await update.message.reply_text(
+                f"🏢 {emp['razon_social']}\n"
+                f"RUC: {emp['ruc'] or '—'}\n"
+                f"Rep. Legal: {emp['representante_legal'] or '⚠️ Sin registrar'}\n"
+                f"DNI: {emp.get('dni_representante') or '—'}\n"
+                f"Dirección: {emp.get('direccion') or '—'}\n"
+                f"Teléfono: {emp.get('telefono') or '—'}\n"
+                f"Email: {emp['email'] or '—'}\n"
+                f"Rubros: {rubros_text}\n"
+                f"RNP: {emp['rnp_numero'] or '⚠️ Sin registrar'}\n\n"
+                f"Editar: /editar_empresa {emp['id']} [campo] [valor]",
+            )
+        except Exception as e:
+            await update.message.reply_text(
+                f"🏢 {emp['razon_social']} (RUC: {emp['ruc'] or '—'})\n"
+                f"Error: {str(e)[:100]}"
+            )
 
 
 async def cmd_aprobar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -400,16 +412,19 @@ async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ─── Main ────────────────────────────────────────────────
+async def post_init(application: Application):
+    """Inicializa DB pool dentro del event loop correcto."""
+    await get_pool()
+    log.info("DB pool initialized in bot event loop")
+
+
 def main():
     token = os.getenv("PREP_BOT_TOKEN")
     if not token:
         log.error("PREP_BOT_TOKEN not set!")
         return
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(get_pool())
-
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("estado", cmd_estado))

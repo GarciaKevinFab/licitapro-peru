@@ -76,3 +76,30 @@ services:
     volumes:
       - ./data/expedientes:/app/data/expedientes
       - ./templates:/app/templates
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: licitapro-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=licitapro2026
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=America/Lima
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=licitapro
+      - DB_POSTGRESDB_USER=licitapro
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-licitapro2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./n8n-workflows:/home/node/workflows

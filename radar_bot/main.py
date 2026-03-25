@@ -242,17 +242,19 @@ async def scheduled_scrape(app: Application):
 
 
 # ─── Main ────────────────────────────────────────────────
+async def post_init(application: Application):
+    """Inicializa DB pool dentro del event loop correcto."""
+    await get_pool()
+    log.info("DB pool initialized in bot event loop")
+
+
 def main():
     token = os.getenv("RADAR_BOT_TOKEN")
     if not token:
         log.error("RADAR_BOT_TOKEN not set!")
         return
 
-    # Init DB pool
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(get_pool())
-
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
 
     # Handlers
     app.add_handler(CommandHandler("start", cmd_start))
@@ -262,12 +264,11 @@ def main():
     app.add_handler(CommandHandler("region", cmd_region))
     app.add_handler(CallbackQueryHandler(callback_handler))
 
-    # Scheduler — scrape cada 60 minutos
+    # Scheduler — scrape cada 60 minutos (no ejecutar al inicio)
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         scheduled_scrape, "interval", minutes=60,
         args=[app], id="seace_scrape",
-        next_run_time=datetime.now(),  # Ejecutar al iniciar
     )
     scheduler.start()
 

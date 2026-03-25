@@ -11,7 +11,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/check-deadlines",
+        "url": "http://host.docker.internal:8100/api/check-deadlines",
         "method": "GET",
         "options": {}
       },

@@ -387,16 +387,19 @@ async def cmd_pago(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ─── Main ────────────────────────────────────────────────
+async def post_init(application: Application):
+    """Inicializa DB pool dentro del event loop correcto."""
+    await get_pool()
+    log.info("DB pool initialized in bot event loop")
+
+
 def main():
     token = os.getenv("WIN_BOT_TOKEN")
     if not token:
         log.error("WIN_BOT_TOKEN not set!")
         return
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(get_pool())
-
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("contratos", cmd_contratos))

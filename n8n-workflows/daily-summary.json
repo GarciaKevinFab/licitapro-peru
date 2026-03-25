@@ -15,7 +15,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/daily-summary",
+        "url": "http://host.docker.internal:8100/api/daily-summary",
         "method": "GET",
         "options": { "timeout": 60000 }
       },
@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/check-wins",
+        "url": "http://host.docker.internal:8100/api/check-wins",
         "method": "POST",
         "options": { "timeout": 60000 }
       },
@@ -39,7 +39,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:8100/api/check-deadlines",
+        "url": "http://host.docker.internal:8100/api/check-deadlines",
         "method": "GET",
         "options": { "timeout": 30000 }
       },

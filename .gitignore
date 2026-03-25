@@ -23,9 +23,15 @@ env/
 *.swo
 
 # Data (runtime, no commitear)
+data/
 data/bases/
 data/expedientes/
 templates/output/
+
+# Docker volumes
+data/postgres/
+data/n8n/
+data/redis/
 
 # Docker
 *.log
