@@ -332,6 +332,60 @@ async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_entrega(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Registrar entrega: /entrega [contrato_id] [descripcion]"""
+    if len(ctx.args) < 2:
+        await update.message.reply_text("Uso: /entrega [contrato_id] [descripcion]")
+        return
+    contrato_id = int(ctx.args[0])
+    descripcion = " ".join(ctx.args[1:])
+    path = await generar_informe_entrega(contrato_id, descripcion)
+    if path:
+        await update.message.reply_text(f"📦 Entrega registrada.\n📄 Informe: {path}", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Contrato no encontrado")
+
+
+async def cmd_factura(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Generar factura: /factura [contrato_id] [monto] [concepto]"""
+    if len(ctx.args) < 2:
+        await update.message.reply_text("Uso: /factura [contrato_id] [monto] [concepto]")
+        return
+    contrato_id = int(ctx.args[0])
+    monto = float(ctx.args[1])
+    concepto = " ".join(ctx.args[2:]) if len(ctx.args) > 2 else "Servicio contratado"
+    path = await generar_factura(contrato_id, monto, concepto)
+    if path:
+        await update.message.reply_text(f"📄 Factura generada: {format_monto(monto)}\n📎 {path}", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Error generando factura")
+
+
+async def cmd_conformidad(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Generar acta de conformidad: /conformidad [contrato_id]"""
+    if not ctx.args:
+        await update.message.reply_text("Uso: /conformidad [contrato_id]")
+        return
+    contrato_id = int(ctx.args[0])
+    obs = " ".join(ctx.args[1:]) if len(ctx.args) > 1 else ""
+    path = await generar_acta_conformidad(contrato_id, obs)
+    if path:
+        await update.message.reply_text(f"✅ Acta generada: {path}", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Contrato no encontrado")
+
+
+async def cmd_pago(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Registrar pago: /pago [contrato_id] [monto]"""
+    if len(ctx.args) < 2:
+        await update.message.reply_text("Uso: /pago [contrato_id] [monto]")
+        return
+    contrato_id = int(ctx.args[0])
+    monto = float(ctx.args[1])
+    pago_id = await registrar_pago(contrato_id, monto)
+    await update.message.reply_text(f"💰 Pago registrado (#{pago_id}): {format_monto(monto)}", parse_mode="Markdown")
+
+
 # ─── Main ────────────────────────────────────────────────
 def main():
     token = os.getenv("WIN_BOT_TOKEN")
@@ -350,6 +404,10 @@ def main():
     app.add_handler(CommandHandler("pagos", cmd_pagos))
     app.add_handler(CommandHandler("ganar", cmd_ganar))
     app.add_handler(CommandHandler("resumen", cmd_resumen))
+    app.add_handler(CommandHandler("entrega", cmd_entrega))
+    app.add_handler(CommandHandler("factura", cmd_factura))
+    app.add_handler(CommandHandler("conformidad", cmd_conformidad))
+    app.add_handler(CommandHandler("pago", cmd_pago))
 
     # Scheduler
     scheduler = AsyncIOScheduler()

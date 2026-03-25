@@ -20,10 +20,13 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         ("ocds_api", _run_ocds),
         ("contratos_menores", _run_contratos_menores),
         ("peru_compras", _run_peru_compras),
+        ("conosce", _run_conosce),
         ("datos_abiertos", _run_datos_abiertos),
+        ("open_contracting", _run_open_contracting),
         ("gore_portals", _run_gore_portals),
         ("poder_judicial", _run_poder_judicial),
         ("transparencia", _run_transparencia),
+        ("sbs", _run_sbs),
         ("essalud", _run_essalud),
     ]
 
