@@ -37,7 +37,7 @@ def format_licitacion_alert(lic) -> tuple[str, InlineKeyboardMarkup]:
     tipo_text = TIPOS_PROCEDIMIENTO.get(lic["tipo"], lic["tipo"] or "—")
     
     text = (
-        f"{emoji} **{tipo_text}**{score_text}\n\n"
+        f"{emoji} <b>{tipo_text}</b>{score_text}\n\n"
         f"📋 {lic['nomenclatura'] or lic['id']}\n"
         f"🏛️ {lic['entidad']}\n"
         f"📦 {lic['objeto'][:200]}\n"
@@ -64,7 +64,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await update_config(user_id)
     await update.message.reply_text(
-        "🔍 **LicitaRadar** — Bot de detección de licitaciones\n\n"
+        "🔍 <b>LicitaRadar</b> — Bot de detección de licitaciones\n\n"
         "Escaneo 12 fuentes a nivel nacional cada hora.\n"
         "Te notifico solo las que te convienen.\n\n"
         "Comandos principales:\n"
@@ -74,7 +74,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/licitar [id] — Decidir participar\n"
         "/stats — Estadísticas de detección\n\n"
         "🟢 Sistema activo. Escaneos cada 60 minutos.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -85,14 +85,14 @@ async def cmd_hoy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        f"📊 **Resumen del día** — {datetime.now().strftime('%d/%m/%Y')}\n"
+        f"📊 <b>Resumen del día</b> — {datetime.now().strftime('%d/%m/%Y')}\n"
         f"Se encontraron {len(lics)} licitaciones relevantes:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     
     for lic in lics[:10]:
         text, kb = format_licitacion_alert(lic)
-        await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
+        await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
         await marcar_notificada(lic["id"])
 
 
@@ -120,7 +120,7 @@ async def cmd_buscar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔍 {len(lics)} resultados para '{keyword}':")
     for lic in lics[:5]:
         text, kb = format_licitacion_alert(lic)
-        await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
+        await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 async def cmd_config(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -130,16 +130,16 @@ async def cmd_config(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     keywords = ", ".join(config["keywords"][:10]) if config["keywords"] else "Ninguna"
     
     await update.message.reply_text(
-        f"⚙️ **Configuración actual**\n\n"
+        f"⚙️ <b>Configuración actual</b>\n\n"
         f"📍 Regiones: {regiones}\n"
         f"🔑 Keywords: {keywords}{'...' if len(config['keywords']) > 10 else ''}\n"
         f"💰 Monto: {format_monto(config['monto_min'])} — {format_monto(config['monto_max'])}\n\n"
         f"Para modificar:\n"
-        f"`/region add Cusco`\n"
-        f"`/region remove Puno`\n"
-        f"`/keyword add 'sistema académico'`\n"
-        f"`/monto min 5000 max 300000`",
-        parse_mode="Markdown",
+        f"<code>/region add Cusco</code>\n"
+        f"<code>/region remove Puno</code>\n"
+        f"<code>/keyword add 'sistema académico'</code>\n"
+        f"<code>/monto min 5000 max 300000</code>",
+        parse_mode="HTML",
     )
 
 
@@ -187,12 +187,12 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         prop_id = await crear_propuesta(lid, 1)
         
         await query.edit_message_text(
-            f"🚀 **¡ACTIVADO!** Propuesta #{prop_id}\n\n"
+            f"🚀 <b>¡ACTIVADO!</b> Propuesta #{prop_id}\n\n"
             f"📋 Licitación: {lid}\n"
             f"🏢 Empresa: {empresa['razon_social']}\n\n"
             f"👉 Revisa @LicitaPrepBot para el progreso\n"
             f"El bot de preparación está trabajando...",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     
     elif data.startswith("pasar_"):
@@ -224,14 +224,14 @@ async def scheduled_scrape(app: Application):
         if ADMIN_ID and results["total_nuevas"] > 0:
             bot = app.bot
             report = format_scraping_report(results)
-            await bot.send_message(ADMIN_ID, report, parse_mode="Markdown")
+            await bot.send_message(ADMIN_ID, report, parse_mode="HTML")
             
             # Enviar alertas de las nuevas
             lics = await get_licitaciones_nuevas(limit=5)
             for lic in lics:
                 text, kb = format_licitacion_alert(lic)
                 try:
-                    await bot.send_message(ADMIN_ID, text, reply_markup=kb, parse_mode="Markdown")
+                    await bot.send_message(ADMIN_ID, text, reply_markup=kb, parse_mode="HTML")
                     await marcar_notificada(lic["id"])
                 except Exception as e:
                     log.error(f"Error sending alert: {e}")

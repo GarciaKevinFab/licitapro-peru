@@ -35,14 +35,14 @@ async def check_nuevas_propuestas(app):
         if ADMIN_ID:
             await app.bot.send_message(
                 ADMIN_ID,
-                f"📝 **NUEVA PROPUESTA EN PREPARACIÓN**\n\n"
+                f"📝 <b>NUEVA PROPUESTA EN PREPARACIÓN</b>\n\n"
                 f"📋 {prop['licitacion_id']}\n"
                 f"🏛️ {prop['entidad']}\n"
                 f"📦 {prop['objeto'][:150]}\n"
                 f"💰 {format_monto(prop['monto_referencial']) if prop['monto_referencial'] else '—'}\n\n"
                 f"⏳ Analizando bases y llenando anexos...\n"
                 f"Te avisaré si necesito información.",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         # Start auto-fill process
         await iniciar_autofill(prop["id"], prop["empresa_id"], app)
@@ -110,9 +110,9 @@ async def iniciar_autofill(propuesta_id: int, empresa_id: int, app):
     if preguntas_a_hacer and ADMIN_ID:
         await app.bot.send_message(
             ADMIN_ID,
-            f"✅ **Progreso: {campos_completos}/{total_anexos} campos completados**\n\n"
+            f"✅ <b>Progreso: {campos_completos}/{total_anexos} campos completados</b>\n\n"
             f"❓ Necesito {len(preguntas_a_hacer)} respuesta(s) tuyas:",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
         # Enviar preguntas una por una
@@ -126,27 +126,27 @@ async def iniciar_autofill(propuesta_id: int, empresa_id: int, app):
             ]])
             await app.bot.send_message(
                 ADMIN_ID,
-                f"❓ **Pregunta {i} de {len(preguntas_a_hacer)}:**\n\n"
+                f"❓ <b>Pregunta {i} de {len(preguntas_a_hacer)}:</b>\n\n"
                 f"{preg['pregunta']}\n\n"
-                f"_Responde con /r {preg['id']} [tu respuesta]_",
+                f"<i>Responde con /r {preg['id']} [tu respuesta]</i>",
                 reply_markup=kb,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
     elif not preguntas_a_hacer and ADMIN_ID:
         await app.bot.send_message(
             ADMIN_ID,
-            f"✅ **¡Todos los campos completados!** ({campos_completos}/{total_anexos})\n\n"
+            f"✅ <b>¡Todos los campos completados!</b> ({campos_completos}/{total_anexos})\n\n"
             f"🧠 Ya tengo toda la información necesaria.\n"
             f"📄 Generando expediente...\n\n"
             f"Usa /aprobar {propuesta_id} cuando quieras generar el ZIP final.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
 # ─── Handlers ────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📝 **LicitaPrep** — Bot de preparación de propuestas\n\n"
+        "📝 <b>LicitaPrep</b> — Bot de preparación de propuestas\n\n"
         "Cuando decides licitar en @LicitaRadarBot, yo preparo todo:\n"
         "• Auto-lleno todos los anexos con datos de tu empresa\n"
         "• Si falta algo, te pregunto y APRENDO para siempre\n"
@@ -158,7 +158,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/datos — Ver datos de tus empresas\n"
         "/aprobar [id] — Generar expediente final\n"
         "/equipo — Gestionar equipo técnico",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -184,14 +184,14 @@ async def cmd_estado(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         }.get(prop["estado"], "📝")
         
         await update.message.reply_text(
-            f"{estado_emoji} **Propuesta #{prop['id']}**\n"
+            f"{estado_emoji} <b>Propuesta #{prop['id']}</b>\n"
             f"📋 {prop['entidad']}\n"
             f"📦 {prop['objeto'][:100]}\n"
             f"🏢 {prop['razon_social']}\n"
             f"📊 Campos: {prop['anexos_completados']}/{prop['anexos_totales']}\n"
             f"❓ Preguntas pendientes: {prop['preguntas_pendientes']}\n"
             f"Estado: {prop['estado']}",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
@@ -230,9 +230,9 @@ async def cmd_responder(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 )
                 await update.message.reply_text(
                     f"✅ ¡Respuesta guardada! 🧠 Aprendido para siempre.\n\n"
-                    f"🎉 **¡Todas las preguntas respondidas!**\n"
+                    f"🎉 <b>¡Todas las preguntas respondidas!</b>\n"
                     f"Usa /aprobar {preg['propuesta_id']} para generar el expediente.",
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
             else:
                 await update.message.reply_text(
@@ -293,13 +293,13 @@ async def cmd_aprobar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        f"📄 **Generando expediente para Propuesta #{prop_id}**\n\n"
+        f"📄 <b>Generando expediente para Propuesta #{prop_id}</b>\n\n"
         f"📋 {prop['entidad']}\n"
         f"📦 {prop['objeto'][:100]}\n\n"
         f"⏳ Generando documentos...\n"
         f"(En la versión completa, aquí se genera el ZIP con todos los anexos)\n\n"
         f"📎 Expediente estará disponible en /descargar {prop_id}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     
     async with connection() as conn:
@@ -315,8 +315,8 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("resp_"):
         preg_id = query.data.replace("resp_", "")
         await query.message.reply_text(
-            f"📝 Responde con:\n`/r {preg_id} [tu respuesta]`",
-            parse_mode="Markdown",
+            f"📝 Responde con:\n<code>/r {preg_id} [tu respuesta]</code>",
+            parse_mode="HTML",
         )
 
 
@@ -327,24 +327,24 @@ async def cmd_firma(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     empresas = await get_empresas_activas()
 
     if not ctx.args:
-        texto = "📝 **Firmas, sellos y logos registrados:**\n\n"
+        texto = "📝 <b>Firmas, sellos y logos registrados:</b>\n\n"
         for emp in empresas:
             firmas = await obtener_todas_firmas(emp["id"])
             firma_ok = "✅" if firmas["firma"]["existe"] else "❌"
             sello_ok = "✅" if firmas["sello"]["existe"] else "❌"
             logo_ok = "✅" if firmas["logo"]["existe"] else "❌"
             texto += (
-                f"🏢 **{emp['razon_social']}** (ID: {emp['id']})\n"
+                f"🏢 <b>{emp['razon_social']}</b> (ID: {emp['id']})\n"
                 f"  Firma: {firma_ok}  Sello: {sello_ok}  Logo: {logo_ok}\n\n"
             )
         texto += (
-            "Para subir, envía una **imagen** con el caption:\n"
-            "`firma [empresa_id]` — Firma del representante\n"
-            "`sello [empresa_id]` — Sello de la empresa\n"
-            "`logo [empresa_id]` — Logo de la empresa\n\n"
-            "Ejemplo: envía foto con caption `firma 1`"
+            "Para subir, envía una <b>imagen</b> con el caption:\n"
+            "<code>firma [empresa_id]</code> — Firma del representante\n"
+            "<code>sello [empresa_id]</code> — Sello de la empresa\n"
+            "<code>logo [empresa_id]</code> — Logo de la empresa\n\n"
+            "Ejemplo: envía foto con caption <code>firma 1</code>"
         )
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto, parse_mode="HTML")
         return
 
     # Si tiene args, mostrar firma específica
@@ -355,11 +355,11 @@ async def cmd_firma(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Empresa no encontrada")
             return
         firmas = await obtener_todas_firmas(emp_id)
-        texto = f"🏢 **{emp['razon_social']}**\n\n"
+        texto = f"🏢 <b>{emp['razon_social']}</b>\n\n"
         for tipo, info in firmas.items():
             estado = f"✅ {info['path']}" if info["existe"] else "❌ No registrado"
             texto += f"  {tipo}: {estado}\n"
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto, parse_mode="HTML")
     except ValueError:
         await update.message.reply_text("Uso: /firma [empresa_id]")
 
@@ -379,7 +379,7 @@ async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         empresa_id = int(parts[1])
     except ValueError:
-        await update.message.reply_text("❌ Formato: `firma [empresa_id]`", parse_mode="Markdown")
+        await update.message.reply_text("❌ Formato: <code>firma [empresa_id]</code>", parse_mode="HTML")
         return
 
     # Verificar empresa
@@ -404,10 +404,10 @@ async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     os.unlink(tmp.name)
 
     await update.message.reply_text(
-        f"✅ **{tipo.capitalize()} guardado** para {emp['razon_social']}\n\n"
+        f"✅ <b>{tipo.capitalize()} guardado</b> para {emp['razon_social']}\n\n"
         f"📎 {path}\n"
         f"Se usará automáticamente en todos los documentos generados.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 

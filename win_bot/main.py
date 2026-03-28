@@ -120,13 +120,13 @@ async def check_plazos_proximos(app):
         if ADMIN_ID:
             await app.bot.send_message(
                 ADMIN_ID,
-                f"{urgencia} **PLAZO PRÓXIMO — {dias_faltan} día(s)**\n\n"
+                f"{urgencia} <b>PLAZO PRÓXIMO — {dias_faltan} día(s)</b>\n\n"
                 f"📋 {plazo['objeto'][:100]}\n"
                 f"🏛️ {plazo['entidad']}\n"
                 f"📎 {plazo['descripcion']}\n"
                 f"📅 Fecha límite: {format_fecha(plazo['fecha_limite'])}\n"
                 f"📄 Contrato: {plazo['numero_contrato'] or '—'}",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         
         async with connection() as conn:
@@ -138,7 +138,7 @@ async def check_plazos_proximos(app):
 # ─── Handlers ────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🏆 **LicitaWin** — Seguimiento post-adjudicación\n\n"
+        "🏆 <b>LicitaWin</b> — Seguimiento post-adjudicación\n\n"
         "Monitoreo de contratos ganados, plazos y pagos.\n\n"
         "Comandos:\n"
         "/contratos — Contratos activos\n"
@@ -149,7 +149,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/factura [contrato_id] [monto] — Registrar factura\n"
         "/pago [contrato_id] [monto] — Registrar pago recibido\n"
         "/resumen — Dashboard mensual",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -169,13 +169,13 @@ async def cmd_contratos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         monto = format_monto(c["monto_adjudicado"]) if c["monto_adjudicado"] else "—"
         
         await update.message.reply_text(
-            f"{estado_emoji} **Contrato #{c['id']}** — {c['estado']}\n\n"
+            f"{estado_emoji} <b>Contrato #{c['id']}</b> — {c['estado']}\n\n"
             f"🏛️ {c['entidad']}\n"
             f"📦 {c['objeto'][:120]}\n"
             f"💰 {monto}\n"
             f"📅 Entrega final: {format_fecha(c['fecha_entrega_final'])}\n"
             f"📄 N° Contrato: {c['numero_contrato'] or 'Pendiente firma'}",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
@@ -185,14 +185,14 @@ async def cmd_plazos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ No hay plazos próximos en los siguientes 30 días.")
         return
     
-    texto = "📅 **Próximos plazos (30 días)**\n\n"
+    texto = "📅 <b>Próximos plazos (30 días)</b>\n\n"
     for p in plazos:
         dias = (p["fecha_limite"] - date.today()).days
         emoji = "🔴" if dias <= 3 else "🟡" if dias <= 7 else "🟢"
         check = "✅" if p["completado"] else emoji
         texto += f"{check} {format_fecha(p['fecha_limite'])} ({dias}d) — {p['descripcion']}\n"
     
-    await update.message.reply_text(texto, parse_mode="Markdown")
+    await update.message.reply_text(texto, parse_mode="HTML")
 
 
 async def cmd_pagos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -216,17 +216,17 @@ async def cmd_pagos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     total_cobrado = sum(p["monto"] for p in cobrados)
     
     texto = (
-        f"💰 **Estado de Pagos**\n\n"
+        f"💰 <b>Estado de Pagos</b>\n\n"
         f"⏳ Pendientes: {len(pendientes)} — {format_monto(total_pendiente)}\n"
         f"✅ Cobrados: {len(cobrados)} — {format_monto(total_cobrado)}\n\n"
     )
     
     if pendientes:
-        texto += "**Pendientes:**\n"
+        texto += "<b>Pendientes:</b>\n"
         for p in pendientes[:5]:
             texto += f"• {format_monto(p['monto'])} — {p['entidad'][:30]} — {p['concepto']}\n"
     
-    await update.message.reply_text(texto, parse_mode="Markdown")
+    await update.message.reply_text(texto, parse_mode="HTML")
 
 
 async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -284,7 +284,7 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     
     await update.message.reply_text(
-        f"🏆🏆🏆 **¡BUENA PRO REGISTRADA!** 🏆🏆🏆\n\n"
+        f"🏆🏆🏆 <b>¡BUENA PRO REGISTRADA!</b> 🏆🏆🏆\n\n"
         f"📋 {prop['nomenclatura'] or prop['licitacion_id']}\n"
         f"🏛️ {prop['entidad']}\n"
         f"📦 {prop['objeto'][:120]}\n"
@@ -292,7 +292,7 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"📅 Plazos creados automáticamente.\n"
         f"Usa /plazos para ver el timeline.\n\n"
         f"📧 Enviando notificación por email...",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     
     # Enviar email
@@ -321,14 +321,14 @@ async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     
     await update.message.reply_text(
-        f"📊 **RESUMEN GENERAL**\n\n"
+        f"📊 <b>RESUMEN GENERAL</b>\n\n"
         f"📋 Contratos totales: {total_contratos}\n"
         f"🔄 Contratos activos: {activos}\n"
         f"💰 Monto total adjudicado: {format_monto(total_monto)}\n"
         f"✅ Cobrado: {format_monto(cobrado)}\n"
         f"⏳ Pendiente de cobro: {format_monto(pendiente)}\n"
         f"📅 Plazos próximos (7 días): {prox_plazos}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -341,7 +341,7 @@ async def cmd_entrega(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     descripcion = " ".join(ctx.args[1:])
     path = await generar_informe_entrega(contrato_id, descripcion)
     if path:
-        await update.message.reply_text(f"📦 Entrega registrada.\n📄 Informe: {path}", parse_mode="Markdown")
+        await update.message.reply_text(f"📦 Entrega registrada.\n📄 Informe: {path}", parse_mode="HTML")
     else:
         await update.message.reply_text("❌ Contrato no encontrado")
 
@@ -356,7 +356,7 @@ async def cmd_factura(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     concepto = " ".join(ctx.args[2:]) if len(ctx.args) > 2 else "Servicio contratado"
     path = await generar_factura(contrato_id, monto, concepto)
     if path:
-        await update.message.reply_text(f"📄 Factura generada: {format_monto(monto)}\n📎 {path}", parse_mode="Markdown")
+        await update.message.reply_text(f"📄 Factura generada: {format_monto(monto)}\n📎 {path}", parse_mode="HTML")
     else:
         await update.message.reply_text("❌ Error generando factura")
 
@@ -370,7 +370,7 @@ async def cmd_conformidad(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     obs = " ".join(ctx.args[1:]) if len(ctx.args) > 1 else ""
     path = await generar_acta_conformidad(contrato_id, obs)
     if path:
-        await update.message.reply_text(f"✅ Acta generada: {path}", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Acta generada: {path}", parse_mode="HTML")
     else:
         await update.message.reply_text("❌ Contrato no encontrado")
 
@@ -383,7 +383,7 @@ async def cmd_pago(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     contrato_id = int(ctx.args[0])
     monto = float(ctx.args[1])
     pago_id = await registrar_pago(contrato_id, monto)
-    await update.message.reply_text(f"💰 Pago registrado (#{pago_id}): {format_monto(monto)}", parse_mode="Markdown")
+    await update.message.reply_text(f"💰 Pago registrado (#{pago_id}): {format_monto(monto)}", parse_mode="HTML")
 
 
 # ─── Main ────────────────────────────────────────────────
