@@ -10,6 +10,10 @@ set PYTHON="C:\Users\KEVIN GARCIA\AppData\Local\Programs\Python\Python312\python
 set PYTHONPATH=E:\Proyectos\licitapro-peru
 set PYTHONIOENCODING=utf-8
 
+echo [0/5] Limpiando procesos anteriores...
+taskkill /F /IM python.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
+
 echo [1/5] Levantando Docker (PostgreSQL + Redis + N8N)...
 docker compose up -d
 timeout /t 5 /nobreak >nul
