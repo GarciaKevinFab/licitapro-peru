@@ -1,19 +1,17 @@
 """Orquestador de scrapers -- ejecuta todos los scrapers de forma modular.
 
 Fuentes implementadas (verificadas):
-1. SEACE 3.0        -- Buscador publico oficial OSCE (JSF AJAX)
-2. GORE Portals     -- Portales regionales de cotizacion (MDD, etc.)
-3. Peru Compras     -- Catalogo electronico y acuerdos marco
-4. Poder Judicial   -- Portal de contrataciones PJ
-5. EsSalud          -- Portal de contrataciones hospitalarias
-6. SBS              -- Superintendencia de Banca y Seguros
-7. Transparencia    -- Consulta amigable MEF + PAC
-8. Municipalidades  -- Portales de gobiernos locales
-
-Fuentes deshabilitadas (APIs no responden o dominios caidos):
-- OSCE API OCDS     -- contratacionesabiertas.osce.gob.pe no resuelve DNS
-- CONOSCE/OSCE      -- portal.osce.gob.pe devuelve 403
-- Datos Abiertos    -- datosabiertos.gob.pe API devuelve 404
+1. SEACE 3.0           -- Buscador publico oficial OSCE (JSF AJAX)
+2. GORE Portals        -- Portales regionales de cotizacion (MDD, etc.)
+3. Peru Compras        -- Catalogo electronico y acuerdos marco
+4. Poder Judicial      -- Portal de contrataciones PJ
+5. EsSalud             -- Portal de contrataciones hospitalarias
+6. SBS                 -- Superintendencia de Banca y Seguros
+7. Transparencia       -- Consulta amigable MEF + PAC
+8. Municipalidades     -- Portales de gobiernos locales
+9. OCDS/CONOSCE        -- XLSX convocatorias de conosce.osce.gob.pe (datos abiertos OSCE)
+10. CONOSCE Contratos  -- XLSX contratos + PAC de conosce.osce.gob.pe (Pentaho BI)
+11. Datos Abiertos     -- datosabiertos.gob.pe CKAN API + XLSX resources
 """
 import re
 import logging
@@ -207,6 +205,9 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         ("sbs", _run_sbs),
         ("transparencia_mef", _run_transparencia_mef),
         ("municipalidades", _run_municipalidades),
+        ("ocds_conosce", _run_ocds_conosce),
+        ("conosce_contratos", _run_conosce_contratos),
+        ("datos_abiertos", _run_datos_abiertos),
     ]
 
     for nombre, func in scrapers:
@@ -1075,6 +1076,27 @@ async def _run_municipalidades(user_id):
     return nuevas
 
 
+# ==================== 9. OCDS CONOSCE (Convocatorias XLSX) ====================
+
+async def _run_ocds_conosce(user_id):
+    from radar_bot.scrapers.ocds_api import scrape_ocds
+    return await scrape_ocds(user_id)
+
+
+# ==================== 10. CONOSCE Contratos + PAC ====================
+
+async def _run_conosce_contratos(user_id):
+    from radar_bot.scrapers.conosce import scrape_conosce
+    return await scrape_conosce(user_id)
+
+
+# ==================== 11. Datos Abiertos ====================
+
+async def _run_datos_abiertos(user_id):
+    from radar_bot.scrapers.datos_abiertos import scrape_datos_abiertos
+    return await scrape_datos_abiertos(user_id)
+
+
 # ==================== FORMAT REPORT ====================
 
 def format_scraping_report(results: dict) -> str:
@@ -1090,6 +1112,9 @@ def format_scraping_report(results: dict) -> str:
         "sbs": "SBS",
         "transparencia_mef": "Transparencia MEF",
         "municipalidades": "Municipalidades",
+        "ocds_conosce": "OCDS/CONOSCE",
+        "conosce_contratos": "CONOSCE Contratos+PAC",
+        "datos_abiertos": "Datos Abiertos",
     }
 
     for fuente, count in results["por_fuente"].items():
