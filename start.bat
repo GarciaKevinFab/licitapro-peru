@@ -4,10 +4,12 @@ echo   LicitaPro Peru - Iniciando servicios
 echo ========================================
 echo.
 
-cd /d E:\Proyectos\licitapro-peru
+REM %~dp0 = carpeta de este script. Antes habia una ruta fija que quedo
+REM apuntando a un directorio vacio al mover el proyecto: los bots no arrancaban.
+cd /d "%~dp0"
 
 set PYTHON="C:\Users\KEVIN GARCIA\AppData\Local\Programs\Python\Python312\python.exe"
-set PYTHONPATH=E:\Proyectos\licitapro-peru
+set PYTHONPATH=%~dp0
 set PYTHONIOENCODING=utf-8
 
 echo [0/5] Limpiando procesos anteriores...
