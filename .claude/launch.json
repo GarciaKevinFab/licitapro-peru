@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "panel",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-3.12", "-m", "uvicorn", "web.app:app", "--port", "8200"],
+      "port": 8200
+    }
+  ]
+}

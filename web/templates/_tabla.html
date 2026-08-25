@@ -1,0 +1,74 @@
+{% if not licitaciones %}
+  <div class="vacio">
+    <p><strong>Ninguna licitación coincide.</strong></p>
+    <p>Prueba quitando el filtro de región o bajando el puntaje mínimo. Si esperabas
+       resultados y no hay ninguno, revisa que el scraping haya corrido hoy.</p>
+  </div>
+{% else %}
+<table>
+  <caption>{{ licitaciones|length }} licitaciones · ordenadas por puntaje</caption>
+  <thead>
+    <tr>
+      <th class="num">Puntaje</th>
+      <th>Cierre</th>
+      <th>Tipo</th>
+      <th>Región</th>
+      <th>Entidad y objeto</th>
+      <th class="num">Monto</th>
+      <th>Bases</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in licitaciones %}
+    <tr>
+      <td class="num">
+        {% if l.score_viabilidad %}
+          <div class="score">
+            <span class="sv">{{ l.score_viabilidad|round|int }}</span>
+            <span class="sbar"><span class="sfill" style="width:{{ l.score_viabilidad|round|int }}%"></span></span>
+          </div>
+        {% else %}<span class="nd">—</span>{% endif %}
+      </td>
+      <td class="cierre">
+        {% if l.fecha_cierre %}
+          <span class="fecha">{{ l.fecha_cierre.strftime('%d/%m') }}</span>
+          {% if l.dias is not none %}
+            {% if l.dias < 0 %}<span class="chip venc">vencida</span>
+            {% elif l.dias <= 2 %}<span class="chip urg">{{ l.dias }}d</span>
+            {% elif l.dias <= 7 %}<span class="chip pronto">{{ l.dias }}d</span>
+            {% else %}<span class="chip ok">{{ l.dias }}d</span>{% endif %}
+          {% endif %}
+        {% else %}<span class="nd">sin fecha</span>{% endif %}
+      </td>
+      <td><span class="tipo">{{ l.tipo or '—' }}</span></td>
+      <td class="reg">{{ l.departamento or '—' }}</td>
+      <td class="obj">
+        <span class="ent">{{ l.entidad }}</span>
+        <span class="desc">{{ l.objeto }}</span>
+        {% if l.score_detalle %}
+          <details>
+            <summary>Por qué este puntaje</summary>
+            <dl class="desglose">
+              {% for k, v in l.score_detalle.items() %}
+                <div><dt>{{ k|replace('_',' ') }}</dt><dd>{{ v|round|int }}</dd></div>
+              {% endfor %}
+            </dl>
+          </details>
+        {% endif %}
+      </td>
+      <td class="num monto">
+        {% if l.monto_referencial %}S/ {{ '{:,.0f}'.format(l.monto_referencial) }}
+        {% else %}<span class="nd">no publicado</span>{% endif %}
+      </td>
+      <td>
+        {% if l.bases_urls %}
+          <a href="{{ l.bases_urls[0] }}" target="_blank" rel="noopener">PDF</a>
+        {% elif l.url %}
+          <a href="{{ l.url }}" target="_blank" rel="noopener">ver</a>
+        {% else %}<span class="nd">—</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
