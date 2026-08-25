@@ -1,0 +1,59 @@
+{% extends "_base.html" %}
+{% block titulo %}{% if modo == 'registro' %}Crear cuenta{% else %}Entrar{% endif %} · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.caja{width:100%;max-width:420px}
+.caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
+  font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
+.caja .marca .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.caja h1{font-family:Sora,sans-serif;font-size:1.45rem;font-weight:600;margin:0 0 6px;
+  letter-spacing:-.02em;text-align:center}
+.caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
+form.acc{display:flex;flex-direction:column;gap:15px;background:var(--panel);
+  border:1px solid var(--line);border-radius:6px;padding:24px}
+form.acc button{width:100%;padding:10px}
+.alterna{text-align:center;font-size:13px;color:var(--ink-3);margin-top:18px}
+{% endblock %}
+
+{% block cuerpo %}
+<div class="acceso">
+  <div class="caja">
+    <div class="marca"><span class="pip"></span> LicitaPro Perú</div>
+
+    {% if modo == 'registro' %}
+      <h1>Crear cuenta</h1>
+      <p class="lead">Empieza a recibir las licitaciones de tu rubro.</p>
+    {% else %}
+      <h1>Entrar</h1>
+      <p class="lead">Accede a tu panel de licitaciones.</p>
+    {% endif %}
+
+    {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+    {% if modo == 'registro' %}
+      <form class="acc" method="post" action="/registro">
+        <label class="campo"><span>Nombre o empresa</span>
+          <input type="text" name="nombre" value="{{ nombre or '' }}" autocomplete="organization"></label>
+        <label class="campo"><span>Correo</span>
+          <input type="email" name="email" value="{{ email or '' }}" required autocomplete="email"></label>
+        <label class="campo"><span>Contraseña</span>
+          <input type="password" name="password" required minlength="10" autocomplete="new-password">
+          <p class="ayuda">Mínimo 10 caracteres.</p></label>
+        <button type="submit">Crear cuenta</button>
+      </form>
+      <p class="alterna">¿Ya tienes cuenta? <a href="/entrar">Entrar</a></p>
+    {% else %}
+      <form class="acc" method="post" action="/entrar">
+        <input type="hidden" name="siguiente" value="{{ siguiente or '/' }}">
+        <label class="campo"><span>Correo</span>
+          <input type="email" name="email" value="{{ email or '' }}" required autocomplete="email" autofocus></label>
+        <label class="campo"><span>Contraseña</span>
+          <input type="password" name="password" required autocomplete="current-password"></label>
+        <button type="submit">Entrar</button>
+      </form>
+      <p class="alterna">¿No tienes cuenta? <a href="/registro">Crear una</a></p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

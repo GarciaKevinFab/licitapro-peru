@@ -1,0 +1,184 @@
+{% extends "_base.html" %}
+{% block titulo %}Configuración · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+main{max-width:860px}
+.estado{display:flex;align-items:center;gap:9px;margin-bottom:16px}
+.punto{width:9px;height:9px;border-radius:50%;flex:none}
+.punto.si{background:var(--ok)} .punto.no{background:var(--ink-3)}
+.estado .txt{font-size:13.5px}
+.estado .txt b{font-weight:500}
+.acciones{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
+.pasos{margin:14px 0 18px;padding-left:20px;color:var(--ink-2);font-size:13px}
+.pasos li{margin-bottom:5px}
+table.cred{width:100%;border-collapse:collapse;font-size:13.5px}
+table.cred th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+table.cred td{padding:11px 10px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+table.cred tr:last-child td{border-bottom:none}
+.marca-cred{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.marca-cred.si{background:var(--ok-soft);color:var(--ok)}
+.marca-cred.no{background:var(--panel-2);color:var(--ink-3)}
+.fila-cred{display:flex;gap:8px;align-items:center}
+.fila-cred input{min-width:150px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
+.regiones{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));
+  gap:6px 14px;margin-top:6px}
+.regiones label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:400;
+  text-transform:none;letter-spacing:0;color:var(--ink)}
+.regiones input{width:auto}
+.nota{font-size:12.5px;color:var(--ink-3);margin:16px 0 0;padding-top:14px;
+  border-top:1px solid var(--line-soft);max-width:70ch}
+{% endblock %}
+
+{% block cuerpo %}
+<header>
+  <a class="brand" href="/"><span class="pip"></span> LicitaPro · Panel</a>
+  <nav class="menu">
+    <a href="/">Licitaciones</a>
+    <a href="/configuracion" class="activo">Configuración</a>
+  </nav>
+  <span class="sesion">
+    {{ usuario.nombre or usuario.email }}
+    <form method="post" action="/salir" style="display:inline">
+      <button type="submit" class="sec">Salir</button>
+    </form>
+  </span>
+</header>
+
+<main>
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  <section class="tarjeta">
+    <h2>Telegram</h2>
+    <p class="sub">Por dónde llegan las alertas. Se vincula con un clic: no tienes
+       que buscar ni copiar ningún número de identificación.</p>
+
+    <div class="estado">
+      <span class="punto {% if usuario.telegram_chat_id %}si{% else %}no{% endif %}"></span>
+      <span class="txt">
+        {% if usuario.telegram_chat_id %}<b>Conectado.</b> Recibirás las alertas en tu chat.
+        {% else %}<b>Sin conectar.</b> Todavía no puedes recibir alertas.{% endif %}
+      </span>
+    </div>
+
+    {% if not usuario.telegram_chat_id %}
+      <ol class="pasos">
+        <li>Pulsa <b>Conectar Telegram</b>: se abrirá el bot con un código de un solo uso.</li>
+        <li>Envía el mensaje que aparece ya escrito.</li>
+        <li>Listo. El código caduca a los 10 minutos.</li>
+      </ol>
+    {% endif %}
+
+    <div class="acciones">
+      <form method="post" action="/configuracion/telegram/vincular">
+        <button type="submit">{% if usuario.telegram_chat_id %}Volver a conectar{% else %}Conectar Telegram{% endif %}</button>
+      </form>
+      {% if usuario.telegram_chat_id %}
+        <form method="post" action="/configuracion/telegram/desvincular">
+          <button type="submit" class="peligro">Desconectar</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Credenciales</h2>
+    <p class="sub">Se guardan cifradas y <b>no se pueden volver a ver</b>, ni siquiera
+       desde aquí: solo puedes reemplazarlas. Es a propósito — si esta pantalla pudiera
+       mostrarlas, cualquiera con acceso a tu sesión también podría.</p>
+
+    <table class="cred">
+      <thead>
+        <tr><th>Credencial</th><th>Estado</th><th>Reemplazar</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for tipo, etiqueta in tipos_credencial.items() %}
+        <tr>
+          <td>{{ etiqueta }}</td>
+          <td>
+            {% if tipo in credenciales %}
+              <span class="marca-cred si">configurada</span>
+              <div class="ayuda">{{ credenciales[tipo].strftime('%d/%m/%Y %H:%M') }}</div>
+            {% else %}
+              <span class="marca-cred no">sin configurar</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/configuracion/credencial" class="fila-cred">
+              <input type="hidden" name="tipo" value="{{ tipo }}">
+              <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required>
+              <button type="submit">Guardar</button>
+            </form>
+          </td>
+          <td>
+            {% if tipo in credenciales %}
+              <form method="post" action="/configuracion/credencial/borrar">
+                <input type="hidden" name="tipo" value="{{ tipo }}">
+                <button type="submit" class="peligro">Borrar</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Qué licitaciones te interesan</h2>
+    <p class="sub">Estos filtros deciden qué se te alerta. Las licitaciones son públicas
+       y las rastreamos para todos; esto define cuáles son tuyas.</p>
+
+    <form method="post" action="/configuracion/filtros">
+      <label class="campo"><span>Regiones</span></label>
+      <div class="regiones">
+        {% for d in departamentos %}
+          <label>
+            <input type="checkbox" name="regiones" value="{{ d }}"
+              {% if config and config.regiones and d in config.regiones %}checked{% endif %}>
+            {{ d }}
+          </label>
+        {% endfor %}
+      </div>
+      <p class="ayuda">Sin ninguna marcada se te alertan todas las regiones.</p>
+
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:15px">
+        <label class="campo"><span>Palabras clave</span>
+          <textarea name="keywords" placeholder="software, servidores, cableado estructurado">{{ (config.keywords | join(', ')) if config and config.keywords else '' }}</textarea>
+          <p class="ayuda">Separadas por comas. Prefiere raíces sin tilde
+             (<code>tecnolog</code>, <code>telecomunicac</code>): las fuentes oficiales
+             publican la acentuación corrupta y una palabra con tilde puede no coincidir.</p>
+        </label>
+
+        <label class="campo"><span>Palabras a excluir</span>
+          <textarea name="keywords_excluir" placeholder="calzado, media tension, aire acondicionado">{{ (config.keywords_excluir | join(', ')) if config and config.keywords_excluir else '' }}</textarea>
+          <p class="ayuda">Descartan una licitación aunque coincida con tus palabras clave.
+             Hacen falta por la homonimia del español: «servidores» son máquinas y también
+             personal, y «redes» son informáticas pero también de media tensión o de salud.</p>
+        </label>
+
+        <div class="rejilla">
+          <label class="campo"><span>Monto mínimo (S/)</span>
+            <input type="number" name="monto_min" min="0" step="100"
+                   value="{{ (config.monto_min | round | int) if config and config.monto_min else 0 }}"></label>
+          <label class="campo"><span>Monto máximo (S/)</span>
+            <input type="number" name="monto_max" min="0" step="1000"
+                   value="{{ (config.monto_max | round | int) if config and config.monto_max else 999999999 }}"></label>
+        </div>
+        <p class="ayuda">Las convocatorias sin monto publicado pasan el filtro igualmente:
+           hoy son el 77%, y descartarlas por un dato que la entidad no publicó te haría
+           perder licitaciones buenas.</p>
+      </div>
+
+      <div class="acciones" style="margin-top:18px">
+        <button type="submit">Guardar filtros</button>
+      </div>
+    </form>
+
+    <p class="nota">Tu cuenta: <b>{{ usuario.email }}</b></p>
+  </section>
+</main>
+{% endblock %}

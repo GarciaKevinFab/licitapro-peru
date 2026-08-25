@@ -22,6 +22,12 @@ async def get_pool() -> asyncpg.Pool:
             password=os.getenv("POSTGRES_PASSWORD", "licitapro2026"),
             min_size=2,
             max_size=10,
+            # La sesion trabaja en hora de Lima. Sin esto, NOW() devuelve la
+            # zona del contenedor (UTC) mientras Python escribe timestamps
+            # naive en hora local: cinco horas de desfase. Un token de Telegram
+            # nacia pareciendo caducado, y una licitacion se daba por vencida
+            # cinco horas antes de cerrar, justo en el caso "cierra hoy".
+            server_settings={"timezone": "America/Lima"},
         )
         log.info("PostgreSQL pool created")
     return _pool
@@ -399,3 +405,106 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
         if len(salida) >= limite:
             break
     return salida
+
+
+# ─── Cuentas ─────────────────────────────────────────────
+
+async def crear_usuario(email: str, password_hash: str, nombre: str | None = None):
+    """None si el correo ya existe. La unicidad la impone la BD, no un SELECT
+    previo: entre el SELECT y el INSERT cabe otra alta con el mismo correo."""
+    async with connection() as conn:
+        return await conn.fetchrow(
+            """INSERT INTO usuarios (email, password_hash, nombre, plan)
+               VALUES (LOWER($1), $2, $3, 'trial')
+               ON CONFLICT (email) DO NOTHING
+               RETURNING *""",
+            email.strip(), password_hash, nombre,
+        )
+
+
+async def get_usuario_por_email(email: str):
+    async with connection() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM usuarios WHERE email = LOWER($1) AND activo = TRUE",
+            email.strip(),
+        )
+
+
+# ─── Vinculacion de Telegram ─────────────────────────────
+
+async def set_token_telegram(usuario_id: int, token: str, expira) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """UPDATE usuarios SET telegram_token=$2, telegram_token_expira=$3
+               WHERE id=$1""",
+            usuario_id, token, expira,
+        )
+
+
+async def vincular_telegram(token: str, chat_id: int):
+    """Canjea el token por el vinculo. Devuelve el usuario o None.
+
+    El chat_id lo aporta Telegram al procesar /start, nunca el usuario. El token
+    se consume en el mismo UPDATE que lo valida, asi que no puede reutilizarse
+    aunque llegue dos veces.
+    """
+    async with connection() as conn:
+        return await conn.fetchrow(
+            """UPDATE usuarios
+                  SET telegram_chat_id = $2,
+                      telegram_token = NULL,
+                      telegram_token_expira = NULL
+                WHERE telegram_token = $1
+                  AND telegram_token_expira > NOW()
+                  AND activo = TRUE
+             RETURNING *""",
+            token, chat_id,
+        )
+
+
+# ─── Boveda de credenciales ──────────────────────────────
+
+async def guardar_credencial(usuario_id: int, tipo: str, valor: str) -> None:
+    from shared.seguridad import cifrar
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO credenciales (usuario_id, tipo, valor_cifrado)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (usuario_id, tipo)
+               DO UPDATE SET valor_cifrado = EXCLUDED.valor_cifrado,
+                             actualizado_en = NOW()""",
+            usuario_id, tipo, cifrar(valor),
+        )
+
+
+async def obtener_credencial(usuario_id: int, tipo: str) -> str | None:
+    """Descifra la credencial. SOLO para uso del servidor.
+
+    Nunca debe llegar a una respuesta HTTP: la interfaz muestra si esta
+    configurada y cuando se actualizo, y ofrece reemplazarla, jamas verla.
+    """
+    from shared.seguridad import descifrar
+    async with connection() as conn:
+        crudo = await conn.fetchval(
+            "SELECT valor_cifrado FROM credenciales WHERE usuario_id=$1 AND tipo=$2",
+            usuario_id, tipo,
+        )
+    return descifrar(crudo) if crudo else None
+
+
+async def estado_credenciales(usuario_id: int) -> dict:
+    """Que hay configurado, sin exponer ningun valor."""
+    async with connection() as conn:
+        filas = await conn.fetch(
+            "SELECT tipo, actualizado_en FROM credenciales WHERE usuario_id=$1",
+            usuario_id,
+        )
+    return {f["tipo"]: f["actualizado_en"] for f in filas}
+
+
+async def borrar_credencial(usuario_id: int, tipo: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            "DELETE FROM credenciales WHERE usuario_id=$1 AND tipo=$2",
+            usuario_id, tipo,
+        )

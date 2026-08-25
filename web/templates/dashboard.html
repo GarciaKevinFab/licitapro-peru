@@ -113,10 +113,12 @@ td.obj{max-width:560px}
 .monto{white-space:nowrap;font-size:13px}
 .vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
 .vacio p{margin:0 auto 8px;max-width:56ch}
-.cuenta{display:flex;align-items:center;gap:8px;font-size:12.5px}
-.cuenta label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
-.cuenta select{padding:5px 8px;font-size:12.5px;min-width:auto}
-.aviso{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
+nav.menu{display:flex;align-items:center;gap:18px;font-size:13.5px}
+nav.menu a{color:var(--ink-2);text-decoration:none}
+nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
+.sesion{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-3)}
+.sesion button{padding:5px 11px;font-size:12px}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
   padding:3px 7px;border-radius:3px;cursor:help}
 .htmx-request .tabla-caja{opacity:.55;transition:opacity .15s}
@@ -126,14 +128,18 @@ td.obj{max-width:560px}
 
 <header>
   <span class="brand"><span class="pip"></span> LicitaPro · Panel</span>
-  <span class="cuenta">
-    <label for="usuario">Cuenta</label>
-    <select id="usuario" onchange="location.search='?usuario='+this.value">
-      {% for c in cuentas %}
-        <option value="{{ c.id }}" {% if c.id == usuario_id %}selected{% endif %}>{{ c.etiqueta }}</option>
-      {% endfor %}
-    </select>
-    <span class="aviso" title="Hasta que exista login, el inquilino se elige por querystring. No exponer fuera de localhost.">sin login todavía</span>
+  <nav class="menu">
+    <a href="/" class="activo">Licitaciones</a>
+    <a href="/configuracion">Configuración</a>
+  </nav>
+  <span class="sesion">
+    {% if not usuario.telegram_chat_id %}
+      <a class="aviso" href="/configuracion" title="Sin Telegram vinculado no se envian alertas">conecta Telegram</a>
+    {% endif %}
+    {{ usuario.nombre or usuario.email }}
+    <form method="post" action="/salir" style="display:inline">
+      <button type="submit" class="sec">Salir</button>
+    </form>
   </span>
   <span class="ult">
     {% if resumen.ultimo and resumen.ultimo.fin %}
@@ -152,8 +158,7 @@ td.obj{max-width:560px}
     <div class="t"><div class="n">{{ resumen.historico }}</div><div class="l">referencias de precio</div></div>
   </section>
 
-  <form class="filtros" hx-get="/parts/tabla"
-        hx-vals='{"usuario": {{ usuario_id }}}' hx-target="#tabla"
+  <form class="filtros" hx-get="/parts/tabla" hx-target="#tabla"
         hx-trigger="submit, change from:select, keyup changed delay:400ms from:input[type=search]"
         hx-indicator="body">
     <div class="campo">

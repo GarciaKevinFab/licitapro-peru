@@ -8,15 +8,37 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from shared.db import connection, licitaciones_para_usuario, get_usuario
+from shared.db import connection, licitaciones_para_usuario
 from shared.config import DEPARTAMENTOS
+from shared.seguridad import clave_sesion
 
 BASE = Path(__file__).parent
 app = FastAPI(title="LicitaPro Panel")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+# Los routers alcanzan las plantillas por app.state y no importando este modulo,
+# que los importa a ellos: al reves habria ciclo.
+app.state.templates = templates
+
+# Cookie de sesion firmada. https_only se activa fuera de desarrollo; en local
+# forzarlo impediria entrar, porque no hay TLS.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=clave_sesion(),
+    session_cookie="licitapro_sesion",
+    max_age=60 * 60 * 12,
+    same_site="lax",
+    https_only=os.getenv("LICITAPRO_ENTORNO", "dev") != "dev",
+)
+
+from web.auth import router as router_auth, usuario_actual  # noqa: E402
+from web.configuracion import router as router_config  # noqa: E402
+
+app.include_router(router_auth)
+app.include_router(router_config)
 
 
 def _dias(fecha) -> int | None:
@@ -92,47 +114,43 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
     return salida
 
 
-# TODO(fase-3): reemplazar por la sesion autenticada. Hasta que exista login,
-# el inquilino se elige por querystring y el panel NO debe exponerse fuera de
-# localhost: cualquiera podria pasar ?usuario=N y ver otra cuenta.
-async def _usuario_actual(usuario: int) -> tuple[int, str]:
-    fila = await get_usuario(usuario)
-    if fila:
-        return fila["id"], (fila["nombre"] or fila["email"])
-    async with connection() as conn:
-        primero = await conn.fetchrow(
-            "SELECT id, nombre, email FROM usuarios WHERE activo=TRUE ORDER BY id LIMIT 1")
-    if not primero:
-        return 0, "sin cuentas"
-    return primero["id"], (primero["nombre"] or primero["email"])
-
-
 @app.get("/", response_class=HTMLResponse)
 async def panel(request: Request, q: str = "", region: str = "",
-                score_min: int = 0, vigentes: int = 1, usuario: int = 0):
-    uid, nombre = await _usuario_actual(usuario)
-    async with connection() as conn:
-        cuentas = await conn.fetch(
-            "SELECT id, COALESCE(nombre, email) AS etiqueta FROM usuarios WHERE activo=TRUE ORDER BY id")
+                score_min: int = 0, vigentes: int = 1):
+    # El inquilino sale de la sesion firmada, nunca de la peticion: antes se
+    # elegia por querystring y cualquiera podia pasar ?usuario=N.
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar?siguiente=/", status_code=303)
+    uid = usuario["id"]
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "resumen": await _resumen(uid),
         "licitaciones": await _licitaciones(uid, q, region, score_min, bool(vigentes)),
         "departamentos": DEPARTAMENTOS,
-        "cuentas": cuentas, "usuario_id": uid, "usuario_nombre": nombre,
+        "usuario": usuario,
         "q": q, "region": region, "score_min": score_min, "vigentes": vigentes,
     })
 
 
 @app.get("/parts/tabla", response_class=HTMLResponse)
 async def parte_tabla(request: Request, q: str = "", region: str = "",
-                      score_min: int = 0, vigentes: int = 1, usuario: int = 0):
+                      score_min: int = 0, vigentes: int = 1):
     """Fragmento que HTMX inyecta al filtrar, sin recargar la pagina."""
-    uid, _ = await _usuario_actual(usuario)
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return HTMLResponse('<div class="vacio"><p>Tu sesión expiró. '
+                            '<a href="/entrar">Vuelve a entrar</a>.</p></div>',
+                            status_code=401)
     return templates.TemplateResponse("_tabla.html", {
         "request": request,
-        "licitaciones": await _licitaciones(uid, q, region, score_min, bool(vigentes)),
+        "licitaciones": await _licitaciones(usuario["id"], q, region, score_min, bool(vigentes)),
     })
+
+
+@app.get("/salud")
+async def salud():
+    return {"estado": "ok"}
 
 
 # Ejecutar: uvicorn web.app:app --reload --port 8200

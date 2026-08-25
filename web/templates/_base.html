@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}LicitaPro Perú{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
+  --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
+  --line:#DCE3E7; --line-soft:#E8EDF0;
+  --ac:#0F7A63; --ac-soft:#E2F1EC;
+  --urg:#B3261E; --urg-soft:#F9E4E2;
+  --warn:#8A5A00; --warn-soft:#F7EEDC;
+  --ok:#2F6B3F; --ok-soft:#E1EDE4;
+  --btn-txt:#FFFFFF;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
+    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+    --line:#27333A; --line-soft:#1F2A30;
+    --ac:#4ECBA8; --ac-soft:#123029;
+    --urg:#F08B82; --urg-soft:#3A1F1D;
+    --warn:#E0B45C; --warn-soft:#332714;
+    --ok:#7FC08E; --ok-soft:#1A2E20;
+    --btn-txt:#06211B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
+  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+  --line:#27333A; --line-soft:#1F2A30;
+  --ac:#4ECBA8; --ac-soft:#123029;
+  --urg:#F08B82; --urg-soft:#3A1F1D;
+  --warn:#E0B45C; --warn-soft:#332714;
+  --ok:#7FC08E; --ok-soft:#1A2E20;
+  --btn-txt:#06211B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5}
+.mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--ac)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
+
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.02em;
+  display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none}
+.brand .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
+nav.menu{display:flex;align-items:center;gap:18px;font-size:13.5px}
+nav.menu a{color:var(--ink-2);text-decoration:none}
+nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
+.sesion{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-3)}
+main{max-width:1400px;margin:0 auto;padding:20px 22px 60px}
+
+button,.btn{background:var(--ac);color:var(--btn-txt);border:none;border-radius:4px;
+  padding:8px 16px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;
+  text-decoration:none;display:inline-block}
+button.sec,.btn.sec{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+button.peligro{background:transparent;color:var(--urg);border:1px solid var(--line)}
+input[type=text],input[type=email],input[type=password],input[type=search],
+input[type=number],select,textarea{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;
+  padding:8px 10px;font:inherit;font-size:13.5px;width:100%}
+textarea{min-height:74px;resize:vertical;line-height:1.45}
+label.campo{display:flex;flex-direction:column;gap:5px}
+label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500}
+.ayuda{font-size:12px;color:var(--ink-3);margin:4px 0 0}
+
+.mensaje{border-radius:5px;padding:11px 15px;margin-bottom:16px;font-size:13.5px}
+.mensaje.ok{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
+.mensaje.mal{background:var(--urg-soft);color:var(--urg);border:1px solid var(--urg)}
+.mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)}
+
+.tarjeta{background:var(--panel);border:1px solid var(--line);border-radius:5px;
+  padding:20px 22px;margin-bottom:18px}
+.tarjeta h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0 0 4px;
+  letter-spacing:-.01em}
+.tarjeta .sub{font-size:12.5px;color:var(--ink-3);margin:0 0 18px;max-width:66ch}
+{% block estilos %}{% endblock %}
+</style>
+</head>
+<body>
+{% block cuerpo %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
