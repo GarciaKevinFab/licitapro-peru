@@ -71,11 +71,13 @@ Analiza esta licitación y evalúa la viabilidad para la empresa.
         else:
             resultado = analisis_basico(licitacion)
 
-        # Guardar análisis en DB
+        # Guardar análisis en DB. La columna es bases_analisis (JSONB); antes
+        # aquí decía analisis_ia, que no existe en el esquema, y el except de
+        # abajo se tragaba el error: el análisis nunca llegaba a guardarse.
         async with connection() as conn:
             await conn.execute(
                 """UPDATE licitaciones SET
-                score_viabilidad=$2, analisis_ia=$3
+                score_viabilidad=$2, bases_analisis=$3
                 WHERE id=$1""",
                 licitacion["id"],
                 resultado.get("score_viabilidad", 0),
@@ -86,7 +88,9 @@ Analiza esta licitación y evalúa la viabilidad para la empresa.
         return resultado
 
     except Exception as e:
-        log.error(f"Error en análisis IA: {e}")
+        # exc_info para que el traceback quede en el log: este except tapaba
+        # un error de esquema durante semanas sin dejar rastro.
+        log.error(f"Error en análisis IA de {licitacion.get('id')}: {e}", exc_info=True)
         return analisis_basico(licitacion)
 
 
@@ -95,11 +99,13 @@ async def _obtener_contexto_empresa(empresa_id: int) -> str:
     async with connection() as conn:
         empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", empresa_id)
         experiencias = await conn.fetch(
-            "SELECT objeto, monto, entidad_contratante FROM experiencia WHERE empresa_id=$1 ORDER BY monto DESC LIMIT 5",
+            "SELECT objeto_contrato, monto, entidad_contratante FROM experiencia"
+            " WHERE empresa_id=$1 ORDER BY monto DESC NULLS LAST LIMIT 5",
             empresa_id,
         )
         equipo = await conn.fetch(
-            "SELECT nombre, titulo_profesional, especialidad, anos_experiencia FROM equipo_tecnico WHERE empresa_id=$1 AND disponible=TRUE",
+            "SELECT nombre_completo, titulo_profesional, especialidad, anos_experiencia"
+            " FROM equipo_tecnico WHERE empresa_id=$1 AND disponible=TRUE",
             empresa_id,
         )
 
@@ -113,12 +119,13 @@ async def _obtener_contexto_empresa(empresa_id: int) -> str:
     if experiencias:
         ctx += "- Experiencia relevante:\n"
         for exp in experiencias:
-            ctx += f"  * {exp['objeto'][:80]} ({exp['entidad_contratante']}) — S/{exp['monto']:,.0f}\n"
+            monto_txt = f"S/{exp['monto']:,.0f}" if exp['monto'] else "monto no registrado"
+            ctx += f"  * {exp['objeto_contrato'][:80]} ({exp['entidad_contratante']}) — {monto_txt}\n"
 
     if equipo:
         ctx += "- Equipo técnico disponible:\n"
         for m in equipo:
-            ctx += f"  * {m['nombre']} — {m['titulo_profesional']} — {m['especialidad']} ({m['anos_experiencia']} años)\n"
+            ctx += f"  * {m['nombre_completo']} — {m['titulo_profesional']} — {m['especialidad']} ({m['anos_experiencia']} años)\n"
 
     return ctx
 

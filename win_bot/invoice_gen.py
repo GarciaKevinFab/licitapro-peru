@@ -150,7 +150,7 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     async with connection() as conn:
         await conn.execute(
             """INSERT INTO pagos (contrato_id, concepto, monto, fecha_factura,
-                                   estado, factura_numero, factura_url)
+                                   estado, numero_factura, comprobante)
             VALUES ($1, $2, $3, $4, 'facturado', $5, $6)
             ON CONFLICT DO NOTHING""",
             contrato_id, concepto, monto, date.today(), numero_factura, path,
