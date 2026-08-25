@@ -241,3 +241,45 @@ async def renovaciones_pendientes() -> list[dict]:
                 ORDER BY s.vence""",
             MAX_INTENTOS)
     return [dict(f) for f in filas]
+
+
+# ─── Puerta de acceso al producto ────────────────────────
+
+# Rutas que SIEMPRE se pueden usar, aunque la suscripcion este suspendida.
+# Cortar el acceso a la pagina de pago seria dispararse en el pie: el cliente
+# que quiere pagar no podria. Y cerrar sesion o recuperar la contrasena tampoco
+# dependen de estar al dia.
+RUTAS_LIBRES = (
+    "/entrar", "/registro", "/salir", "/recuperar",
+    "/suscripcion", "/webhooks/", "/salud", "/static",
+)
+
+
+def ruta_libre(camino: str) -> bool:
+    return any(camino == r or camino.startswith(r + "/") or camino.startswith(r)
+               for r in RUTAS_LIBRES)
+
+
+async def regiones_permitidas(usuario_id: int, regiones: list[str]) -> tuple[list[str], str]:
+    """Recorta la lista de regiones al tope del plan. Devuelve (lista, aviso).
+
+    Se recorta en vez de rechazar el formulario entero: al bajar de plan, el
+    usuario tendria mas regiones de las que le tocan y no podria guardar ningun
+    cambio hasta adivinar cuales quitar.
+    """
+    tope = (await estado_suscripcion(usuario_id)).get("max_regiones")
+    if tope is None or len(regiones) <= tope:
+        return regiones, ""
+    return regiones[:tope], (
+        f"Tu plan permite {tope} regiones y elegiste {len(regiones)}. "
+        f"Se guardaron las {tope} primeras; cambia de plan para cubrir más.")
+
+
+async def puede_usar_ia(usuario_id: int) -> bool:
+    """El analisis de bases con IA solo esta en los planes que lo incluyen.
+
+    Importa de verdad: cada analisis cuesta dinero en la API de Anthropic, y
+    quien lo paga es el dueno de la plataforma, no el cliente.
+    """
+    susc = await estado_suscripcion(usuario_id)
+    return bool(susc.get("acceso")) and bool(susc.get("analisis_ia"))

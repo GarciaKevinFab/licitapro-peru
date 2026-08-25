@@ -9,6 +9,10 @@
     <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo"{% endif %}>Suscripción</a>
   </nav>
   <span class="sesion">
+    {% set susc_aviso = request.state.susc_aviso | default(none) %}
+    {% if susc_aviso %}
+      <a class="aviso {{ susc_aviso.clase }}" href="/suscripcion">{{ susc_aviso.texto }}</a>
+    {% endif %}
     {% if not usuario.telegram_chat_id %}
       <a class="aviso" href="/configuracion">conecta Telegram</a>
     {% endif %}

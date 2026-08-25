@@ -11,6 +11,7 @@ from shared.db import (
     guardar_credencial, set_token_telegram, update_config,
 )
 from shared.seguridad import nuevo_token_telegram
+from shared.suscripciones import regiones_permitidas
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.configuracion")
@@ -126,9 +127,13 @@ async def guardar_filtros(request: Request, regiones: list[str] = Form([]),
                 "INSERT INTO user_config (user_id, usuario_id) VALUES ($1, $2)",
                 -usuario["id"], usuario["id"])
 
+    # El tope de regiones del plan se aplica al guardar, no al pintar la lista.
+    limpias, aviso_tope = await regiones_permitidas(
+        usuario["id"], [r for r in regiones if r in DEPARTAMENTOS])
+
     await update_config(
         _clave_config(config, usuario),
-        regiones=[r for r in regiones if r in DEPARTAMENTOS],
+        regiones=limpias,
         keywords=lista(keywords),
         keywords_excluir=lista(keywords_excluir),
         monto_min=monto_min,

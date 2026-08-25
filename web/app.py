@@ -23,6 +23,52 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 # que los importa a ellos: al reves habria ciclo.
 app.state.templates = templates
 
+# La guarda de suscripcion se registra ANTES que SessionMiddleware: en
+# Starlette el ultimo en registrarse envuelve a los anteriores, asi que
+# este queda por dentro y puede leer request.session. Registrado despues,
+# veia la sesion vacia y dejaba pasar a todo el mundo.
+@app.middleware("http")
+async def exigir_suscripcion(request: Request, call_next):
+    """Corta el producto cuando la suscripción muere; deja pagar siempre.
+
+    Sin esto la prueba gratuita no termina nunca: los 14 días se cumplen y el
+    usuario sigue usando todo. Un producto que no corta al vencer no es una
+    prueba, es producto gratis.
+
+    Se comprueba aquí y no ruta por ruta porque olvidarse de una sola sería
+    dejar la puerta abierta, y las rutas van a seguir creciendo.
+    """
+    from shared.suscripciones import estado_suscripcion, ruta_libre
+
+    camino = request.url.path
+    if ruta_libre(camino):
+        return await call_next(request)
+
+    uid = request.session.get("usuario_id")
+    if not uid:
+        # Sin sesión no hay nada que cobrar: que lo resuelva la propia ruta,
+        # que sabe a dónde devolver al usuario después de entrar.
+        return await call_next(request)
+
+    susc = await estado_suscripcion(uid)
+    # El aviso viaja en request.state y no en el contexto de cada ruta: si
+    # hubiera que acordarse de pasarlo en cada una, faltaria en la mitad.
+    request.state.susc_aviso = _aviso_desde_estado(susc)
+    if susc.get("acceso"):
+        return await call_next(request)
+
+    # Suspendida: se manda a pagar. Sus datos siguen intactos y vuelven en
+    # cuanto el cobro entre.
+    if request.headers.get("hx-request"):
+        # Petición de HTMX: devolver una redirección haría que se inyectara el
+        # login dentro de un fragmento. Mejor un mensaje que se vea.
+        return HTMLResponse(
+            '<div class="vacio"><p><strong>Tu suscripción está suspendida.</strong></p>'
+            '<p><a href="/suscripcion">Actívala para seguir viendo tus licitaciones</a>.</p></div>',
+            status_code=402)
+    return RedirectResponse("/suscripcion?error=Tu+suscripcion+esta+suspendida", status_code=303)
+
+
 # Cookie de sesion firmada. https_only se activa fuera de desarrollo; en local
 # forzarlo impediria entrar, porque no hay TLS.
 app.add_middleware(
@@ -120,6 +166,30 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
         d["score_detalle"] = detalle or {}
         salida.append(d)
     return salida
+
+
+def _aviso_desde_estado(s: dict) -> dict | None:
+    """Aviso de estado de la suscripción para la barra superior.
+
+    Una prueba que vence sin que el usuario se entere no convierte a pago: se
+    entera el día que deja de funcionar, y ese día ya está molesto. Por eso el
+    aviso aparece desde que quedan pocos días, no cuando ya es tarde.
+    """
+    estado, dias = s.get("estado_efectivo"), s.get("dias_restantes")
+
+    if estado == "prueba":
+        if dias is None:
+            return None
+        if dias <= 0:
+            return {"clase": "urg", "texto": "prueba terminada"}
+        if dias <= 5:
+            return {"clase": "urg", "texto": f"prueba: {dias} día{'s' if dias != 1 else ''}"}
+        return {"clase": "", "texto": f"prueba: {dias} días"}
+    if estado == "vencida":
+        return {"clase": "urg", "texto": "pago pendiente"}
+    if estado == "suspendida":
+        return {"clase": "urg", "texto": "suspendida"}
+    return None
 
 
 @app.get("/", response_class=HTMLResponse)
