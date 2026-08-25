@@ -109,3 +109,129 @@ def _destino_seguro(destino: str) -> str:
     if not destino.startswith("/") or destino.startswith("//"):
         return "/"
     return destino
+
+
+# ─── Recuperacion de contrasena ──────────────────────────
+
+# Mismo mensaje exista o no la cuenta. Decir "ese correo no esta registrado"
+# convierte el formulario en un comprobador de correos: cualquiera puede
+# averiguar quien es cliente probando direcciones.
+MENSAJE_ENVIADO = ("Si ese correo tiene una cuenta, te enviamos un enlace para "
+                   "restablecer la contraseña. Revisa tu bandeja y el spam. "
+                   "El enlace vence en una hora.")
+
+
+@router.get("/recuperar", response_class=HTMLResponse)
+async def form_recuperar(request: Request):
+    return _plantillas(request).TemplateResponse(
+        "recuperar.html", {"request": request, "paso": "pedir"})
+
+
+@router.post("/recuperar", response_class=HTMLResponse)
+async def pedir_recuperar(request: Request, email: str = Form(...)):
+    from shared.db import (
+        crear_token_recuperacion, get_usuario_por_email, peticiones_recientes,
+    )
+    from shared.seguridad import MAX_PETICIONES_POR_HORA, nuevo_token_recuperacion
+
+    plantillas = _plantillas(request)
+    respuesta_uniforme = plantillas.TemplateResponse(
+        "recuperar.html",
+        {"request": request, "paso": "pedir", "aviso": MENSAJE_ENVIADO})
+
+    usuario = await get_usuario_por_email(email)
+    if not usuario:
+        # Se responde igual que si existiera, y no se hace nada mas.
+        log.info("Recuperacion pedida para un correo sin cuenta")
+        return respuesta_uniforme
+
+    if await peticiones_recientes(usuario["id"]) >= MAX_PETICIONES_POR_HORA:
+        # Tampoco se avisa del limite: decirlo confirmaria que la cuenta existe.
+        log.warning("Limite de recuperaciones alcanzado para el usuario %s",
+                    usuario["id"])
+        return respuesta_uniforme
+
+    token, token_hash, expira = nuevo_token_recuperacion()
+    ip = request.client.host if request.client else None
+    await crear_token_recuperacion(usuario["id"], token_hash, expira, ip)
+
+    enlace = str(request.base_url).rstrip("/") + f"/recuperar/{token}"
+    enviado = await _enviar_correo_recuperacion(usuario["email"], enlace)
+    if not enviado:
+        # Sin SMTP configurado el enlace no llega a ningun lado. Se deja en el
+        # log del servidor para no bloquear el desarrollo, y se avisa fuerte.
+        log.warning("SMTP no disponible. Enlace de recuperacion para %s: %s",
+                    usuario["email"], enlace)
+    return respuesta_uniforme
+
+
+async def _enviar_correo_recuperacion(destinatario: str, enlace: str) -> bool:
+    from shared.email_sender import enviar_email
+    cuerpo = f"""
+    <p>Pediste restablecer la contraseña de tu cuenta en LicitaPro.</p>
+    <p><a href="{enlace}">Elegir una contraseña nueva</a></p>
+    <p>El enlace vence en una hora y solo se puede usar una vez.</p>
+    <p style="color:#666;font-size:13px">Si no fuiste tú, ignora este correo:
+       tu contraseña actual sigue funcionando.</p>
+    """
+    try:
+        return await enviar_email(destinatario, "Restablecer tu contraseña", cuerpo)
+    except Exception as e:
+        log.error("Fallo al enviar el correo de recuperacion: %s", e, exc_info=True)
+        return False
+
+
+@router.get("/recuperar/{token}", response_class=HTMLResponse)
+async def form_nueva_password(request: Request, token: str):
+    from shared.db import usuario_por_token_recuperacion
+    from shared.seguridad import hash_token
+
+    usuario = await usuario_por_token_recuperacion(hash_token(token))
+    if not usuario:
+        return _plantillas(request).TemplateResponse(
+            "recuperar.html",
+            {"request": request, "paso": "invalido"}, status_code=400)
+
+    return _plantillas(request).TemplateResponse(
+        "recuperar.html",
+        {"request": request, "paso": "cambiar", "token": token,
+         "email": usuario["email"]})
+
+
+@router.post("/recuperar/{token}", response_class=HTMLResponse)
+async def cambiar_password(request: Request, token: str,
+                           password: str = Form(...)):
+    from shared.db import (
+        consumir_token_y_cambiar_password, usuario_por_token_recuperacion,
+    )
+    from shared.seguridad import hash_token
+
+    plantillas = _plantillas(request)
+    th = hash_token(token)
+
+    usuario = await usuario_por_token_recuperacion(th)
+    if not usuario:
+        return plantillas.TemplateResponse(
+            "recuperar.html", {"request": request, "paso": "invalido"},
+            status_code=400)
+
+    motivo = password_debil(password)
+    if motivo:
+        return plantillas.TemplateResponse(
+            "recuperar.html",
+            {"request": request, "paso": "cambiar", "token": token,
+             "email": usuario["email"], "error": motivo},
+            status_code=400)
+
+    if not await consumir_token_y_cambiar_password(th, hashear_password(password)):
+        return plantillas.TemplateResponse(
+            "recuperar.html", {"request": request, "paso": "invalido"},
+            status_code=400)
+
+    log.info("Contrasena restablecida para el usuario %s", usuario["id"])
+    # No se inicia sesion automaticamente: si el enlace se filtro por el
+    # historial del navegador o un proxy, abrirlo no debe dar acceso directo.
+    # Se pide entrar con la contrasena nueva, que solo conoce quien la eligio.
+    request.session.clear()
+    return plantillas.TemplateResponse(
+        "recuperar.html", {"request": request, "paso": "listo"})

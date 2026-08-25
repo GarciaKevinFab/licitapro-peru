@@ -528,3 +528,72 @@ async def borrar_credencial(usuario_id: int, tipo: str) -> None:
             "DELETE FROM credenciales WHERE usuario_id=$1 AND tipo=$2",
             usuario_id, tipo,
         )
+
+
+# ─── Recuperacion de contrasena ──────────────────────────
+
+async def crear_token_recuperacion(usuario_id: int, token_hash: str,
+                                   expira, ip: str | None = None) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO tokens_recuperacion (usuario_id, token_hash, expira, ip)
+               VALUES ($1, $2, $3, $4)""",
+            usuario_id, token_hash, expira, ip)
+
+
+async def peticiones_recientes(usuario_id: int, horas: int = 1) -> int:
+    """Cuantos enlaces se pidieron para esta cuenta en las ultimas horas.
+
+    Es el limite anti-bombardeo: sin el, el formulario de recuperacion sirve
+    para llenarle la bandeja a cualquiera cuyo correo se conozca.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            """SELECT COUNT(*) FROM tokens_recuperacion
+                WHERE usuario_id = $1
+                  AND created_at > NOW() - ($2 || ' hours')::interval""",
+            usuario_id, str(horas))
+
+
+async def usuario_por_token_recuperacion(token_hash: str):
+    """Usuario dueno de un token vigente y sin usar, o None."""
+    async with connection() as conn:
+        return await conn.fetchrow(
+            """SELECT u.*, t.id AS token_id
+                 FROM tokens_recuperacion t
+                 JOIN usuarios u ON u.id = t.usuario_id
+                WHERE t.token_hash = $1
+                  AND t.usado_en IS NULL
+                  AND t.expira > NOW()
+                  AND u.activo = TRUE""",
+            token_hash)
+
+
+async def consumir_token_y_cambiar_password(token_hash: str,
+                                            password_hash: str) -> bool:
+    """Marca el token como usado y cambia la contrasena, todo o nada.
+
+    Devuelve False si el token ya no vale. La condicion usado_en IS NULL va
+    dentro del UPDATE, no en un SELECT previo: entre comprobar y actualizar
+    cabe una segunda peticion con el mismo enlace.
+
+    Al terminar se invalidan los demas tokens del usuario: si pidio el enlace
+    tres veces, los otros dos dejan de servir en cuanto uno se usa.
+    """
+    async with connection() as conn:
+        async with conn.transaction():
+            fila = await conn.fetchrow(
+                """UPDATE tokens_recuperacion SET usado_en = NOW()
+                    WHERE token_hash = $1 AND usado_en IS NULL AND expira > NOW()
+                 RETURNING usuario_id""",
+                token_hash)
+            if not fila:
+                return False
+            await conn.execute(
+                "UPDATE usuarios SET password_hash = $2 WHERE id = $1",
+                fila["usuario_id"], password_hash)
+            await conn.execute(
+                """UPDATE tokens_recuperacion SET usado_en = NOW()
+                    WHERE usuario_id = $1 AND usado_en IS NULL""",
+                fila["usuario_id"])
+    return True

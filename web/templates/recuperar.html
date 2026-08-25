@@ -1,0 +1,73 @@
+{% extends "_base.html" %}
+{% block titulo %}Restablecer contraseña · LicitaPro{% endblock %}
+
+{% block estilos %}
+.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.caja{width:100%;max-width:430px}
+.caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
+  font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
+.caja .marca .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.caja h1{font-family:Sora,sans-serif;font-size:1.4rem;font-weight:600;margin:0 0 6px;
+  letter-spacing:-.02em;text-align:center}
+.caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
+form.acc{display:flex;flex-direction:column;gap:15px;background:var(--panel);
+  border:1px solid var(--line);border-radius:6px;padding:24px}
+form.acc button{width:100%;padding:10px}
+.alterna{text-align:center;font-size:13px;color:var(--ink-3);margin-top:18px}
+.centro{text-align:center}
+.icono{font-size:2rem;text-align:center;margin-bottom:8px;color:var(--ok)}
+{% endblock %}
+
+{% block cuerpo %}
+<div class="acceso">
+  <div class="caja">
+    <div class="marca"><span class="pip"></span> LicitaPro Perú</div>
+
+    {% if paso == 'pedir' %}
+      <h1>Restablecer contraseña</h1>
+      <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
+
+      {% if aviso %}
+        <div class="mensaje ok">{{ aviso }}</div>
+        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
+      {% else %}
+        <form class="acc" method="post" action="/recuperar">
+          <label class="campo"><span>Correo de tu cuenta</span>
+            <input type="email" name="email" required autocomplete="email" autofocus></label>
+          <button type="submit">Enviarme el enlace</button>
+        </form>
+        <p class="alterna">¿Te acordaste? <a href="/entrar">Entrar</a></p>
+      {% endif %}
+
+    {% elif paso == 'cambiar' %}
+      <h1>Elige una contraseña nueva</h1>
+      <p class="lead">Para <b>{{ email }}</b></p>
+
+      {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+      <form class="acc" method="post" action="/recuperar/{{ token }}">
+        <label class="campo"><span>Contraseña nueva</span>
+          <input type="password" name="password" required minlength="10"
+                 autocomplete="new-password" autofocus>
+          <p class="ayuda">Mínimo 10 caracteres.</p></label>
+        <button type="submit">Guardar contraseña</button>
+      </form>
+
+    {% elif paso == 'listo' %}
+      <div class="icono">✓</div>
+      <h1>Contraseña actualizada</h1>
+      <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
+      <div class="centro"><a class="btn" href="/entrar">Entrar</a></div>
+
+    {% else %}
+      <h1>Ese enlace ya no sirve</h1>
+      <p class="lead">Los enlaces vencen a la hora y solo se pueden usar una vez.
+         Si ya cambiaste tu contraseña, entra con la nueva.</p>
+      <div class="centro">
+        <a class="btn" href="/recuperar">Pedir otro enlace</a>
+        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

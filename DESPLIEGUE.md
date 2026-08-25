@@ -152,5 +152,11 @@ compose de producción no incluye n8n.
 vigentes. Si OECE cambia su API, el producto se queda sin datos. Vale la pena
 vigilar `scraping_log` y alertar cuando una corrida no traiga nada nuevo.
 
-**Recuperación de contraseña.** Todavía no existe. Si un cliente olvida la suya,
-hoy hay que resetearla a mano en la base.
+**Recuperación de contraseña.** Funciona por correo, así que **necesita SMTP
+configurado** (`SMTP_USER` y `SMTP_PASSWORD`). Sin SMTP el enlace no se envía a
+ningún lado: queda escrito en el log del servidor, lo cual sirve para desarrollar
+pero deja a tus clientes sin poder recuperar su cuenta. Configúralo antes de abrir.
+
+Los enlaces vencen en una hora, sirven una sola vez, y usar uno invalida los
+demás del mismo usuario. Se guarda el SHA-256 del token, nunca el token: si
+alguien se lleva un volcado de la base, los enlaces pendientes no le sirven.

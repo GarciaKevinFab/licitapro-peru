@@ -114,3 +114,34 @@ def descifrar(valor_cifrado: bytes) -> str | None:
     except (InvalidToken, TypeError):
         log.warning("Credencial ilegible con la clave actual (rotacion sin re-cifrar?)")
         return None
+
+
+# ─── Recuperacion de contrasena ──────────────────────────
+
+# Una hora. Corto porque el token viaja por correo, que es un canal que no
+# controlamos: puede quedar en un buzon compartido, reenviado o en un archivo.
+HORAS_TOKEN_RECUPERACION = 1
+
+# Cuantos enlaces se pueden pedir por hora para una misma cuenta. Sin limite,
+# el formulario sirve para bombardear la bandeja de cualquiera.
+MAX_PETICIONES_POR_HORA = 3
+
+
+def nuevo_token_recuperacion() -> tuple[str, str, datetime]:
+    """(token_en_claro, hash_para_guardar, vencimiento).
+
+    El token en claro solo existe en memoria el tiempo de armar el correo. Lo
+    que se guarda es el hash: si alguien se lleva un volcado de la base, los
+    enlaces vigentes no le sirven de nada, igual que con las contrasenas.
+
+    SHA-256 basta aqui y bcrypt seria un error: son 32 bytes aleatorios, no una
+    contrasena humana adivinable, y el hash se consulta en cada apertura del
+    enlace.
+    """
+    token = secrets.token_urlsafe(32)
+    return token, hash_token(token), datetime.now() + timedelta(hours=HORAS_TOKEN_RECUPERACION)
+
+
+def hash_token(token: str) -> str:
+    """SHA-256 en hexadecimal del token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
