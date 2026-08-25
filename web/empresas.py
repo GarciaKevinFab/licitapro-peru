@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared.config import DEPARTAMENTOS
 from shared.db import connection, empresa_es_de, empresas_de
+from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.empresas")
@@ -116,6 +117,13 @@ async def guardar(request: Request, empresa_id: int = Form(0), rubros: str = For
             )
             aviso = "Empresa+actualizada"
         else:
+            # El tope del plan se comprueba aqui, al guardar, no al pintar el
+            # boton: ocultarlo no impide que alguien mande el formulario.
+            permitido, motivo = await puede_agregar_empresa(usuario["id"])
+            if not permitido:
+                from urllib.parse import quote_plus
+                return RedirectResponse(f"/empresas?error={quote_plus(motivo)}",
+                                        status_code=303)
             # El RUC es unico en toda la tabla: si otro inquilino ya lo cargo, el
             # INSERT falla. Se avisa en vez de reventar con un 500.
             try:

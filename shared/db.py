@@ -434,7 +434,12 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
                    VALUES ($1, $2) ON CONFLICT DO NOTHING""",
                 -fila["id"], fila["id"],
             )
-        return fila
+    if fila:
+        # La prueba nace con la cuenta: sin suscripcion el panel no sabria que
+        # plan aplicar ni cuantas empresas permitir.
+        from shared.suscripciones import crear_suscripcion_prueba
+        await crear_suscripcion_prueba(fila["id"])
+    return fila
 
 
 async def get_usuario_por_email(email: str):
