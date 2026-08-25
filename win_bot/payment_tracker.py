@@ -13,7 +13,7 @@ async def registrar_factura(contrato_id: int, monto: float, concepto: str,
     async with connection() as conn:
         pago_id = await conn.fetchval(
             """INSERT INTO pagos (contrato_id, concepto, monto, fecha_factura,
-                                   estado, factura_numero)
+                                   estado, numero_factura)
             VALUES ($1, $2, $3, $4, 'facturado', $5) RETURNING id""",
             contrato_id, concepto, monto, date.today(), factura_numero,
         )

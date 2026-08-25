@@ -1,0 +1,149 @@
+{% extends "_base.html" %}
+{% block titulo %}Suscripción · LicitaPro{% endblock %}
+{% block estilos %}
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft)}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
+  padding:3px 7px;border-radius:3px}
+.sesion button{padding:5px 11px;font-size:12px}
+.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+
+main{max-width:900px}
+.planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
+.plan{border:1px solid var(--line);border-radius:6px;padding:20px;background:var(--bg);
+  display:flex;flex-direction:column;gap:6px}
+.plan.actual{border-color:var(--ac);background:var(--ac-soft)}
+.plan h3{font-family:Sora,sans-serif;font-size:1rem;margin:0}
+.plan .precio{font-family:Sora,sans-serif;font-weight:600;font-size:1.9rem;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;margin:6px 0 2px}
+.plan .precio small{font-size:.85rem;font-weight:400;color:var(--ink-3);letter-spacing:0;
+  font-family:"DM Sans",sans-serif}
+.plan ul{margin:10px 0 14px;padding-left:18px;font-size:13px;color:var(--ink-2);flex:1}
+.plan li{margin-bottom:5px}
+.plan form{display:flex;gap:7px;flex-wrap:wrap}
+.plan select{max-width:120px}
+.estadobox{display:flex;flex-wrap:wrap;gap:22px;font-size:13.5px}
+.estadobox div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:2px}
+.estadobox div b{font-family:"JetBrains Mono",monospace;font-weight:600}
+{% endblock %}
+{% block cuerpo %}
+{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}
+<main>
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  {% if modo_pasarela == 'simulado' %}
+    <div class="mensaje aviso">
+      <b>Pasarela en modo simulado.</b> No se cobra nada real. Para cobrar de verdad
+      configura <code>IZIPAY_MODO</code>, <code>IZIPAY_MERCHANT_CODE</code> e
+      <code>IZIPAY_API_KEY</code>.
+    </div>
+  {% endif %}
+
+  <div class="tarjeta">
+    <h2>Tu suscripción</h2>
+    {% if s.existe %}
+      <div class="estadobox">
+        <div><span>Plan</span><b>{{ s.plan_nombre }}</b></div>
+        <div><span>Estado</span><b>
+          <span class="pill {% if s.estado_efectivo == 'activa' %}ok{% elif s.estado_efectivo in ('vencida','prueba') %}pend{% else %}urg{% endif %}">{{ s.estado_efectivo }}</span></b></div>
+        <div><span>Periodo</span><b>{{ s.periodo }}</b></div>
+        <div><span>Vence</span><b>{{ s.vence.strftime('%d/%m/%Y') if s.vence else '—' }}</b></div>
+        {% if s.dias_restantes is not none %}
+          <div><span>Días</span><b>{{ s.dias_restantes }}</b></div>
+        {% endif %}
+      </div>
+      {% if s.en_gracia %}
+        <div class="mensaje aviso" style="margin-top:14px">
+          Tu pago no se completó. Conservas el acceso unos días más mientras lo resuelves.
+        </div>
+      {% elif s.estado_efectivo == 'suspendida' %}
+        <div class="mensaje mal" style="margin-top:14px">
+          Suscripción suspendida. Paga para recuperar el acceso.
+        </div>
+      {% endif %}
+      <div class="acciones" style="margin-top:16px">
+        <form method="post" action="/suscripcion/pagar">
+          <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
+        </form>
+        {% if s.estado_efectivo != 'cancelada' %}
+          <form method="post" action="/suscripcion/cancelar"
+                onsubmit="return confirm('¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.')">
+            <button type="submit" class="peligro">Cancelar</button></form>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="sub">Todavía no tienes un plan asignado. Elige uno abajo.</p>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Planes</h2>
+    <p class="sub">Puedes cambiar cuando quieras. El anual sale más barato y evita
+       once comisiones fijas al año.</p>
+    <div class="planes">
+      {% for p in planes %}
+        <div class="plan {% if s.existe and s.plan_codigo == p.codigo %}actual{% endif %}">
+          <h3>{{ p.nombre }}</h3>
+          <div class="precio">S/ {{ '%.0f'|format(p.precio_mensual) }}<small> /mes</small></div>
+          {% if p.precio_anual %}
+            <div class="ayuda">o S/ {{ '%.0f'|format(p.precio_anual) }} al año</div>
+          {% endif %}
+          <ul>
+            <li>{{ p.max_empresas }} empresa(s)</li>
+            <li>{% if p.max_regiones %}{{ p.max_regiones }} regiones{% else %}Cobertura nacional{% endif %}</li>
+            <li>Alertas en Telegram</li>
+            <li>Expedientes automáticos</li>
+            {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+          </ul>
+          <form method="post" action="/suscripcion/elegir">
+            <input type="hidden" name="plan" value="{{ p.codigo }}">
+            <select name="periodo">
+              <option value="mensual">Mensual</option>
+              {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
+            </select>
+            <button type="submit" class="sec">Elegir</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if historial %}
+  <div class="tarjeta">
+    <h2>Historial de cobros</h2>
+    <table class="datos">
+      <thead><tr><th class="num">Fecha</th><th class="num">Orden</th><th class="num">Monto</th>
+        <th class="num">Comisión</th><th>Estado</th></tr></thead>
+      <tbody>
+      {% for h in historial %}
+        <tr>
+          <td class="num">{{ h.created_at.strftime('%d/%m/%Y') if h.created_at else '—' }}</td>
+          <td class="num">{{ h.izipay_order_number or '—' }}</td>
+          <td class="num">S/ {{ '%.2f'|format(h.monto) }}</td>
+          <td class="num">−{{ '%.2f'|format(comision(h.monto|float)) }}</td>
+          <td><span class="pill {% if h.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ h.estado }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="ayuda" style="margin-top:12px">La comisión es la que retiene Izipay:
+       4.06% + S/0.81 por cobro, con IGV incluido.</p>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

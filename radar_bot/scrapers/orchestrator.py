@@ -1,7 +1,10 @@
 """Orquestador de scrapers -- ejecuta todos los scrapers de forma modular.
 
 Fuentes implementadas (verificadas):
-1. SEACE 3.0           -- Buscador publico oficial OSCE (JSF AJAX)
+0. OCDS OECE           -- API oficial contratacionesabiertas.oece.gob.pe (PRINCIPAL,
+                          tiempo real, unica con convocatorias vigentes)
+1. SEACE 3.0           -- Buscador publico oficial OSCE (JSF AJAX). Bloqueado por
+                          reCAPTCHA v3: se mantiene por si cambia, hoy devuelve 0.
 2. GORE Portals        -- Portales regionales de cotizacion (MDD, etc.)
 3. Peru Compras        -- Catalogo electronico y acuerdos marco
 4. Poder Judicial      -- Portal de contrataciones PJ
@@ -54,15 +57,10 @@ def _parse_fecha(text: str):
 
 
 def _parse_monto(text: str):
-    if not text:
-        return None
-    text = re.sub(r"[^\d.,]", "", str(text).strip())
-    text = text.replace(",", "")
-    try:
-        v = float(text)
-        return v if v > 0 else None
-    except (ValueError, TypeError):
-        return None
+    # Delega en el parser compartido: el anterior arrancaba todo caracter no
+    # numerico y convertia "COT-123-2026" en S/ 1,232,026.
+    from shared.config import parse_monto
+    return parse_monto(text)
 
 
 DEPTOS = {
@@ -111,10 +109,10 @@ def _detectar_tipo_entidad(entidad: str) -> str:
 
 
 def _match_keywords(texto: str, keywords: list[str]) -> bool:
-    if not keywords:
-        return True
-    texto_lower = texto.lower()
-    return any(kw.lower() in texto_lower for kw in keywords)
+    # Delega en el helper compartido, que ignora tildes: las fuentes de OSCE
+    # traen la acentuacion corrupta y el match con tilde nunca ocurria.
+    from shared.config import match_keywords
+    return match_keywords(texto, keywords)
 
 
 def _detectar_tipo_proc(nomenclatura: str) -> str:
@@ -140,6 +138,7 @@ async def _get_filters(user_id: int) -> dict:
     config = await get_config(user_id)
     return {
         "keywords": config["keywords"] if config else [],
+        "keywords_excluir": (config["keywords_excluir"] if config else []) or [],
         "regiones": config["regiones"] if config else [],
         "monto_min": config["monto_min"] if config else 0,
         "monto_max": config["monto_max"] if config else 999999999,
@@ -182,6 +181,12 @@ def _apply_filters(entidad, objeto, monto, depto, filters) -> bool:
         return False
     if keywords and not _match_keywords(f"{objeto} {entidad}", keywords):
         return False
+    # Exclusiones del usuario. Van DESPUES del match positivo: sirven para
+    # matar falsos positivos por homonimia -- "servidores" matchea tanto un
+    # servidor informatico como los servidores publicos de una entidad.
+    excluir = filters.get("keywords_excluir") or []
+    if excluir and _match_keywords(f"{objeto} {entidad}", excluir):
+        return False
     return True
 
 
@@ -197,6 +202,8 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
     }
 
     scrapers = [
+        # Fuente principal: unica que entrega convocatorias vigentes.
+        ("ocds_oece", _run_ocds_oece),
         ("seace_3.0", _run_seace),
         ("gore_portals", _run_gore_portals),
         ("peru_compras", _run_peru_compras),
@@ -205,8 +212,12 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         ("sbs", _run_sbs),
         ("transparencia_mef", _run_transparencia_mef),
         ("municipalidades", _run_municipalidades),
-        ("ocds_conosce", _run_ocds_conosce),
-        ("conosce_contratos", _run_conosce_contratos),
+        # ocds_conosce y conosce_contratos quedaron FUERA de las alertas: son
+        # volcados XLSX con retraso y producian 0 convocatorias vigentes (291
+        # filas, ninguna postulable). Sus datos con monto se migraron a
+        # historico_precios, que es donde si valen: alimentan el estimador de
+        # precios de prep_bot. Las funciones siguen definidas para reengancharlas
+        # a esa tabla cuando toque.
         ("datos_abiertos", _run_datos_abiertos),
     ]
 
@@ -224,8 +235,19 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
 
         await asyncio.sleep(2)
 
+    # Puntuar lo recien capturado. Sin esto las licitaciones quedan con
+    # score_viabilidad en NULL y el bot las lista por fecha, no por relevancia.
+    try:
+        from radar_bot.scorer import recalcular_scores_pendientes
+        results["scoreadas"] = await recalcular_scores_pendientes()
+    except Exception as e:
+        results["errores"].append(f"scoring: {str(e)[:120]}")
+        results["scoreadas"] = 0
+        log.error(f"[FAIL] scoring: {e}")
+
     log.info(
         f"Scraping completo: {results['total_nuevas']} nuevas, "
+        f"{results.get('scoreadas', 0)} scoreadas, "
         f"{len(results['errores'])} errores"
     )
     return results
@@ -538,8 +560,11 @@ async def _run_gore_portals(user_id):
                         encontradas += enc
                         errores += err
                         nuevas.extend(new)
-                    except Exception:
+                    except Exception as e:
                         errores += 1
+                        # Contar el fallo sin registrar la causa fue justo lo que
+                        # mantuvo invisibles los bugs de esquema.
+                        log.warning(f"fila descartada: {e}")
                     await asyncio.sleep(1)
 
     except Exception as e:
@@ -626,8 +651,11 @@ async def _run_peru_compras(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception:
+                except Exception as e:
                     errores += 1
+                    # Contar el fallo sin registrar la causa fue justo lo que
+                    # mantuvo invisibles los bugs de esquema.
+                    log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -712,8 +740,11 @@ async def _run_poder_judicial(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception:
+                except Exception as e:
                     errores += 1
+                    # Contar el fallo sin registrar la causa fue justo lo que
+                    # mantuvo invisibles los bugs de esquema.
+                    log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -799,8 +830,11 @@ async def _run_essalud(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception:
+                except Exception as e:
                     errores += 1
+                    # Contar el fallo sin registrar la causa fue justo lo que
+                    # mantuvo invisibles los bugs de esquema.
+                    log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -882,8 +916,11 @@ async def _run_sbs(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception:
+                except Exception as e:
                     errores += 1
+                    # Contar el fallo sin registrar la causa fue justo lo que
+                    # mantuvo invisibles los bugs de esquema.
+                    log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -967,8 +1004,11 @@ async def _run_transparencia_mef(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception:
+                except Exception as e:
                     errores += 1
+                    # Contar el fallo sin registrar la causa fue justo lo que
+                    # mantuvo invisibles los bugs de esquema.
+                    log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -1065,8 +1105,11 @@ async def _run_municipalidades(user_id):
                                 if is_new:
                                     nuevas.append(licit)
 
-                    except Exception:
+                    except Exception as e:
                         errores += 1
+                        # Contar el fallo sin registrar la causa fue justo lo que
+                        # mantuvo invisibles los bugs de esquema.
+                        log.warning(f"fila descartada: {e}")
 
     except Exception as e:
         errores += 1
@@ -1074,6 +1117,13 @@ async def _run_municipalidades(user_id):
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores)
     return nuevas
+
+
+# ==================== 0. OCDS OECE (API oficial, tiempo real) ====================
+
+async def _run_ocds_oece(user_id):
+    from radar_bot.scrapers.ocds_oece import scrape_ocds_oece
+    return await scrape_ocds_oece(user_id)
 
 
 # ==================== 9. OCDS CONOSCE (Convocatorias XLSX) ====================

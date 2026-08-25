@@ -1,0 +1,47 @@
+{% extends "_base.html" %}
+{% block titulo %}Pagar · LicitaPro{% endblock %}
+{% block estilos %}
+main{max-width:520px}
+.resumen{display:flex;flex-direction:column;gap:9px;font-size:14px;margin-bottom:20px}
+.resumen div{display:flex;justify-content:space-between;padding-bottom:9px;
+  border-bottom:1px solid var(--line-soft)}
+.resumen div:last-child{border-bottom:none;font-weight:600;font-size:1.05rem}
+.resumen b{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+#izipay-form{margin-top:16px;min-height:40px}
+{% endblock %}
+{% block cuerpo %}
+<main style="padding-top:40px">
+  <div class="tarjeta">
+    <h2>Confirmar pago</h2>
+    <div class="resumen" style="margin-top:16px">
+      <div><span>Plan</span><b>{{ plan }}</b></div>
+      <div><span>Periodo</span><b>{{ periodo }}</b></div>
+      <div><span>Orden</span><b>{{ numero_orden }}</b></div>
+      <div><span>Total</span><b>S/ {{ '%.2f'|format(monto) }}</b></div>
+    </div>
+
+    {% if modo == 'simulado' %}
+      <div class="mensaje aviso">
+        <b>Modo simulado.</b> No se cobra nada. Sirve para probar el flujo completo
+        sin credenciales de Izipay.
+      </div>
+      <form method="post" action="/suscripcion/retorno">
+        <input type="hidden" name="numero_orden" value="{{ numero_orden }}">
+        <input type="hidden" name="simulado" value="1">
+        <button type="submit" style="width:100%;padding:11px">Simular pago aprobado</button>
+      </form>
+    {% else %}
+      <p class="ayuda">Se abrirá el formulario seguro de Izipay. Tus datos de tarjeta
+         viajan directo a la pasarela: LicitaPro nunca los ve ni los guarda.</p>
+      <div id="izipay-form" data-token="{{ token }}"></div>
+      <noscript><p class="mensaje mal">Necesitas JavaScript para pagar con tarjeta.</p></noscript>
+      <form method="post" action="/suscripcion/retorno" style="margin-top:14px">
+        <input type="hidden" name="numero_orden" value="{{ numero_orden }}">
+        <button type="submit" class="sec" style="width:100%">Ya pagué, volver</button>
+      </form>
+    {% endif %}
+
+    <p class="ayuda" style="margin-top:16px"><a href="/suscripcion">Cancelar y volver</a></p>
+  </div>
+</main>
+{% endblock %}

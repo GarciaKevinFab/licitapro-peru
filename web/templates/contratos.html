@@ -1,0 +1,87 @@
+{% extends "_base.html" %}
+{% block titulo %}Contratos · LicitaPro{% endblock %}
+{% block estilos %}
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+.vacio p{margin:0 auto 8px;max-width:56ch}
+.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
+  padding:3px 7px;border-radius:3px}
+.sesion button{padding:5px 11px;font-size:12px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
+.tabla-caja{overflow-x:auto}
+{% endblock %}
+{% block cuerpo %}
+{% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
+<main>
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+  <div class="tarjeta">
+    <h2>Contratos</h2>
+    {% if not contratos %}
+      <div class="vacio">
+        <p><strong>Todavía no tienes contratos registrados.</strong></p>
+        <p>Cuando ganes una buena pro, regístrala abajo y el sistema arma el
+           calendario de plazos.</p>
+      </div>
+    {% else %}
+      <div class="tabla-caja">
+      <table class="datos">
+        <thead><tr><th>Contrato</th><th>Empresa</th><th>Estado</th>
+          <th class="num">Monto</th><th class="num">Por cobrar</th>
+          <th class="num">Entrega</th><th></th></tr></thead>
+        <tbody>
+        {% for c in contratos %}
+          <tr>
+            <td><span class="ent">{{ c.entidad or '—' }}</span>{{ (c.objeto or '—')[:60] }}</td>
+            <td>{{ c.razon_social }}</td>
+            <td><span class="pill {% if c.estado == 'pagado' %}ok{% elif c.estado == 'cancelado' %}neutro{% else %}pend{% endif %}">{{ c.estado }}</span>
+              {% if c.plazos_urgentes %}<span class="pill urg">{{ c.plazos_urgentes }} plazo</span>{% endif %}</td>
+            <td class="num">{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}—{% endif %}</td>
+            <td class="num">{% if c.por_cobrar %}S/ {{ '{:,.0f}'.format(c.por_cobrar) }}{% else %}—{% endif %}</td>
+            <td class="num">{{ c.fecha_entrega_final.strftime('%d/%m/%y') if c.fecha_entrega_final else '—' }}</td>
+            <td><a class="btn sec" href="/contratos/{{ c.id }}">Abrir</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Registrar una buena pro</h2>
+    <p class="sub">Al registrarla se crea el contrato y su calendario de plazos.</p>
+    {% if not candidatas %}
+      <p class="ayuda">No hay propuestas sin contrato asociado.</p>
+    {% else %}
+      <form method="post" action="/contratos/ganar" class="acciones">
+        <select name="propuesta_id" required style="max-width:380px">
+          {% for p in candidatas %}
+            <option value="{{ p.id }}">{{ (p.objeto or 'Propuesta')[:55] }} — {{ p.razon_social }}</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="monto" step="0.01" min="0" placeholder="Monto adjudicado"
+               required style="max-width:180px">
+        <input type="number" name="plazo_dias" min="1" value="30"
+               title="Plazo de ejecución en días" style="max-width:110px">
+        <button type="submit">Registrar</button>
+      </form>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

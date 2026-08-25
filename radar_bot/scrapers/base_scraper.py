@@ -32,15 +32,9 @@ def parse_fecha(text: str) -> datetime | None:
 
 
 def parse_monto(text: str) -> float | None:
-    import re
-    if not text:
-        return None
-    text = re.sub(r"[^\d.,]", "", text.strip())
-    text = text.replace(",", "")
-    try:
-        return float(text)
-    except (ValueError, TypeError):
-        return None
+    # Delega en el parser compartido. Este ni siquiera descartaba 0 o negativos.
+    from shared.config import parse_monto as _pm
+    return _pm(text)
 
 
 def match_config_filters(data: dict, config) -> bool:

@@ -1,0 +1,103 @@
+# Despliegue de produccion. Ningun secreto vive aqui: todos salen del .env, que
+# no se commitea. El compose de desarrollo tenia las contrasenas escritas
+# dentro, y eso es justo lo que no puede subir a un servidor.
+#
+#   cp .env.example .env  &&  editar .env
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?falta POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
+      TZ: America/Lima
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+    # Sin puertos publicados: solo se llega desde la red interna de compose.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - datos_redis:/data
+
+  migraciones:
+    build: .
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      LICITAPRO_ENTORNO: produccion
+    ports:
+      - "127.0.0.1:8200:8200"   # detras de un proxy con TLS, nunca expuesto directo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migraciones:
+        condition: service_completed_successfully
+    volumes:
+      - datos_expedientes:/app/data
+
+  radar:
+    build: .
+    command: python -m radar_bot.main
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      migraciones:
+        condition: service_completed_successfully
+
+  prep:
+    build: .
+    command: python -m prep_bot.main
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      migraciones:
+        condition: service_completed_successfully
+    volumes:
+      - datos_expedientes:/app/data
+
+  win:
+    build: .
+    command: python -m win_bot.main
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      migraciones:
+        condition: service_completed_successfully
+
+volumes:
+  datos_postgres:
+  datos_redis:
+  datos_expedientes:

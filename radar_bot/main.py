@@ -16,6 +16,7 @@ log = logging.getLogger("radar_bot")
 from shared.db import (
     get_pool, get_licitaciones_nuevas, marcar_notificada,
     get_config, update_config, get_empresas_activas,
+    get_usuario_por_telegram, vincular_telegram, licitaciones_para_usuario,
 )
 from shared.config import (
     format_monto, format_fecha, dias_restantes, prioridad_emoji,
@@ -59,10 +60,65 @@ def format_licitacion_alert(lic) -> tuple[str, InlineKeyboardMarkup]:
     return text, keyboard
 
 
+# ─── Autorizacion ────────────────────────────────────────
+
+async def cuenta_de(update: Update):
+    """Cuenta vinculada a este chat, o None.
+
+    Antes cualquiera que encontrara el bot podia ejecutar /hoy o /buscar: no
+    habia ninguna comprobacion. Ahora el chat tiene que estar vinculado a una
+    cuenta, y ese vinculo solo se crea desde la web con un token de un solo uso.
+    """
+    return await get_usuario_por_telegram(update.effective_user.id)
+
+
+async def exige_cuenta(update: Update) -> bool:
+    """True si puede seguir; si no, responde explicando como vincularse."""
+    if await cuenta_de(update):
+        return True
+    await update.message.reply_text(
+        "🔒 Este chat todavía no está vinculado a ninguna cuenta.\n\n"
+        "Entra a tu panel de LicitaPro, ve a <b>Configuración</b> y pulsa "
+        "<b>Conectar Telegram</b>. Es un clic: no tienes que copiar ningún "
+        "número de identificación.",
+        parse_mode="HTML",
+    )
+    return False
+
+
 # ─── Handlers ────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    await update_config(user_id)
+    # Enlace profundo: /start <token>. El chat_id lo aporta Telegram, no el
+    # usuario, asi que nadie puede redirigir las alertas de otra cuenta
+    # escribiendo un ID ajeno.
+    if ctx.args:
+        usuario = await vincular_telegram(ctx.args[0], update.effective_user.id)
+        if usuario:
+            await update.message.reply_text(
+                f"✅ <b>Conectado.</b>\n\nEste chat quedó vinculado a "
+                f"{usuario['email']}. A partir de ahora recibirás aquí las "
+                f"licitaciones que encajen con tus filtros.",
+                parse_mode="HTML",
+            )
+            return
+        await update.message.reply_text(
+            "⚠️ Ese código no es válido o ya caducó.\n\n"
+            "Los códigos duran 10 minutos y solo sirven una vez. Vuelve a "
+            "<b>Configuración</b> en tu panel y pulsa <b>Conectar Telegram</b> "
+            "otra vez.",
+            parse_mode="HTML",
+        )
+        return
+
+    if not await cuenta_de(update):
+        await update.message.reply_text(
+            "🔍 <b>LicitaRadar</b>\n\nEste chat no está vinculado a "
+            "ninguna cuenta todavía.\n\nEntra a tu panel, ve a "
+            "<b>Configuración</b> y pulsa <b>Conectar Telegram</b>.",
+            parse_mode="HTML",
+        )
+        return
+
     await update.message.reply_text(
         "🔍 <b>LicitaRadar</b> — Bot de detección de licitaciones\n\n"
         "Escaneo 12 fuentes a nivel nacional cada hora.\n"
@@ -79,7 +135,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_hoy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    lics = await get_licitaciones_nuevas(limit=10)
+    usuario = await cuenta_de(update)
+    if not usuario:
+        await exige_cuenta(update)
+        return
+    # Los filtros del usuario se aplican sobre el pozo COMPARTIDO, no sobre el
+    # de quien scrapeo: las licitaciones son publicas y valen para todos.
+    lics = await licitaciones_para_usuario(usuario["id"], limite=10)
     if not lics:
         await update.message.reply_text("📭 No hay licitaciones nuevas relevantes hoy. Sigo buscando...")
         return
@@ -97,6 +159,8 @@ async def cmd_hoy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_buscar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await exige_cuenta(update):
+        return
     if not ctx.args:
         await update.message.reply_text("Uso: /buscar [palabra clave]\nEjemplo: /buscar sistemas")
         return
@@ -124,6 +188,8 @@ async def cmd_buscar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_config(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await exige_cuenta(update):
+        return
     user_id = update.effective_user.id
     config = await get_config(user_id)
     regiones = ", ".join(config["regiones"]) if config["regiones"] else "Todas (sin filtro)"

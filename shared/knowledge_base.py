@@ -117,7 +117,8 @@ async def buscar_profesional(empresa_id: int, requisitos: str) -> list[dict]:
         equipo = await conn.fetch(
             """SELECT * FROM equipo_tecnico
             WHERE empresa_id=$1 AND disponible=TRUE
-            AND (titulo_profesional ILIKE $2 OR especialidad ILIKE $2 OR nombre ILIKE $2)""",
+            AND (titulo_profesional ILIKE $2 OR especialidad ILIKE $2
+                 OR nombre_completo ILIKE $2)""",
             empresa_id, f"%{requisitos}%",
         )
     return [dict(m) for m in equipo]

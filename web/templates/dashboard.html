@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel · LicitaPro Perú</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
+  --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
+  --line:#DCE3E7; --line-soft:#E8EDF0;
+  --ac:#0F7A63; --ac-soft:#E2F1EC;
+  --urg:#B3261E; --urg-soft:#F9E4E2;
+  --warn:#8A5A00; --warn-soft:#F7EEDC;
+  --btn-txt:#FFFFFF;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
+    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+    --line:#27333A; --line-soft:#1F2A30;
+    --ac:#4ECBA8; --ac-soft:#123029;
+    --urg:#F08B82; --urg-soft:#3A1F1D;
+    --warn:#E0B45C; --warn-soft:#332714;
+    --btn-txt:#06211B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
+  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+  --line:#27333A; --line-soft:#1F2A30;
+  --ac:#4ECBA8; --ac-soft:#123029;
+  --urg:#F08B82; --urg-soft:#3A1F1D;
+  --warn:#E0B45C; --warn-soft:#332714;
+  --btn-txt:#06211B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5}
+.mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--ac)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
+
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.02em;
+  display:flex;align-items:center;gap:9px}
+.brand .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.ult{font-size:12px;color:var(--ink-3)}
+main{max-width:1400px;margin:0 auto;padding:20px 22px 60px}
+
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin-bottom:20px}
+.t{background:var(--panel);padding:13px 16px}
+.t .n{font-family:Sora,sans-serif;font-weight:600;font-size:1.7rem;line-height:1.1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.t .l{font-size:11.5px;color:var(--ink-3);margin-top:3px;letter-spacing:.02em}
+.t.alerta .n{color:var(--urg)}
+.t.dato .n{color:var(--ac)}
+
+form.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:end;
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:13px 16px;margin-bottom:16px}
+.campo{display:flex;flex-direction:column;gap:5px}
+.campo label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+input[type=search],input[type=number],select{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;
+  padding:7px 10px;font:inherit;font-size:13.5px;min-width:130px}
+input[type=search]{min-width:250px}
+.check{display:flex;align-items:center;gap:7px;font-size:13.5px;padding-bottom:7px}
+button{background:var(--ac);color:var(--btn-txt);border:none;border-radius:4px;padding:8px 16px;
+  font:inherit;font-size:13.5px;font-weight:500;cursor:pointer}
+button.sec{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+
+.tabla-caja{background:var(--panel);border:1px solid var(--line);border-radius:5px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:900px}
+caption{text-align:left;padding:12px 16px;font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line-soft);
+  font-family:"JetBrains Mono",monospace}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
+thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;background:var(--panel-2);border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel-2)}
+td.num,th.num{text-align:right}
+
+.score{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:56px}
+.score .sv{font-family:Sora,sans-serif;font-weight:600;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.sbar{display:block;width:52px;height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden}
+.sfill{display:block;height:100%;background:var(--ac);border-radius:2px}
+.nd{color:var(--ink-3);font-size:12.5px}
+
+.cierre .fecha{font-family:"JetBrains Mono",monospace;font-size:13px;margin-right:6px}
+.chip{font-family:"JetBrains Mono",monospace;font-size:10.5px;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.chip.urg{background:var(--urg-soft);color:var(--urg)}
+.chip.pronto{background:var(--warn-soft);color:var(--warn)}
+.chip.ok{background:var(--ac-soft);color:var(--ac)}
+.chip.venc{background:var(--panel-2);color:var(--ink-3)}
+.tipo{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-2)}
+.reg{font-size:13px;color:var(--ink-2);white-space:nowrap}
+
+td.obj{max-width:560px}
+.obj .ent{display:block;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3)}
+.obj .desc{display:block;margin-top:2px;color:var(--ink);text-decoration:none}
+.obj .desc:hover{color:var(--ac);text-decoration:underline;text-underline-offset:2px}
+.obj details{margin-top:6px}
+.obj summary{font-size:12px;color:var(--ac);cursor:pointer;width:max-content}
+.desglose{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.desglose div{background:var(--panel-2);border-radius:3px;padding:3px 8px;display:flex;gap:6px;align-items:baseline}
+.desglose dt{font-size:11px;color:var(--ink-3);margin:0}
+.desglose dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600}
+.monto{white-space:nowrap;font-size:13px}
+.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+.vacio p{margin:0 auto 8px;max-width:56ch}
+nav.menu{display:flex;align-items:center;gap:18px;font-size:13.5px}
+nav.menu a{color:var(--ink-2);text-decoration:none}
+nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
+.sesion{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-3)}
+.sesion button{padding:5px 11px;font-size:12px}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
+  padding:3px 7px;border-radius:3px;cursor:help}
+.htmx-request .tabla-caja{opacity:.55;transition:opacity .15s}
+</style>
+</head>
+<body>
+
+{% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
+
+<main>
+  <section class="tarjetas">
+    <div class="t dato"><div class="n">{{ resumen.vigentes }}</div><div class="l">vigentes ahora</div></div>
+    <div class="t {% if resumen.urgentes %}alerta{% endif %}">
+      <div class="n">{{ resumen.urgentes }}</div><div class="l">cierran en 3 días o menos</div></div>
+    <div class="t"><div class="n">{{ resumen.total }}</div><div class="l">en seguimiento</div></div>
+    <div class="t"><div class="n">{{ resumen.historico }}</div><div class="l">referencias de precio</div></div>
+  </section>
+
+  <form class="filtros" hx-get="/parts/tabla" hx-target="#tabla"
+        hx-trigger="submit, change from:select, keyup changed delay:400ms from:input[type=search]"
+        hx-indicator="body">
+    <div class="campo">
+      <label for="q">Buscar</label>
+      <input type="search" id="q" name="q" value="{{ q }}" placeholder="objeto o entidad…">
+    </div>
+    <div class="campo">
+      <label for="region">Región</label>
+      <select id="region" name="region">
+        <option value="">Todas</option>
+        {% for d in departamentos %}
+          <option value="{{ d }}" {% if d == region %}selected{% endif %}>{{ d }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="score_min">Puntaje mínimo</label>
+      <input type="number" id="score_min" name="score_min" min="0" max="100" step="5" value="{{ score_min }}">
+    </div>
+    <label class="check"><input type="checkbox" name="vigentes" value="1" {% if vigentes %}checked{% endif %}> Solo vigentes</label>
+    <button type="submit">Filtrar</button>
+    <button type="button" class="sec" onclick="location.href='/'">Limpiar</button>
+  </form>
+
+  <div class="tabla-caja" id="tabla">
+    {% include "_tabla.html" %}
+  </div>
+</main>
+
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</body>
+</html>

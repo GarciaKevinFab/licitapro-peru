@@ -101,7 +101,7 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         # Actualizar propuesta en DB
         async with connection() as conn:
             await conn.execute(
-                "UPDATE propuestas SET expediente_zip_url=$2, estado='listo' WHERE id=$1",
+                "UPDATE propuestas SET expediente_zip_path=$2, estado='listo' WHERE id=$1",
                 propuesta_id, zip_path,
             )
 

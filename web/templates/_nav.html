@@ -1,0 +1,20 @@
+<header>
+  <a class="brand" href="/"><span class="pip"></span> LicitaPro</a>
+  <nav class="menu">
+    <a href="/" {% if activo == 'licitaciones' %}class="activo"{% endif %}>Licitaciones</a>
+    <a href="/propuestas" {% if activo == 'propuestas' %}class="activo"{% endif %}>Propuestas</a>
+    <a href="/contratos" {% if activo == 'contratos' %}class="activo"{% endif %}>Contratos</a>
+    <a href="/empresas" {% if activo == 'empresas' %}class="activo"{% endif %}>Empresas</a>
+    <a href="/configuracion" {% if activo == 'config' %}class="activo"{% endif %}>Configuración</a>
+    <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo"{% endif %}>Suscripción</a>
+  </nav>
+  <span class="sesion">
+    {% if not usuario.telegram_chat_id %}
+      <a class="aviso" href="/configuracion">conecta Telegram</a>
+    {% endif %}
+    {{ usuario.nombre or usuario.email }}
+    <form method="post" action="/salir" style="display:inline">
+      <button type="submit" class="sec">Salir</button>
+    </form>
+  </span>
+</header>

@@ -9,7 +9,7 @@ taskkill /F /IM python.exe 2>nul
 echo   Bots y API detenidos.
 
 echo [2/2] Deteniendo Docker...
-cd /d E:\Proyectos\licitapro-peru
+cd /d "%~dp0"
 docker compose down
 echo   Docker detenido.
 

@@ -39,3 +39,6 @@ data/redis/
 # OS
 .DS_Store
 Thumbs.db
+
+# Salidas de herramientas
+graphify-out/

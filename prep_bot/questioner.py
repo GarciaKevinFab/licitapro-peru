@@ -114,7 +114,7 @@ async def _generar_preguntas_especificas(propuesta_id: int, empresa_id: int,
         # Buscar en equipo_tecnico
         titulo_req = req.get("titulo", "")
         match = await conn.fetchrow(
-            """SELECT nombre, titulo_profesional FROM equipo_tecnico
+            """SELECT nombre_completo, titulo_profesional FROM equipo_tecnico
             WHERE empresa_id=$1 AND disponible=TRUE
             AND (titulo_profesional ILIKE $2 OR especialidad ILIKE $2)
             LIMIT 1""",
@@ -122,7 +122,7 @@ async def _generar_preguntas_especificas(propuesta_id: int, empresa_id: int,
         )
         if match:
             await kb_set(empresa_id, "equipo", clave,
-                         f"{match['nombre']} | {match['titulo_profesional']}", "tabla_equipo")
+                         f"{match['nombre_completo']} | {match['titulo_profesional']}", "tabla_equipo")
             continue
 
         anos = req.get("experiencia_anos", 0)

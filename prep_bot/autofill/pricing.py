@@ -1,7 +1,7 @@
 """Pricing — Calcula precio económico competitivo con histórico."""
 import logging
 from shared.db import connection, kb_get
-from shared.config import format_monto
+from shared.config import format_monto, normalizar
 
 log = logging.getLogger("prep.autofill.pricing")
 
@@ -93,28 +93,38 @@ async def _buscar_historico(licitacion: dict) -> list[float]:
         if not palabras:
             return []
 
-        conditions = " OR ".join(f"objeto ILIKE '%{p}%'" for p in palabras)
+        # Parametrizado: `palabras` sale del objeto scrapeado, o sea de texto
+        # que publica un tercero. Interpolarlo en el SQL abria una inyeccion.
+        patrones = [f"%{w}%" for w in palabras]
         rows = await conn.fetch(
-            f"""SELECT monto_referencial FROM licitaciones
+            """SELECT monto_referencial FROM licitaciones
             WHERE monto_referencial IS NOT NULL
             AND monto_referencial > 0
-            AND ({conditions})
+            AND objeto ILIKE ANY($2::text[])
             AND id != $1
             ORDER BY created_at DESC LIMIT 20""",
-            licitacion.get("id", ""),
+            licitacion.get("id", ""), patrones,
         )
 
-        # También buscar en historico_precios si existe
+        # La columna es monto_adjudicado. Antes decia precio_adjudicado, que no
+        # existe, y el except se lo tragaba: esta rama nunca llego a ejecutarse.
         try:
+            # Ambos lados normalizados (minusculas, sin tildes). Sin esto el
+            # overlap de arrays no matchea nunca: las claves se guardan
+            # normalizadas y el objeto llega en MAYUSCULAS y con tildes.
+            claves = [normalizar(w) for w in palabras]
             hist_rows = await conn.fetch(
-                """SELECT precio_adjudicado FROM historico_precios
+                """SELECT COALESCE(monto_adjudicado, monto_referencial) AS precio
+                FROM historico_precios
                 WHERE objeto_keywords && $1
-                ORDER BY fecha DESC LIMIT 10""",
-                palabras,
+                  AND COALESCE(monto_adjudicado, monto_referencial) > 0
+                ORDER BY fecha DESC NULLS LAST LIMIT 10""",
+                claves,
             )
-            return [r["precio_adjudicado"] for r in hist_rows if r["precio_adjudicado"]] + \
+            return [r["precio"] for r in hist_rows if r["precio"]] + \
                    [r["monto_referencial"] for r in rows if r["monto_referencial"]]
-        except Exception:
+        except Exception as e:
+            log.error(f"historico_precios fallo: {e}", exc_info=True)
             return [r["monto_referencial"] for r in rows if r["monto_referencial"]]
 
 

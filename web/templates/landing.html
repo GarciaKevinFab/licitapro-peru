@@ -1,0 +1,721 @@
+<title>LicitaPro Perú</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+:root{
+  --bg:#05070A;
+  --bg-2:#0E1419;
+  --bg-3:#151D24;
+  --line:#1E2A33;
+  --line-soft:#161F26;
+  --txt:#EEF3F5;
+  --txt-2:#A9B8C1;
+  --txt-3:#798A94;
+  --mint:#34E0B4;
+  --mint-dim:#1B7A62;
+  --amber:#FFB259;
+  --red:#FF6B60;
+  --maxw:1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--txt);
+  font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:17px;line-height:1.6;font-weight:300;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+h1,h2,h3,.display{font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;letter-spacing:-.03em;line-height:1.02;margin:0;text-wrap:balance}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--mint);outline-offset:3px;border-radius:4px}
+
+/* ---------- canvas backdrop ---------- */
+#territorio{
+  position:fixed;inset:0;width:100%;height:100%;
+  z-index:0;pointer-events:none;
+  opacity:0;transition:opacity .8s ease;
+}
+.shell{position:relative;z-index:1}
+
+/* ---------- nav ---------- */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px clamp(18px,4vw,44px);
+  background:rgba(5,7,10,0);
+  backdrop-filter:blur(0px);
+  border-bottom:1px solid transparent;
+  transition:background .4s ease,backdrop-filter .4s ease,border-color .4s ease;
+}
+nav.stuck{
+  background:rgba(5,7,10,.72);
+  backdrop-filter:blur(18px) saturate(1.4);
+  border-bottom-color:var(--line-soft);
+}
+.brand{display:flex;align-items:center;gap:10px;font-family:Sora;font-weight:600;letter-spacing:-.02em;font-size:15px}
+.brand .pip{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint);flex:none}
+.navlinks{display:flex;gap:28px;align-items:center;font-size:14px;color:var(--txt-2)}
+.navlinks a{transition:color .25s}
+.navlinks a:hover{color:var(--txt)}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;border-radius:100px;font-size:14px;font-weight:500;
+  background:var(--mint);color:#04120E;
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s;
+  font-family:"DM Sans",sans-serif;border:none;cursor:pointer;
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px -8px rgba(52,224,180,.5)}
+.btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--mint);box-shadow:none}
+@media(max-width:760px){.navlinks{display:none}}
+
+/* ---------- layout ---------- */
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(18px,4vw,44px)}
+section{position:relative}
+
+/* ---------- hero ---------- */
+.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding:120px 0 80px}
+.eyebrow{
+  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--mint);display:flex;align-items:center;gap:12px;margin-bottom:28px;
+}
+.eyebrow::before{content:"";width:28px;height:1px;background:var(--mint);display:block}
+.hero h1{font-size:clamp(2.05rem,7.2vw,5.6rem);overflow-wrap:break-word}
+.hero h1 .dim{color:var(--txt-3)}
+.hero p.lede{
+  margin:30px 0 0;max-width:52ch;font-size:clamp(1.02rem,1.9vw,1.28rem);
+  color:var(--txt-2);font-weight:300;
+}
+.hero-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:42px}
+.scrollcue{
+  margin-top:auto;padding-top:60px;display:flex;align-items:center;gap:12px;
+  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+.scrollcue .rail{width:1px;height:44px;background:linear-gradient(var(--mint),transparent);position:relative;overflow:hidden}
+.scrollcue .rail::after{content:"";position:absolute;top:-44px;left:0;width:1px;height:44px;background:var(--mint);animation:drop 2.4s cubic-bezier(.6,0,.4,1) infinite}
+@keyframes drop{0%{top:-44px}60%,100%{top:44px}}
+
+/* ---------- reveal ---------- */
+.rv{opacity:0;transform:translateY(28px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+.rv.in{opacity:1;transform:none}
+.rv.d1{transition-delay:.08s}.rv.d2{transition-delay:.16s}.rv.d3{transition-delay:.24s}.rv.d4{transition-delay:.32s}
+
+/* ---------- pinned counters ---------- */
+.pin-stage{height:260vh;position:relative}
+.pin-inner{position:sticky;top:0;height:100svh;display:flex;align-items:center}
+.counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:clamp(20px,4vw,54px);width:100%}
+.counter .n{
+  font-family:Sora;font-weight:700;letter-spacing:-.045em;
+  font-size:clamp(2.6rem,6.6vw,4.6rem);line-height:1;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(175deg,var(--txt) 30%,var(--txt-3));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.counter.hot .n{background:linear-gradient(175deg,var(--mint) 20%,var(--mint-dim));-webkit-background-clip:text;background-clip:text;color:transparent}
+.counter .lb{margin-top:14px;font-size:.92rem;color:var(--txt-2);max-width:26ch}
+.counter .sub{margin-top:6px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--txt-3)}
+
+/* ---------- section heads ---------- */
+.shead{max-width:60ch;margin-bottom:clamp(38px,6vw,72px)}
+.shead .tag{
+  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--mint);margin-bottom:20px;display:block;
+}
+.shead h2{font-size:clamp(1.9rem,4.4vw,3.1rem)}
+.shead p{margin:20px 0 0;color:var(--txt-2);font-size:1.05rem}
+
+/* ---------- bot cards (3D tilt) ---------- */
+.pipeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:20px;perspective:1400px}
+.bot{
+  position:relative;padding:34px 30px 30px;border-radius:20px;
+  background:linear-gradient(165deg,var(--bg-2),var(--bg));
+  border:1px solid var(--line-soft);
+  transform-style:preserve-3d;
+  transition:transform .5s cubic-bezier(.2,.8,.2,1),border-color .5s,box-shadow .5s;
+  will-change:transform;overflow:hidden;
+}
+.bot::before{
+  content:"";position:absolute;inset:0;border-radius:20px;opacity:0;
+  background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%),rgba(52,224,180,.13),transparent 62%);
+  transition:opacity .5s;pointer-events:none;
+}
+.bot:hover{border-color:#25404A;box-shadow:0 30px 70px -40px rgba(52,224,180,.5)}
+.bot:hover::before{opacity:1}
+.bot .step{
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.18em;
+  color:var(--mint);text-transform:uppercase;margin-bottom:22px;display:block;
+}
+.bot h3{font-size:1.42rem;margin-bottom:12px}
+.bot p{color:var(--txt-2);font-size:.96rem;margin:0 0 20px}
+.bot ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+.bot li{
+  font-size:.88rem;color:var(--txt-3);padding-left:18px;position:relative;
+  font-family:"JetBrains Mono",monospace;letter-spacing:.01em;
+}
+.bot li::before{content:"";position:absolute;left:0;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--mint-dim)}
+
+/* ---------- score explainer ---------- */
+.scorebox{
+  display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  gap:clamp(28px,5vw,72px);align-items:center;
+}
+@media(max-width:880px){.scorebox{grid-template-columns:1fr}}
+.dial{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:34px;border-radius:24px;background:linear-gradient(165deg,var(--bg-2),var(--bg));border:1px solid var(--line-soft)}
+.gauge{position:relative;display:block;line-height:0}
+.gauge svg{width:min(260px,64vw);height:auto;display:block}
+.gauge .val{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);
+  font-family:Sora;font-weight:700;font-size:3.3rem;letter-spacing:-.05em;
+  line-height:1;font-variant-numeric:tabular-nums;color:var(--mint);
+}
+.gauge .cap{
+  position:absolute;top:64%;left:50%;transform:translateX(-50%);
+  font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;
+  line-height:1;text-transform:uppercase;color:var(--txt-3);white-space:nowrap;
+}
+.dial .obj{margin-top:22px;text-align:center;font-size:.92rem;color:var(--txt-2);max-width:34ch}
+.bars{display:flex;flex-direction:column;gap:17px}
+.bar-row{display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:16px}
+.bar-row .k{font-size:.86rem;color:var(--txt-2)}
+.bar-track{height:6px;border-radius:100px;background:var(--bg-3);overflow:hidden}
+.bar-fill{display:block;height:100%;border-radius:100px;background:linear-gradient(90deg,var(--mint-dim),var(--mint));width:0;transition:width 1.3s cubic-bezier(.2,.8,.2,1)}
+.bar-row .v{font-family:"JetBrains Mono",monospace;font-size:.82rem;color:var(--txt-3);text-align:right;font-variant-numeric:tabular-nums}
+.scorenote{margin-top:26px;padding-top:20px;border-top:1px solid var(--line-soft);font-size:.9rem;color:var(--txt-3);max-width:56ch}
+@media(max-width:560px){.bar-row{grid-template-columns:104px 1fr 44px;gap:11px}}
+
+/* ---------- alert card demo ---------- */
+.alertwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:20px}
+.alert{
+  border-radius:18px;padding:24px 26px;
+  background:linear-gradient(165deg,var(--bg-2),var(--bg));
+  border:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:12px;
+}
+.alert .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pill{
+  font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;padding:4px 10px;border-radius:100px;white-space:nowrap;
+}
+.pill.hi{background:rgba(52,224,180,.12);color:var(--mint)}
+.pill.mid{background:rgba(255,178,89,.12);color:var(--amber)}
+.pill.urg{background:rgba(255,107,96,.12);color:var(--red)}
+.alert .sc{font-family:Sora;font-weight:700;font-size:1.5rem;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.alert .ent{font-size:.8rem;color:var(--txt-3);font-family:"JetBrains Mono",monospace;letter-spacing:.02em}
+.alert .obj{font-size:.98rem;color:var(--txt);line-height:1.45}
+.alert .meta{display:flex;flex-wrap:wrap;gap:16px;font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--txt-3);padding-top:12px;border-top:1px solid var(--line-soft)}
+.alert .meta b{color:var(--txt-2);font-weight:400}
+
+/* ---------- pricing ---------- */
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:18px;align-items:stretch}
+.plan{
+  border-radius:20px;padding:32px 28px;display:flex;flex-direction:column;gap:8px;
+  background:var(--bg-2);border:1px solid var(--line-soft);
+  transition:transform .45s cubic-bezier(.2,.8,.2,1),border-color .45s;
+}
+.plan:hover{transform:translateY(-6px)}
+.plan.feat{border-color:var(--mint-dim);background:linear-gradient(170deg,rgba(52,224,180,.07),var(--bg-2) 46%)}
+.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--txt-3)}
+.plan.feat .nm{color:var(--mint)}
+.plan .pr{font-family:Sora;font-weight:700;font-size:2.5rem;letter-spacing:-.045em;margin-top:14px;font-variant-numeric:tabular-nums}
+.plan .pr small{font-size:.92rem;font-weight:400;color:var(--txt-3);letter-spacing:0;font-family:"DM Sans",sans-serif}
+.plan ul{margin:22px 0 26px;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px;flex:1}
+.plan li{font-size:.9rem;color:var(--txt-2);padding-left:22px;position:relative}
+.plan li::before{content:"";position:absolute;left:0;top:.46em;width:11px;height:6px;border-left:1.6px solid var(--mint);border-bottom:1.6px solid var(--mint);transform:rotate(-45deg)}
+.plan .btn{width:100%;justify-content:center}
+
+/* ---------- cta ---------- */
+.cta{text-align:center;padding:clamp(80px,14vh,150px) 0}
+.cta h2{font-size:clamp(2rem,5.4vw,3.8rem)}
+.cta p{margin:22px auto 0;max-width:46ch;color:var(--txt-2)}
+.cta .btn{margin-top:38px;padding:15px 34px;font-size:15px}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line-soft);padding:44px 0 60px;margin-top:40px}
+.frow{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:center;font-size:.84rem;color:var(--txt-3)}
+
+.pad{padding:clamp(80px,13vh,145px) 0}
+hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{animation:none!important;transition-duration:.01ms!important}
+  .rv{opacity:1;transform:none}
+}
+</style>
+
+<canvas id="territorio" aria-hidden="true"></canvas>
+
+<div class="shell">
+
+<nav id="nav">
+  <a class="brand" href="#top"><span class="pip"></span> LicitaPro Perú</a>
+  <div class="navlinks">
+    <a href="#como">Cómo funciona</a>
+    <a href="#score">Puntaje</a>
+    <a href="#planes">Planes</a>
+  </div>
+  <a class="btn" href="#planes">Empezar</a>
+</nav>
+
+<!-- ================= HERO ================= -->
+<section class="hero wrap" id="top">
+  <span class="eyebrow rv">Licitaciones del Estado peruano</span>
+  <h1 class="rv d1">
+    El Estado publica<br>
+    <span class="dim">cientos de licitaciones al día.</span><br>
+    Nosotros encontramos<br>las tuyas.
+  </h1>
+  <p class="lede rv d2">
+    Rastreamos las convocatorias públicas de los 25 departamentos, las puntuamos
+    contra el perfil de tu empresa y te avisamos por Telegram solo cuando una
+    vale tu tiempo. Sin revisar SEACE a mano nunca más.
+  </p>
+  <div class="hero-cta rv d3">
+    <a class="btn" href="#planes">Ver planes</a>
+    <a class="btn ghost" href="#como">Cómo funciona</a>
+  </div>
+  <div class="scrollcue rv d4"><span class="rail"></span> Desplázate</div>
+</section>
+
+<!-- ================= CONTADORES (pinned) ================= -->
+<section class="pin-stage" id="datos">
+  <div class="pin-inner">
+    <div class="wrap">
+      <div class="counters">
+        <div class="counter">
+          <div class="n mono" data-to="32893">0</div>
+          <div class="lb">convocatorias publicadas en lo que va de 2026</div>
+          <div class="sub">Fuente oficial OECE</div>
+        </div>
+        <div class="counter">
+          <div class="n mono" data-to="25">0</div>
+          <div class="lb">departamentos cubiertos, de Tumbes a Tacna</div>
+          <div class="sub">Cobertura nacional</div>
+        </div>
+        <div class="counter hot">
+          <div class="n mono" data-to="6" data-suffix=" min">0</div>
+          <div class="lb">desde que se publica hasta que llega a tu Telegram</div>
+          <div class="sub">Latencia media</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PIPELINE ================= -->
+<section class="pad wrap" id="como">
+  <div class="shead rv">
+    <span class="tag">Cómo funciona</span>
+    <h2>Detectar, preparar, cobrar.</h2>
+    <p>
+      Tres etapas, tres bots. Cada uno se ocupa de una parte del ciclo y todos
+      comparten lo que ya saben de tu empresa, así que nunca te preguntan dos
+      veces lo mismo.
+    </p>
+  </div>
+
+  <div class="pipeline">
+    <article class="bot rv d1" tabindex="0">
+      <span class="step">Etapa 01 — Radar</span>
+      <h3>Encuentra</h3>
+      <p>Barre las fuentes oficiales cada hora y descarta el ruido antes de que llegue a ti.</p>
+      <ul>
+        <li>Convocatorias vigentes</li>
+        <li>Filtro por región y rubro</li>
+        <li>Puntaje de viabilidad</li>
+        <li>Alerta en Telegram</li>
+      </ul>
+    </article>
+
+    <article class="bot rv d2" tabindex="0">
+      <span class="step">Etapa 02 — Prep</span>
+      <h3>Prepara</h3>
+      <p>Arma el expediente completo y solo te pregunta lo que todavía no sabe de ti.</p>
+      <ul>
+        <li>Anexos autocompletados</li>
+        <li>Declaraciones juradas</li>
+        <li>Precio sugerido</li>
+        <li>Expediente en ZIP</li>
+      </ul>
+    </article>
+
+    <article class="bot rv d3" tabindex="0">
+      <span class="step">Etapa 03 — Win</span>
+      <h3>Cobra</h3>
+      <p>Después de la buena pro vigila los plazos y persigue el pago hasta que entra.</p>
+      <ul>
+        <li>Timeline del contrato</li>
+        <li>Alertas de vencimiento</li>
+        <li>Conformidades</li>
+        <li>Estado de pagos</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<hr class="sep">
+
+<!-- ================= SCORE ================= -->
+<section class="pad wrap" id="score">
+  <div class="shead rv">
+    <span class="tag">Puntaje de viabilidad</span>
+    <h2>Cada alerta explica por qué llegó.</h2>
+    <p>
+      No es una caja negra. Seis factores, cada uno con su peso, y el desglose
+      completo visible en cada licitación que te mandamos.
+    </p>
+  </div>
+
+  <div class="scorebox">
+    <div class="dial rv d1">
+      <div class="gauge">
+        <svg viewBox="0 0 200 200" role="img" aria-label="Puntaje de viabilidad 71 sobre 100">
+        <circle cx="100" cy="100" r="84" fill="none" stroke="#151D24" stroke-width="13"></circle>
+        <circle id="ring" cx="100" cy="100" r="84" fill="none" stroke="#34E0B4"
+                stroke-width="13" stroke-linecap="round"
+                stroke-dasharray="527.8" stroke-dashoffset="527.8"
+                transform="rotate(-90 100 100)"
+                style="transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)"></circle>
+      </svg>
+        <div class="val mono" id="dialval">0</div>
+        <div class="cap">Viabilidad</div>
+      </div>
+      <p class="obj">Mantenimiento y rehabilitación estructural — Gobierno Regional</p>
+    </div>
+
+    <div class="bars rv d2" id="bars">
+      <div class="bar-row"><span class="k">Palabras clave</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">25/25</span></div>
+      <div class="bar-row"><span class="k">Región</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">15/15</span></div>
+      <div class="bar-row"><span class="k">Experiencia</span><span class="bar-track"><span class="bar-fill" data-pct="70"></span></span><span class="v">14/20</span></div>
+      <div class="bar-row"><span class="k">Tiempo restante</span><span class="bar-track"><span class="bar-fill" data-pct="53"></span></span><span class="v">8/15</span></div>
+      <div class="bar-row"><span class="k">Monto</span><span class="bar-track"><span class="bar-fill" data-pct="33"></span></span><span class="v">5/15</span></div>
+      <div class="bar-row"><span class="k">Procedimiento</span><span class="bar-track"><span class="bar-fill" data-pct="40"></span></span><span class="v">4/10</span></div>
+      <p class="scorenote">
+        Ajustas los pesos desde tu panel. Si te interesan más los contratos
+        chicos y rápidos que los grandes, el puntaje se mueve contigo.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<!-- ================= ALERTAS ================= -->
+<section class="pad wrap">
+  <div class="shead rv">
+    <span class="tag">Lo que recibes</span>
+    <h2>Así llega a tu Telegram.</h2>
+    <p>Lo esencial para decidir en diez segundos si vale la pena abrir las bases.</p>
+  </div>
+
+  <div class="alertwrap">
+    <article class="alert rv d1">
+      <div class="top"><span class="sc" style="color:var(--mint)">71</span><span class="pill hi">Alta prioridad</span></div>
+      <div class="ent">GOBIERNO REGIONAL DE MADRE DE DIOS</div>
+      <div class="obj">Adquisición de servidores para despliegue de sistema académico</div>
+      <div class="meta"><span>S/ <b>184,500</b></span><span>Cierra en <b>9 días</b></span><span><b>CP</b> Concurso Público</span></div>
+    </article>
+
+    <article class="alert rv d2">
+      <div class="top"><span class="sc" style="color:var(--amber)">58</span><span class="pill mid">Revisar</span></div>
+      <div class="ent">MUNICIPALIDAD PROVINCIAL DE TAMBOPATA</div>
+      <div class="obj">Contratación de software para monitoreo de red y soporte técnico</div>
+      <div class="meta"><span>S/ <b>62,300</b></span><span>Cierra en <b>14 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
+    </article>
+
+    <article class="alert rv d3">
+      <div class="top"><span class="sc" style="color:var(--red)">64</span><span class="pill urg">Cierra pronto</span></div>
+      <div class="ent">UNIVERSIDAD NACIONAL AMAZÓNICA DE MADRE DE DIOS</div>
+      <div class="obj">Servicio de cableado estructurado y videovigilancia en sede central</div>
+      <div class="meta"><span>S/ <b>97,800</b></span><span>Cierra en <b>2 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
+    </article>
+  </div>
+</section>
+
+<hr class="sep">
+
+<!-- ================= PLANES ================= -->
+<section class="pad wrap" id="planes">
+  <div class="shead rv">
+    <span class="tag">Planes</span>
+    <h2>Una licitación ganada lo paga todo.</h2>
+    <p>Sin permanencia. Cancelas cuando quieras. Precios en soles, con IGV incluido.</p>
+  </div>
+
+  <div class="plans">
+    <div class="plan rv d1">
+      <span class="nm">Básico</span>
+      <div class="pr">S/ 49<small> /mes</small></div>
+      <ul>
+        <li>1 empresa</li>
+        <li>3 departamentos</li>
+        <li>Alertas en Telegram</li>
+        <li>Puntaje de viabilidad</li>
+      </ul>
+      <a class="btn ghost" href="#">Empezar</a>
+    </div>
+
+    <div class="plan feat rv d2">
+      <span class="nm">Pro · el más elegido</span>
+      <div class="pr">S/ 99<small> /mes</small></div>
+      <ul>
+        <li>3 empresas</li>
+        <li>Cobertura nacional</li>
+        <li>Expedientes automáticos</li>
+        <li>Precio sugerido con histórico</li>
+        <li>Seguimiento de contratos</li>
+      </ul>
+      <a class="btn" href="#">Empezar</a>
+    </div>
+
+    <div class="plan rv d3">
+      <span class="nm">Empresa</span>
+      <div class="pr">S/ 199<small> /mes</small></div>
+      <ul>
+        <li>Empresas ilimitadas</li>
+        <li>Varios usuarios</li>
+        <li>Análisis de bases con IA</li>
+        <li>Soporte prioritario</li>
+      </ul>
+      <a class="btn ghost" href="#">Empezar</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="cta wrap">
+  <h2 class="rv">La que te tocaba<br>ya se publicó.</h2>
+  <p class="rv d1">Conecta tu Telegram en un clic y empieza a recibir las licitaciones de tu rubro esta misma semana.</p>
+  <a class="btn rv d2" href="#planes">Conectar Telegram</a>
+</section>
+
+<footer class="wrap">
+  <div class="frow">
+    <span>© 2026 LicitaPro Perú</span>
+    <span>Datos de fuentes públicas oficiales del Estado peruano</span>
+  </div>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- nav ---------- */
+  const nav = document.getElementById("nav");
+  const onScrollNav = () => nav.classList.toggle("stuck", scrollY > 40);
+  addEventListener("scroll", onScrollNav, {passive:true});
+  onScrollNav();
+
+  /* ---------- reveals ---------- */
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add("in");
+      io.unobserve(e.target);
+    }
+  }, {threshold:0.16, rootMargin:"0px 0px -8% 0px"});
+  document.querySelectorAll(".rv").forEach(el => io.observe(el));
+
+  /* ---------- counters ---------- */
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const runCount = (el) => {
+    const to = +el.dataset.to, suffix = el.dataset.suffix || "";
+    if (reduce) { el.textContent = to.toLocaleString("es-PE") + suffix; return; }
+    const dur = 1700, t0 = performance.now();
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      el.textContent = Math.round(to * easeOut(p)).toLocaleString("es-PE") + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  const ioCount = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      runCount(e.target);
+      ioCount.unobserve(e.target);
+    }
+  }, {threshold:0.6});
+  document.querySelectorAll("[data-to]").forEach(el => ioCount.observe(el));
+
+  /* ---------- score dial + bars ---------- */
+  const ioScore = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const R = 84, C = 2 * Math.PI * R, score = 71;
+      const ring = document.getElementById("ring");
+      if (ring) ring.style.strokeDashoffset = String(C * (1 - score / 100));
+      const val = document.getElementById("dialval");
+      if (val) {
+        if (reduce) val.textContent = score;
+        else {
+          const t0 = performance.now();
+          const tick = (now) => {
+            const p = Math.min(1, (now - t0) / 1600);
+            val.textContent = Math.round(score * easeOut(p));
+            if (p < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }
+      }
+      document.querySelectorAll(".bar-fill").forEach((b, i) => {
+        setTimeout(() => { b.style.width = b.dataset.pct + "%"; }, reduce ? 0 : i * 110);
+      });
+      ioScore.unobserve(e.target);
+    }
+  }, {threshold:0.35});
+  const dial = document.querySelector(".dial");
+  if (dial) ioScore.observe(dial);
+
+  /* ---------- 3D tilt on bot cards ---------- */
+  if (!reduce && matchMedia("(hover: hover)").matches) {
+    document.querySelectorAll(".bot").forEach(card => {
+      card.addEventListener("pointermove", (ev) => {
+        const r = card.getBoundingClientRect();
+        const px = (ev.clientX - r.left) / r.width;
+        const py = (ev.clientY - r.top) / r.height;
+        card.style.setProperty("--mx", (px * 100) + "%");
+        card.style.setProperty("--my", (py * 100) + "%");
+        card.style.transform =
+          `rotateY(${(px - .5) * 11}deg) rotateX(${(.5 - py) * 11}deg) translateZ(22px)`;
+      });
+      card.addEventListener("pointerleave", () => { card.style.transform = ""; });
+    });
+  }
+
+  /* =========================================================
+     Territorio 3D - nube de puntos del Peru, proyeccion propia.
+     Sin librerias: silueta en lat/lon, relleno por point-in-polygon,
+     rotacion y zoom atados al scroll.
+     ========================================================= */
+  const cv = document.getElementById("territorio");
+  const ctx = cv.getContext("2d", {alpha:true});
+
+  // Silueta aproximada del Peru (lon, lat): norte, frontera oriental, sur, costa.
+  const BORDE = [
+    [-80.30,-3.40],[-78.30,-2.90],[-76.00,-2.30],[-75.20,-0.05],[-73.20,-1.60],
+    [-70.05,-2.60],[-70.90,-4.30],[-72.90,-5.10],[-73.10,-7.50],[-73.80,-9.40],
+    [-72.20,-9.50],[-70.60,-9.50],[-68.70,-12.60],[-69.40,-15.20],[-69.00,-16.50],
+    [-69.60,-17.30],[-70.40,-18.35],[-71.40,-17.20],[-72.60,-16.70],[-74.20,-15.90],
+    [-76.30,-14.10],[-77.00,-12.10],[-77.70,-10.70],[-78.50,-9.00],[-79.60,-7.00],
+    [-81.30,-6.10],[-81.20,-5.00],[-80.90,-4.40],[-80.30,-3.40]
+  ];
+
+  // Capitales departamentales: pulsan como convocatorias detectadas.
+  const CIUDADES = [
+    [-77.03,-12.04],[-71.97,-13.52],[-75.20,-12.07],[-71.54,-16.40],
+    [-69.19,-12.60],[-80.63,-5.19],[-73.25,-3.75],[-79.03,-8.11],
+    [-70.25,-18.01],[-76.36,-13.06],[-78.52,-7.16],[-77.53,-9.53]
+  ];
+
+  const inside = (x, y, poly) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+
+  // Muestreo determinista: el patron no cambia entre recargas.
+  let seed = 20490765;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+
+  const LON0 = -81.4, LON1 = -68.6, LAT0 = -18.5, LAT1 = 0.2;
+  const LONC = (LON0 + LON1) / 2, LATC = (LAT0 + LAT1) / 2;
+  const pts = [];
+  let guard = 0;
+  while (pts.length < 2300 && guard < 90000) {
+    guard++;
+    const lon = LON0 + rnd() * (LON1 - LON0);
+    const lat = LAT0 + rnd() * (LAT1 - LAT0);
+    if (!inside(lon, lat, BORDE)) continue;
+    pts.push({x:(lon - LONC) / 6.4, y:-(lat - LATC) / 6.4, t:rnd() * 6.2832, city:false});
+  }
+  for (const c of CIUDADES) {
+    pts.push({x:(c[0] - LONC) / 6.4, y:-(c[1] - LATC) / 6.4, t:rnd() * 6.2832, city:true});
+  }
+
+  let W = 0, H = 0, dpr = 1;
+  const resize = () => {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  resize();
+  addEventListener("resize", resize, {passive:true});
+
+  // Progreso 0..1 sobre hero + contadores.
+  const progreso = () => Math.min(1, Math.max(0, scrollY / (innerHeight * 3.2)));
+
+  const draw = (time) => {
+    ctx.clearRect(0, 0, W, H);
+    const p = progreso();
+
+    const op = Math.max(0, 1 - Math.max(0, p - 0.72) / 0.28) * 0.95;
+    cv.style.opacity = String(op);
+    if (op <= 0.01) return;
+
+    const ang  = -0.55 + p * 2.5;            // giro atado al scroll
+    const tilt = 0.30 - p * 0.16;
+    const zoom = Math.min(W, H) * (0.78 + p * 0.55);
+    const cx = W * (W > 900 ? 0.70 : 0.5);
+    const cy = H * (W > 900 ? 0.52 : 0.44);
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const ct = Math.cos(tilt), st = Math.sin(tilt);
+
+    for (const pt of pts) {
+      // Curvatura suave: el territorio se envuelve levemente sobre si mismo.
+      const z0 = Math.cos(pt.x * 1.15) * 0.30 - 0.30;
+      const X = pt.x * ca + z0 * sa;
+      const Zr = -pt.x * sa + z0 * ca;
+      const Y = pt.y * ct - Zr * st;
+      const Z = pt.y * st + Zr * ct;
+
+      const persp = 2.35 / (2.35 + Z);
+      const sx = cx + X * zoom * persp;
+      const sy = cy + Y * zoom * persp;
+      if (sx < -60 || sx > W + 60 || sy < -60 || sy > H + 60) continue;
+
+      const prof = Math.max(0.15, (persp - 0.66) / 0.72);   // 0 lejos .. 1 cerca
+      if (pt.city) {
+        const pulso = 0.55 + 0.45 * Math.sin(time / 780 + pt.t);
+        const r = (1.9 + pulso * 2.5) * persp;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, 6.2832);
+        ctx.fillStyle = "rgba(52,224,180," + ((0.45 + pulso * 0.5) * prof).toFixed(3) + ")";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 3.4, 0, 6.2832);
+        ctx.fillStyle = "rgba(52,224,180," + (0.05 * pulso * prof).toFixed(3) + ")";
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(150,205,215," + (0.10 + prof * 0.34).toFixed(3) + ")";
+        ctx.fillRect(sx, sy, 1.5 * persp, 1.5 * persp);
+      }
+    }
+  };
+
+  if (reduce) {
+    cv.style.transition = "none";
+    draw(0);
+    addEventListener("scroll", () => draw(0), {passive:true});
+  } else {
+    const loop = (t) => { draw(t); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
