@@ -164,6 +164,15 @@ async def responder_pregunta(pregunta_id: int, respuesta: str):
 
 
 # ─── Config ──────────────────────────────────────────────
+# Columnas de user_config que update_config puede modificar. user_id es la
+# clave y created_at lo pone la BD, asi que quedan fuera a proposito.
+CAMPOS_USER_CONFIG = frozenset({
+    "regiones", "entidad_tipos", "keywords", "keywords_excluir",
+    "monto_min", "monto_max", "empresa_default_id", "email_notificaciones",
+    "horario_inicio", "horario_fin", "frecuencia_resumen", "activo",
+})
+
+
 async def get_config(user_id: int):
     async with connection() as conn:
         row = await conn.fetchrow("SELECT * FROM user_config WHERE user_id=$1", user_id)
@@ -181,6 +190,12 @@ async def update_config(user_id: int, **kwargs):
                 user_id,
             )
         for key, val in kwargs.items():
+            # El nombre de columna se interpola, asi que tiene que salir de una
+            # lista blanca. Hoy los llamadores pasan identificadores escritos a
+            # mano, pero en cuanto la web arme kwargs desde un formulario esto
+            # seria una inyeccion por nombre de columna.
+            if key not in CAMPOS_USER_CONFIG:
+                raise ValueError(f"campo de user_config no permitido: {key!r}")
             await conn.execute(
                 f"UPDATE user_config SET {key}=$2 WHERE user_id=$1",
                 user_id, val,
