@@ -103,7 +103,8 @@ td.num,th.num{text-align:right}
 
 td.obj{max-width:560px}
 .obj .ent{display:block;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3)}
-.obj .desc{display:block;margin-top:2px;color:var(--ink)}
+.obj .desc{display:block;margin-top:2px;color:var(--ink);text-decoration:none}
+.obj .desc:hover{color:var(--ac);text-decoration:underline;text-underline-offset:2px}
 .obj details{margin-top:6px}
 .obj summary{font-size:12px;color:var(--ac);cursor:pointer;width:max-content}
 .desglose{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
@@ -126,28 +127,7 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 </head>
 <body>
 
-<header>
-  <span class="brand"><span class="pip"></span> LicitaPro · Panel</span>
-  <nav class="menu">
-    <a href="/" class="activo">Licitaciones</a>
-    <a href="/configuracion">Configuración</a>
-  </nav>
-  <span class="sesion">
-    {% if not usuario.telegram_chat_id %}
-      <a class="aviso" href="/configuracion" title="Sin Telegram vinculado no se envian alertas">conecta Telegram</a>
-    {% endif %}
-    {{ usuario.nombre or usuario.email }}
-    <form method="post" action="/salir" style="display:inline">
-      <button type="submit" class="sec">Salir</button>
-    </form>
-  </span>
-  <span class="ult">
-    {% if resumen.ultimo and resumen.ultimo.fin %}
-      Último scraping: {{ resumen.ultimo.fin.strftime('%d/%m %H:%M') }} ·
-      {{ resumen.ultimo.fuente }} · {{ resumen.ultimo.registros_nuevos }} nuevas
-    {% else %}Sin registros de scraping todavía{% endif %}
-  </span>
-</header>
+{% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
 
 <main>
   <section class="tarjetas">

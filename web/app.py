@@ -36,9 +36,15 @@ app.add_middleware(
 
 from web.auth import router as router_auth, usuario_actual  # noqa: E402
 from web.configuracion import router as router_config  # noqa: E402
+from web.empresas import router as router_empresas  # noqa: E402
+from web.propuestas import router as router_propuestas  # noqa: E402
+from web.contratos import router as router_contratos  # noqa: E402
 
 app.include_router(router_auth)
 app.include_router(router_config)
+app.include_router(router_empresas)
+app.include_router(router_propuestas)
+app.include_router(router_contratos)
 
 
 def _dias(fecha) -> int | None:

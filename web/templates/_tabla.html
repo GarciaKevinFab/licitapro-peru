@@ -44,7 +44,7 @@
       <td class="reg">{{ l.departamento or '—' }}</td>
       <td class="obj">
         <span class="ent">{{ l.entidad }}</span>
-        <span class="desc">{{ l.objeto }}</span>
+        <a class="desc" href="/licitacion/{{ l.id }}">{{ l.objeto }}</a>
         {% if l.score_detalle %}
           <details>
             <summary>Por qué este puntaje</summary>

@@ -1,0 +1,99 @@
+{% extends "_base.html" %}
+{% block titulo %}{{ lic.objeto[:50] }} · LicitaPro{% endblock %}
+{% block estilos %}
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+.vacio p{margin:0 auto 8px;max-width:56ch}
+.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
+  padding:3px 7px;border-radius:3px}
+.sesion button{padding:5px 11px;font-size:12px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
+.tabla-caja{overflow-x:auto}
+
+main{max-width:900px}
+.cabecera h1{font-family:Sora,sans-serif;font-size:1.5rem;font-weight:600;margin:6px 0 0;
+  letter-spacing:-.02em;line-height:1.25}
+.metas{display:flex;flex-wrap:wrap;gap:20px;margin-top:16px;font-size:13.5px}
+.metas div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:2px}
+.metas div b{font-family:"JetBrains Mono",monospace;font-weight:600;font-variant-numeric:tabular-nums}
+.desglose{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.desglose div{background:var(--panel-2);border-radius:3px;padding:4px 9px;font-size:12px;
+  display:flex;gap:7px;align-items:baseline}
+.desglose dt{color:var(--ink-3);margin:0}
+.desglose dd{margin:0;font-weight:600;font-family:"JetBrains Mono",monospace}
+{% endblock %}
+{% block cuerpo %}
+{% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
+<main>
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+  <div class="tarjeta cabecera">
+    <span class="ent">{{ lic.entidad }}</span>
+    <h1>{{ lic.objeto }}</h1>
+    <div class="metas">
+      <div><span>Puntaje</span><b>{% if lic.score_viabilidad %}{{ lic.score_viabilidad | round | int }}{% else %}—{% endif %}</b></div>
+      <div><span>Cierre</span><b>{{ lic.fecha_cierre.strftime('%d/%m/%Y %H:%M') if lic.fecha_cierre else '—' }}</b></div>
+      <div><span>Monto</span><b>{% if lic.monto_referencial %}S/ {{ '{:,.0f}'.format(lic.monto_referencial) }}{% else %}no publicado{% endif %}</b></div>
+      <div><span>Tipo</span><b>{{ lic.tipo or '—' }}</b></div>
+      <div><span>Región</span><b>{{ lic.departamento or '—' }}</b></div>
+    </div>
+    {% if score_detalle %}
+      <div class="desglose">
+        {% for k, v in score_detalle.items() %}
+          <div><dt>{{ k | replace('_',' ') }}</dt><dd>{{ v | round | int }}</dd></div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="acciones" style="margin-top:18px">
+      {% if lic.bases_urls %}{% for u in lic.bases_urls %}
+        <a class="btn sec" href="{{ u }}" target="_blank" rel="noopener">Bases (PDF {{ loop.index }})</a>
+      {% endfor %}{% endif %}
+      {% if lic.url %}<a class="btn sec" href="{{ lic.url }}" target="_blank" rel="noopener">Ficha oficial</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Postular</h2>
+    {% if propuestas %}
+      <p class="sub">Ya tienes propuesta abierta para esta licitación:</p>
+      <table class="datos"><tbody>
+        {% for p in propuestas %}
+          <tr><td>{{ p.razon_social }}</td>
+              <td><span class="pill neutro">{{ p.estado }}</span></td>
+              <td><a class="btn sec" href="/propuestas/{{ p.id }}">Abrir</a></td></tr>
+        {% endfor %}
+      </tbody></table>
+    {% elif not empresas %}
+      <div class="vacio">
+        <p><strong>Necesitas una empresa para postular.</strong></p>
+        <a class="btn" href="/empresas/nueva">Agregar empresa</a>
+      </div>
+    {% else %}
+      <p class="sub">Al postular se abre el expediente y el sistema te dirá qué datos
+         le faltan para completarlo.</p>
+      <form method="post" action="/postular" class="acciones">
+        <input type="hidden" name="licitacion_id" value="{{ lic.id }}">
+        <select name="empresa_id" required>
+          {% for e in empresas %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
+        </select>
+        <button type="submit">Postular</button>
+      </form>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

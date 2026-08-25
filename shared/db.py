@@ -363,7 +363,11 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
 
     config = await get_config_usuario(usuario_id)
     if not config:
-        return []
+        # Cuenta sin configurar todavia: se muestra el pozo entero en vez de
+        # nada. Un panel vacio recien creada la cuenta se lee como "esto no
+        # funciona"; mostrar todo invita a acotar, que es lo que queremos.
+        config = {"regiones": [], "keywords": [], "keywords_excluir": [],
+                  "monto_min": None, "monto_max": None}
 
     condiciones, params = [], []
     if solo_vigentes:
@@ -413,13 +417,24 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
     """None si el correo ya existe. La unicidad la impone la BD, no un SELECT
     previo: entre el SELECT y el INSERT cabe otra alta con el mismo correo."""
     async with connection() as conn:
-        return await conn.fetchrow(
+        fila = await conn.fetchrow(
             """INSERT INTO usuarios (email, password_hash, nombre, plan)
                VALUES (LOWER($1), $2, $3, 'trial')
                ON CONFLICT (email) DO NOTHING
                RETURNING *""",
             email.strip(), password_hash, nombre,
         )
+        if fila:
+            # Su fila de configuracion nace con el usuario. Si no, la pantalla
+            # de filtros no tendria donde guardar y el panel se veria roto.
+            # user_id es la columna heredada (chat de Telegram); se usa el
+            # negativo del id para no chocar con ningun chat real.
+            await conn.execute(
+                """INSERT INTO user_config (user_id, usuario_id)
+                   VALUES ($1, $2) ON CONFLICT DO NOTHING""",
+                -fila["id"], fila["id"],
+            )
+        return fila
 
 
 async def get_usuario_por_email(email: str):
