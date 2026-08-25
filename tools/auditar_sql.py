@@ -1,0 +1,88 @@
+"""Audita cada literal SQL del proyecto preparandolo contra la BD real.
+
+No adivina: le pasa cada consulta a Postgres via PREPARE. Si la columna o la
+tabla no existe, el motor lo dice. Es la unica forma de estar seguro.
+"""
+import ast, asyncio, os, pathlib, re, sys
+
+RAIZ = pathlib.Path(os.getenv('AUDIT_ROOT', '.'))
+SQL_INICIO = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\b', re.IGNORECASE)
+
+
+def literales_sql():
+    for py in sorted(RAIZ.rglob('*.py')):
+        if any(p in py.parts for p in ('__pycache__', 'venv', '.venv', 'graphify-out')):
+            continue
+        try:
+            arbol = ast.parse(py.read_text(encoding='utf-8'))
+        except SyntaxError:
+            continue
+        # Los docstrings no son SQL aunque empiecen con "Insert...", y los
+        # trozos constantes de un f-string reaparecen como ast.Constant al
+        # recorrer el arbol. Sin excluirlos, el auditor grita lobo en cada build.
+        ignorar = set()
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                cuerpo = getattr(nodo, 'body', None)
+                if cuerpo and isinstance(cuerpo[0], ast.Expr) and isinstance(cuerpo[0].value, ast.Constant):
+                    ignorar.add(id(cuerpo[0].value))
+            elif isinstance(nodo, ast.JoinedStr):
+                for v in nodo.values:
+                    if isinstance(v, ast.Constant):
+                        ignorar.add(id(v))
+
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
+                if id(nodo) not in ignorar and SQL_INICIO.match(nodo.value):
+                    yield py, nodo.lineno, nodo.value, False
+            elif isinstance(nodo, ast.JoinedStr):
+                texto = ''.join(v.value for v in nodo.values if isinstance(v, ast.Constant))
+                if SQL_INICIO.match(texto):
+                    yield py, nodo.lineno, texto, True
+
+
+async def main():
+    import asyncpg
+    conn = await asyncpg.connect(
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', '5433')),
+        database=os.getenv('POSTGRES_DB', 'licitapro'),
+        user=os.getenv('POSTGRES_USER', 'licitapro'),
+        password=os.getenv('POSTGRES_PASSWORD', 'licitapro'),
+    )
+    fallos, dinamicos, ok = [], [], 0
+    for archivo, linea, sql, es_fstring in literales_sql():
+        ref = f"{archivo.as_posix()}:{linea}"
+        if es_fstring:
+            dinamicos.append((ref, sql))
+            continue
+        try:
+            await conn.prepare(sql)
+            ok += 1
+        except Exception as e:
+            fallos.append((ref, sql, f"{type(e).__name__}: {e}"))
+    await conn.close()
+
+    print(f"consultas validadas OK : {ok}")
+    print(f"consultas que FALLAN   : {len(fallos)}")
+    print(f"SQL dinamico (f-string): {len(dinamicos)}")
+    print()
+    for ref, sql, err in fallos:
+        print('=' * 76)
+        print(f"FALLA  {ref}")
+        print(f"  {err.splitlines()[0][:150]}")
+        print('  ' + ' '.join(sql.split())[:140])
+    if dinamicos:
+        print()
+        print('=' * 76)
+        print("SQL CON f-string (no verificable por PREPARE, revisar a mano):")
+        for ref, sql in dinamicos:
+            print(f"  {ref}: {' '.join(sql.split())[:96]}")
+
+    # Los f-string no se pueden validar por PREPARE: se listan, no cuentan
+    # como fallo. Los fallos reales si rompen el build.
+    return 1 if fallos else 0
+
+
+if __name__ == '__main__':
+    sys.exit(asyncio.run(main()))
