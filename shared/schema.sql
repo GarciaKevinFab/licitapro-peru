@@ -270,37 +270,12 @@ CREATE INDEX IF NOT EXISTS idx_plazos_fecha ON plazos(fecha_limite, completado);
 CREATE INDEX IF NOT EXISTS idx_pagos_estado ON pagos(estado);
 
 -- ============================================
--- DATOS INICIALES — Empresas de Kevin
+-- SIN DATOS SEMILLA
 -- ============================================
-INSERT INTO empresas (razon_social, ruc, rubros, email, departamento) VALUES
-('K & A Sistemas y Telecomunicaciones S.A.C.', '20490765507', 
- ARRAY['tecnología','telecomunicaciones','sistemas','redes','cableado estructurado','videovigilancia','soporte técnico'],
- 'ventas@sisac.pe', 'Madre de Dios'),
-('Soluciones Informáticas MDD S.A.C.', NULL,
- ARRAY['software','consultoría TI','sistema académico','desarrollo web','SISAC'],
- 'ventas@sisac.pe', 'Madre de Dios'),
-('COMERCIAL Y MULTISERVICIOS SAN JOSE S.A.C.', '20610570420',
- ARRAY['multiservicios','suministros','equipos de cómputo','útiles de oficina'],
- NULL, 'Madre de Dios'),
-('CUBS FAM S.A.C.', '20602208070',
- ARRAY['servicios generales','mantenimiento','limpieza'],
- NULL, 'Madre de Dios')
-ON CONFLICT (ruc) DO NOTHING;
-
--- Config default
-INSERT INTO user_config (user_id, regiones, keywords, monto_min, monto_max, empresa_default_id, email_notificaciones) VALUES
-(0, -- Se actualiza con el Telegram ID real al primer /start
- ARRAY['Madre de Dios','Junín','Cusco'],
- ARRAY['sistemas','software','tecnología','telecomunicaciones','redes','cableado estructurado','servidores','soporte técnico','equipos de cómputo','desarrollo web','base de datos','seguridad informática','cámaras','videovigilancia','fibra óptica','UPS','biométrico','control de acceso','mantenimiento preventivo','sistema académico','ERP','gestión documental','aplicativo web','hosting'],
- 1000, 500000,
- 1, -- K&A como empresa default
- 'ventas@sisac.pe'
-) ON CONFLICT (user_id) DO NOTHING;
-
--- Experiencia inicial de K&A
-INSERT INTO experiencia (empresa_id, entidad_contratante, objeto_contrato, keywords) VALUES
-(1, 'IESPP Gustavo Allende Llavería - Tarma', 'Sistema de gestión académica integral', 
- ARRAY['sistema académico','gestión académica','software educativo','enrollment','kardex','notas']),
-(1, 'IIE JEC José Gálvez Barrenechea - La Oroya', 'Sistema de control de asistencia SISAC',
- ARRAY['control de asistencia','biométrico','SISAC','sistema escolar'])
-ON CONFLICT DO NOTHING;
+-- Las empresas, usuarios y configuracion de ejemplo vivian aqui. Se sacaron al
+-- pasar a multi-inquilino: el esquema es del producto, los datos son del
+-- despliegue. Sembrar una empresa concreta en el esquema significaba que toda
+-- instalacion nueva nacia con las empresas de otra persona dentro.
+--
+-- Para datos de desarrollo:   PYTHONPATH=. python tools/datos_dev.py
+-- Los cambios de esquema van por Alembic:   alembic upgrade head

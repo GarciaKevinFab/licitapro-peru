@@ -287,3 +287,115 @@ async def refrescar_licitacion(data: dict) -> bool:
             data.get("url"), data.get("bases_urls", []),
         )
         return fila is None
+
+
+# ─── Multi-inquilino ─────────────────────────────────────
+# El scoping se aplica en el BORDE (handler de bot, ruta web): ahi se resuelve
+# el usuario y se validan los ids. Las funciones internas siguen recibiendo un
+# empresa_id ya validado. Meter usuario_id en las 14 hojas seria refactor por
+# refactor y no daria mas seguridad de la que da validar en la entrada.
+
+async def get_usuario(usuario_id: int):
+    async with connection() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM usuarios WHERE id=$1 AND activo=TRUE", usuario_id
+        )
+
+
+async def get_usuario_por_telegram(chat_id: int):
+    """Resuelve el usuario a partir del chat de Telegram.
+
+    El chat_id lo entrega Telegram al vincular por enlace profundo, nunca lo
+    escribe el usuario: por eso sirve como identidad y no puede usarse para
+    redirigir las alertas de otra cuenta.
+    """
+    async with connection() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM usuarios WHERE telegram_chat_id=$1 AND activo=TRUE", chat_id
+        )
+
+
+async def empresas_de(usuario_id: int):
+    """Empresas activas del usuario. Base del scoping en el borde."""
+    async with connection() as conn:
+        return await conn.fetch(
+            """SELECT * FROM empresas
+               WHERE usuario_id=$1 AND activa=TRUE ORDER BY id""",
+            usuario_id,
+        )
+
+
+async def empresa_es_de(empresa_id: int, usuario_id: int) -> bool:
+    """Verificacion de propiedad. Llamar SIEMPRE antes de actuar sobre una
+    empresa cuyo id vino de fuera (formulario web, callback de Telegram)."""
+    async with connection() as conn:
+        return await conn.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM empresas WHERE id=$1 AND usuario_id=$2)",
+            empresa_id, usuario_id,
+        )
+
+
+async def get_config_usuario(usuario_id: int):
+    """Configuracion del usuario. Reemplaza a get_config, que indexa por el
+    user_id heredado (chat de Telegram o 0) y no distingue inquilinos."""
+    async with connection() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM user_config WHERE usuario_id=$1", usuario_id
+        )
+
+
+async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
+                                    solo_vigentes: bool = True):
+    """Aplica los filtros del usuario sobre el pozo COMPARTIDO de licitaciones.
+
+    Las licitaciones son datos publicos del Estado: se scrapean una vez y valen
+    para todos. Lo privado es a quien le interesa cada una. Por eso el match va
+    aqui, en consulta, y no en el scraper: filtrar al scrapear obligaria a
+    recorrer las fuentes una vez por inquilino.
+    """
+    from shared.config import match_keywords
+
+    config = await get_config_usuario(usuario_id)
+    if not config:
+        return []
+
+    condiciones, params = [], []
+    if solo_vigentes:
+        condiciones.append("fecha_cierre > NOW()")
+    if config["regiones"]:
+        params.append(list(config["regiones"]))
+        condiciones.append(f"(departamento IS NULL OR departamento = ANY(${len(params)}))")
+    if config["monto_min"] is not None:
+        params.append(float(config["monto_min"]))
+        condiciones.append(
+            f"(monto_referencial IS NULL OR monto_referencial >= ${len(params)})")
+    if config["monto_max"] is not None:
+        params.append(float(config["monto_max"]))
+        condiciones.append(
+            f"(monto_referencial IS NULL OR monto_referencial <= ${len(params)})")
+    condiciones.append("descartado = FALSE")
+    where = "WHERE " + " AND ".join(condiciones)
+
+    async with connection() as conn:
+        filas = await conn.fetch(
+            f"""SELECT * FROM licitaciones {where}
+                ORDER BY score_viabilidad DESC NULLS LAST, fecha_cierre ASC
+                LIMIT 500""",
+            *params,
+        )
+
+    # Keywords y exclusiones se resuelven en Python: el match ignora tildes y la
+    # acentuacion que publica OSCE viene corrupta, asi que ILIKE no sirve.
+    keywords = list(config["keywords"] or [])
+    excluir = list(config["keywords_excluir"] or [])
+    salida = []
+    for f in filas:
+        texto = f"{f['objeto']} {f['entidad']} {f['nomenclatura'] or ''}"
+        if keywords and not match_keywords(texto, keywords):
+            continue
+        if excluir and match_keywords(texto, excluir):
+            continue
+        salida.append(f)
+        if len(salida) >= limite:
+            break
+    return salida
