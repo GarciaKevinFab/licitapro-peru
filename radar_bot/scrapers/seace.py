@@ -78,15 +78,8 @@ def parse_fecha(text: str) -> datetime | None:
 
 
 def parse_monto(text: str) -> float | None:
-    if not text:
-        return None
-    text = re.sub(r"[^\d.,]", "", str(text).strip())
-    text = text.replace(",", "")
-    try:
-        v = float(text)
-        return v if v > 0 else None
-    except (ValueError, TypeError):
-        return None
+    from shared.config import parse_monto as _pm
+    return _pm(text)
 
 
 def detectar_departamento(texto: str) -> str | None:

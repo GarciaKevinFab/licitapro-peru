@@ -139,10 +139,10 @@ def _gen_id(codigo_conv: str, proceso: str) -> str:
 
 
 def _match_keywords(texto: str, keywords: list[str]) -> bool:
-    if not keywords:
-        return True
-    texto_lower = texto.lower()
-    return any(kw.lower() in texto_lower for kw in keywords)
+    # Delega en el helper compartido, que ignora tildes: las fuentes de OSCE
+    # traen la acentuacion corrupta y el match con tilde nunca ocurria.
+    from shared.config import match_keywords
+    return match_keywords(texto, keywords)
 
 
 async def _download_xlsx(client: httpx.AsyncClient, year: int) -> bytes | None:
