@@ -13,8 +13,11 @@ ENV TZ=America/Lima \
 
 WORKDIR /app
 
+# libreoffice-writer-nogui convierte los DOCX a PDF, que es lo unico que
+# admite firma digital con el DNI electronico. Sin el, la plataforma solo
+# puede ofrecer el DOCX y lo dice claramente.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tzdata curl \
+ && apt-get install -y --no-install-recommends tzdata curl \n      libreoffice-writer-nogui \
  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
  && rm -rf /var/lib/apt/lists/*
 

@@ -129,3 +129,4 @@ def insertar_imagen_en_docx(doc, image_path: str, width_cm: float = 4.0):
         except Exception as e:
             log.warning(f"No se pudo insertar imagen {image_path}: {e}")
     return False
+

@@ -10,11 +10,18 @@ formulario, o sea de fuera, y no se puede confiar en el.
 """
 import logging
 
-from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from urllib.parse import quote_plus
+
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi.responses import (
+    FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse,
+)
 
 from shared.config import DEPARTAMENTOS
 from shared.db import connection, empresa_es_de, empresas_de
+from shared.archivos import (
+    ArchivoInvalido, TIPOS as TIPOS_IMAGEN, borrar_imagen, guardar_imagen, rutas_de,
+)
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
 
@@ -73,7 +80,8 @@ async def form_nueva(request: Request):
 
 
 @router.get("/empresas/{empresa_id}/editar", response_class=HTMLResponse)
-async def form_editar(request: Request, empresa_id: int):
+async def form_editar(request: Request, empresa_id: int,
+                      aviso: str = "", error: str = ""):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -85,6 +93,9 @@ async def form_editar(request: Request, empresa_id: int):
     return _plantillas(request).TemplateResponse("empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": empresa,
         "departamentos": DEPARTAMENTOS,
+        "imagenes": await rutas_de(empresa_id),
+        "tipos_imagen": TIPOS_IMAGEN,
+        "aviso": aviso, "error": error,
     })
 
 
@@ -158,3 +169,62 @@ async def desactivar(request: Request, empresa_id: int):
     async with connection() as conn:
         await conn.execute("UPDATE empresas SET activa=FALSE WHERE id=$1", empresa_id)
     return RedirectResponse("/empresas?aviso=Empresa+desactivada", status_code=303)
+
+
+# ─── Logo, firma y sello ─────────────────────────────────
+
+@router.post("/empresas/{empresa_id}/imagen")
+async def subir_imagen(request: Request, empresa_id: int,
+                       tipo: str = Form(...), archivo: UploadFile = File(...)):
+    """Sube el logo, la firma o el sello de una empresa.
+
+    La imagen se valida y se reescribe en firma_manager: aqui solo se comprueba
+    que la empresa sea del usuario. El id viene del formulario, o sea de fuera.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+
+    try:
+        await guardar_imagen(empresa_id, tipo, await archivo.read())
+    except ArchivoInvalido as e:
+        # El mensaje de ArchivoInvalido esta escrito para el usuario.
+        return RedirectResponse(
+            f"/empresas/{empresa_id}/editar?error={quote_plus(str(e))}", status_code=303)
+    return RedirectResponse(
+        f"/empresas/{empresa_id}/editar?aviso={quote_plus('Imagen guardada.')}",
+        status_code=303)
+
+
+@router.post("/empresas/{empresa_id}/imagen/borrar")
+async def quitar_imagen(request: Request, empresa_id: int, tipo: str = Form(...)):
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+    await borrar_imagen(empresa_id, tipo)
+    return RedirectResponse(f"/empresas/{empresa_id}/editar?aviso=Imagen+eliminada",
+                            status_code=303)
+
+
+@router.get("/empresas/{empresa_id}/imagen/{tipo}")
+async def ver_imagen(request: Request, empresa_id: int, tipo: str):
+    """Sirve la imagen para la vista previa.
+
+    Va por una ruta autenticada y no por una carpeta estatica a proposito: la
+    firma de un representante legal no debe quedar accesible por URL adivinable
+    para cualquiera que pase por ahi.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return PlainTextResponse("No autorizado", status_code=403)
+
+    ruta = (await rutas_de(empresa_id)).get(tipo)
+    if not ruta:
+        return PlainTextResponse("Sin imagen", status_code=404)
+    return FileResponse(ruta, media_type="image/png")
