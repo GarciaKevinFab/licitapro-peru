@@ -1,4 +1,5 @@
 """Scorer — Calcula score de viabilidad 0-100 para cada licitación."""
+import json
 import logging
 from datetime import date
 from shared.db import connection
@@ -51,11 +52,13 @@ async def calcular_score(licitacion: dict, empresa_id: int = 1) -> float:
 
     final_score = max(0, min(100, score))
 
-    # Guardar score en DB
+    # Guardar score y desglose. El desglose es lo que permite explicarle al
+    # usuario por que una licitacion saco el puntaje que saco.
     async with connection() as conn:
         await conn.execute(
-            "UPDATE licitaciones SET score_viabilidad=$2 WHERE id=$1",
-            licitacion["id"], final_score,
+            """UPDATE licitaciones SET score_viabilidad=$2, score_detalle=$3
+            WHERE id=$1""",
+            licitacion["id"], final_score, json.dumps(detalles),
         )
 
     log.info(f"Score {licitacion['id']}: {final_score:.0f} | {detalles}")
@@ -123,8 +126,9 @@ def _score_monto(lic: dict) -> float:
 async def _score_experiencia(lic: dict, empresa_id: int) -> float:
     """Score basado en experiencia previa relevante."""
     async with connection() as conn:
+        # La columna se llama objeto_contrato, no objeto.
         experiencias = await conn.fetch(
-            "SELECT objeto, keywords, monto FROM experiencia WHERE empresa_id=$1",
+            "SELECT objeto_contrato, keywords, monto FROM experiencia WHERE empresa_id=$1",
             empresa_id,
         )
 
@@ -135,7 +139,7 @@ async def _score_experiencia(lic: dict, empresa_id: int) -> float:
     max_match = 0
 
     for exp in experiencias:
-        exp_text = (exp["objeto"] + " " + " ".join(exp["keywords"] or [])).lower()
+        exp_text = (exp["objeto_contrato"] + " " + " ".join(exp["keywords"] or [])).lower()
         # Contar palabras comunes significativas (>4 chars)
         palabras_lic = {w for w in objeto_lic.split() if len(w) > 4}
         palabras_exp = {w for w in exp_text.split() if len(w) > 4}
@@ -187,18 +191,26 @@ def _score_tiempo(lic: dict) -> float:
     return 10  # Mucho tiempo, aún lejos
 
 
-async def recalcular_scores_pendientes():
-    """Recalcula scores para licitaciones sin score."""
+async def recalcular_scores_pendientes(limite: int = 200) -> int:
+    """Recalcula scores para licitaciones sin score. Devuelve cuantas puntuo."""
     async with connection() as conn:
         lics = await conn.fetch(
             """SELECT * FROM licitaciones
             WHERE score_viabilidad IS NULL
             AND descartado = FALSE
             AND (fecha_cierre IS NULL OR fecha_cierre > CURRENT_DATE)
-            LIMIT 50"""
+            LIMIT $1""",
+            limite,
         )
 
+    # Una licitacion con datos raros no debe tumbar el lote entero.
+    scoreadas = 0
     for lic in lics:
-        await calcular_score(dict(lic))
+        try:
+            await calcular_score(dict(lic))
+            scoreadas += 1
+        except Exception as e:
+            log.error(f"Score fallo en {lic['id']}: {e}")
 
-    log.info(f"Recalculados {len(lics)} scores")
+    log.info(f"Recalculados {scoreadas}/{len(lics)} scores")
+    return scoreadas

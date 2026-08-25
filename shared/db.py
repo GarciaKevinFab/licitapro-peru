@@ -251,3 +251,39 @@ async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: 
             WHERE id=$1""",
             log_id, encontrados, nuevos, errores, error_detalle,
         )
+
+
+async def refrescar_licitacion(data: dict) -> bool:
+    """Inserta la licitacion o refresca la existente. True si es nueva.
+
+    A diferencia de `upsert_licitacion`, que al reencontrar una fila solo toca
+    `estado`, esta refresca tambien fecha de cierre, monto y bases. Hace falta
+    para OCDS: la API republica cada proceso a diario y el plazo puede moverse
+    (prorroga de consultas), asi que la fila tiene que seguir el cambio.
+    """
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            "SELECT id FROM licitaciones WHERE id = $1", data["id"]
+        )
+        await conn.execute(
+            """INSERT INTO licitaciones
+            (id, fuente, tipo, nomenclatura, entidad, entidad_tipo, entidad_ruc,
+             objeto, monto_referencial, moneda, fecha_publicacion, fecha_cierre,
+             estado, departamento, url, bases_urls)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            ON CONFLICT (id) DO UPDATE SET
+                estado            = EXCLUDED.estado,
+                fecha_cierre      = EXCLUDED.fecha_cierre,
+                monto_referencial = COALESCE(EXCLUDED.monto_referencial,
+                                             licitaciones.monto_referencial),
+                bases_urls        = EXCLUDED.bases_urls,
+                updated_at        = NOW()""",
+            data["id"], data["fuente"], data.get("tipo"),
+            data.get("nomenclatura"), data["entidad"], data.get("entidad_tipo"),
+            data.get("entidad_ruc"), data["objeto"],
+            data.get("monto_referencial"), data.get("moneda", "PEN"),
+            data.get("fecha_publicacion"), data.get("fecha_cierre"),
+            data.get("estado", "convocado"), data.get("departamento"),
+            data.get("url"), data.get("bases_urls", []),
+        )
+        return fila is None
