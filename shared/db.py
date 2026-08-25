@@ -5,10 +5,30 @@ import logging
 from datetime import datetime, date
 from contextlib import asynccontextmanager
 import asyncpg
+from dotenv import load_dotenv
+
+# Este modulo lee las credenciales del entorno, asi que carga el .env el mismo
+# en vez de depender de que alguien importe shared.config antes. Ese orden
+# implicito funcionaba por accidente y se rompia segun el punto de entrada.
+load_dotenv()
 
 log = logging.getLogger("licitapro.db")
 
 _pool: asyncpg.Pool | None = None
+
+
+def _password_obligatoria() -> str:
+    """La contrasena de la base sale del entorno, sin valor por defecto.
+
+    Antes caia a un valor fijo. Una contrasena por defecto que viaja en un
+    repositorio publico deja de ser un valor por defecto: es una contrasena
+    conocida en toda instalacion cuyo dueno no la cambio.
+    """
+    clave = os.getenv("POSTGRES_PASSWORD")
+    if not clave:
+        raise RuntimeError(
+            "Falta POSTGRES_PASSWORD. Copia .env.example a .env y rellenalo.")
+    return clave
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -19,7 +39,7 @@ async def get_pool() -> asyncpg.Pool:
             port=int(os.getenv("POSTGRES_PORT", "5433")),
             database=os.getenv("POSTGRES_DB", "licitapro"),
             user=os.getenv("POSTGRES_USER", "licitapro"),
-            password=os.getenv("POSTGRES_PASSWORD", "licitapro2026"),
+            password=_password_obligatoria(),
             min_size=2,
             max_size=10,
             # La sesion trabaja en hora de Lima. Sin esto, NOW() devuelve la

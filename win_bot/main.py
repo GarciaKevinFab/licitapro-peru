@@ -28,7 +28,7 @@ async def enviar_email_buena_pro(contrato, licitacion):
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASSWORD")
-    destinatario = os.getenv("EMAIL_DESTINATARIO", "ventas@sisac.pe")
+    destinatario = os.getenv("EMAIL_DESTINATARIO")
 
     if not smtp_user or not smtp_pass:
         log.warning("SMTP not configured, skipping email")

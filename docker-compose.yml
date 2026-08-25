@@ -8,7 +8,9 @@ services:
     environment:
       POSTGRES_DB: licitapro
       POSTGRES_USER: licitapro
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-licitapro2026}
+      # Sin valor por defecto a proposito: una contrasena debil que viaja en
+      # un repositorio publico es una contrasena de todos.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD en .env}
     ports:
       - "5433:5432"  # 5433 para no chocar con tu PostgreSQL existente
     volumes:
@@ -41,7 +43,7 @@ services:
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=licitapro2026
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:?falta N8N_PASSWORD en .env}
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
@@ -51,7 +53,7 @@ services:
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=licitapro
       - DB_POSTGRESDB_USER=licitapro
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-licitapro2026}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD en .env}
     depends_on:
       postgres:
         condition: service_healthy

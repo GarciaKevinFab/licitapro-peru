@@ -14,7 +14,10 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASSWORD")
 EMAIL_FROM = os.getenv("SMTP_USER", "noreply@licitapro.pe")
-EMAIL_DEST = os.getenv("EMAIL_DESTINATARIO", "ventas@sisac.pe")
+# Sin destinatario por defecto: cablear el correo de una empresa concreta
+# haria que, con varios inquilinos, las notificaciones de cualquier cuenta
+# acabaran en un buzon ajeno.
+EMAIL_DEST = os.getenv("EMAIL_DESTINATARIO")
 
 
 async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
