@@ -69,6 +69,57 @@ async def exigir_suscripcion(request: Request, call_next):
     return RedirectResponse("/suscripcion?error=Tu+suscripcion+esta+suspendida", status_code=303)
 
 
+# ─── Cabeceras de seguridad ──────────────────────────────
+# Va DESPUES de todo lo demas a proposito: en Starlette el ultimo registrado
+# envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
+# acompanan tambien a las respuestas de error y a las redirecciones.
+#
+# Sobre la CSP, con honestidad: las plantillas llevan 3 bloques <style>, 42
+# atributos style= y 3 manejadores on*= en linea. Prohibir lo embebido romperia
+# la aplicacion entera, asi que script-src y style-src admiten 'unsafe-inline'
+# y NO protegen contra XSS. Cerrarlo de verdad exige sacar esos manejadores a
+# un archivo, y eso es una tarea aparte.
+#
+# Lo que si protege hoy, y no depende de lo embebido:
+#   form-action     — un XSS no puede reenviar el formulario de acceso a otro sitio
+#   frame-ancestors — nadie puede incrustar la web en un iframe suyo (clickjacking)
+#   base-uri        — impide reescribir la base de las URL relativas
+#   object-src      — mata Flash/applets y sus vectores heredados
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "object-src 'none'",
+])
+
+
+@app.middleware("http")
+async def cabeceras_seguridad(request: Request, call_next):
+    respuesta = await call_next(request)
+    respuesta.headers["X-Content-Type-Options"] = "nosniff"
+    respuesta.headers["X-Frame-Options"] = "DENY"
+    respuesta.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # La app no usa camara, microfono ni ubicacion: negarlos evita que un script
+    # inyectado los pida en nuestro nombre.
+    respuesta.headers["Permissions-Policy"] = (
+        "geolocation=(), microphone=(), camera=(), payment=()")
+    respuesta.headers["Content-Security-Policy"] = CSP
+    if os.getenv("LICITAPRO_ENTORNO", "dev") != "dev":
+        # Solo fuera de desarrollo: en local no hay TLS, y mandar HSTS desde
+        # localhost deja el navegador del desarrollador forzando https contra
+        # un puerto que no lo habla. Se arregla borrando el estado del
+        # navegador, que es una tarde perdida por una cabecera de mas.
+        respuesta.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains")
+    return respuesta
+
+
 # Cookie de sesion firmada. https_only se activa fuera de desarrollo; en local
 # forzarlo impediria entrar, porque no hay TLS.
 app.add_middleware(

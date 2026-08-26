@@ -13,6 +13,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from shared.db import (
     crear_usuario, get_usuario, get_usuario_por_email,
 )
+from shared.db import (
+    anotar_intento_fallido, intentos_recientes, limpiar_intentos,
+)
 from shared.seguridad import hashear_password, password_debil, verificar_password
 
 log = logging.getLogger("web.auth")
@@ -48,17 +51,54 @@ async def form_entrar(request: Request, siguiente: str = "/"):
         "entrar.html", {"request": request, "modo": "entrar", "siguiente": siguiente})
 
 
+# Cuantos fallos se admiten dentro de la ventana antes de frenar. 8 deja sitio
+# de sobra a quien se equivoca de tecla o prueba una contrasena vieja, y corta
+# la fuerza bruta mucho antes de que sea util: con bcrypt de por medio, 8
+# intentos cada 15 minutos son unos 32 al dia contra una cuenta.
+MAX_INTENTOS_ACCESO = 8
+VENTANA_INTENTOS_MIN = 15
+# La IP admite mas porque detras puede haber una oficina entera compartiendo
+# salida. Aun asi corta el barrido de una contrasena comun contra muchas cuentas.
+MAX_INTENTOS_POR_IP = 30
+
+
 @router.post("/entrar", response_class=HTMLResponse)
 async def hacer_entrar(request: Request, email: str = Form(...),
                        password: str = Form(...), siguiente: str = Form("/")):
-    fila = await get_usuario_por_email(email)
-    if not fila or not verificar_password(password, fila["password_hash"]):
-        log.info("Intento de acceso fallido para %r", email[:40])
+    """Inicio de sesion con freno a la fuerza bruta.
+
+    El freno se comprueba ANTES de mirar la contrasena. Comprobarlo despues
+    dejaria que cada intento siguiera costando una verificacion bcrypt, que es
+    justo el trabajo caro que un atacante quiere hacernos repetir.
+
+    La respuesta al bloqueo es la MISMA que a una contrasena incorrecta, y es
+    deliberado: decir "esta cuenta esta bloqueada" confirmaria que el correo
+    existe, que es la mitad de lo que buscaba quien esta probando. El unico
+    aviso distinto va al log, que solo vemos nosotros.
+    """
+    ip = request.client.host if request.client else None
+
+    def rechazar():
         return _plantillas(request).TemplateResponse(
             "entrar.html",
             {"request": request, "modo": "entrar", "siguiente": siguiente,
              "error": ERROR_CREDENCIALES, "email": email},
             status_code=401)
+
+    por_email, por_ip = await intentos_recientes(email, ip, VENTANA_INTENTOS_MIN)
+    if por_email >= MAX_INTENTOS_ACCESO or por_ip >= MAX_INTENTOS_POR_IP:
+        log.warning("Acceso frenado: %r lleva %s fallos y la IP %s lleva %s",
+                    email[:40], por_email, ip, por_ip)
+        return rechazar()
+
+    fila = await get_usuario_por_email(email)
+    if not fila or not verificar_password(password, fila["password_hash"]):
+        await anotar_intento_fallido(email, ip)
+        log.info("Intento de acceso fallido para %r", email[:40])
+        return rechazar()
+
+    # Entro bien: sus fallos previos no deben acercarle al bloqueo manana.
+    await limpiar_intentos(email, ip)
     request.session["usuario_id"] = fila["id"]
     return RedirectResponse(_destino_seguro(siguiente), status_code=303)
 

@@ -42,3 +42,6 @@ Thumbs.db
 
 # Salidas de herramientas
 graphify-out/
+
+# Pruebas
+.pytest_cache/

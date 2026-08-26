@@ -96,6 +96,13 @@ services:
     depends_on:
       migraciones:
         condition: service_completed_successfully
+    volumes:
+      # win_bot mete el logo, la firma y el sello en las facturas que genera
+      # (invoice_gen.py llama a obtener_firma). Sin este volumen la ruta que
+      # lee de la base apunta a un archivo que en ESTE contenedor no existe, y
+      # los documentos salen sin las imagenes -- en silencio, porque el
+      # generador se limita a saltarse la que no encuentra.
+      - datos_expedientes:/app/data
 
 volumes:
   datos_postgres:

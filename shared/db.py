@@ -827,3 +827,65 @@ async def borrar_cuenta(usuario_id: int) -> dict:
     resumen["borrada"] = bool(borrada)
     log.info("Cuenta %s borrada: %s", usuario_id, resumen)
     return resumen
+
+
+# ─── Freno a los intentos de acceso ──────────────────────
+# Se cuentan los fallos por correo Y por IP. Son dos ataques distintos: probar
+# mil contrasenas contra una cuenta, y probar una contrasena comun contra mil
+# cuentas. El segundo esquiva cualquier limite que solo mire la cuenta.
+
+async def anotar_intento_fallido(email: str, ip: str | None) -> None:
+    """Deja constancia de un intento con contrasena incorrecta."""
+    filas = [(email.strip().lower()[:200], "email")]
+    if ip:
+        filas.append((ip[:64], "ip"))
+    async with connection() as conn:
+        await conn.executemany(
+            "INSERT INTO intentos_acceso (identificador, tipo) VALUES ($1, $2)",
+            filas)
+
+
+async def intentos_recientes(email: str, ip: str | None,
+                             minutos: int) -> tuple[int, int]:
+    """(fallos de ese correo, fallos de esa IP) dentro de la ventana."""
+    async with connection() as conn:
+        por_email = await conn.fetchval(
+            """SELECT COUNT(*) FROM intentos_acceso
+                WHERE tipo = 'email' AND identificador = $1
+                  AND ocurrido_en > NOW() - ($2 || ' minutes')::interval""",
+            email.strip().lower()[:200], str(minutos))
+        por_ip = 0
+        if ip:
+            por_ip = await conn.fetchval(
+                """SELECT COUNT(*) FROM intentos_acceso
+                    WHERE tipo = 'ip' AND identificador = $1
+                      AND ocurrido_en > NOW() - ($2 || ' minutes')::interval""",
+                ip[:64], str(minutos))
+    return por_email or 0, por_ip or 0
+
+
+async def limpiar_intentos(email: str, ip: str | None) -> None:
+    """Borra el historial tras un acceso correcto.
+
+    Quien entra bien demuestra ser el dueno, asi que sus fallos previos -- un
+    dedo torcido, una contrasena vieja -- no deben acercarle al bloqueo la
+    proxima vez. Los de la IP se limpian tambien: si de ahi acaba de entrar
+    alguien legitimo, no es una fuente de ataque.
+    """
+    async with connection() as conn:
+        await conn.execute(
+            """DELETE FROM intentos_acceso
+                WHERE (tipo = 'email' AND identificador = $1)
+                   OR (tipo = 'ip' AND identificador = $2)""",
+            email.strip().lower()[:200], (ip or "")[:64])
+
+
+async def purgar_intentos_viejos(horas: int = 24) -> int:
+    """Limpieza periodica. Sin esto la tabla crece sin fin."""
+    async with connection() as conn:
+        borrados = await conn.fetch(
+            """DELETE FROM intentos_acceso
+                WHERE ocurrido_en < NOW() - ($1 || ' hours')::interval
+             RETURNING 1""",
+            str(horas))
+    return len(borrados)
