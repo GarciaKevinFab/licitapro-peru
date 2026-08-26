@@ -452,3 +452,42 @@ async def test_la_guia_desaparece_al_completar_los_pasos(usuario, empresa):
             "UPDATE empresas SET activa = FALSE WHERE id = $1", empresa)
     pasos = await _primeros_pasos(usuario["id"])
     assert pasos is not None and pasos["hechos"] == 2
+
+
+# ─── API interna de n8n ──────────────────────────────────
+
+async def test_la_api_interna_falla_cerrada_sin_token():
+    """No tenia ninguna comprobacion de acceso, y uno de sus endpoints devuelve
+    los contratos activos de TODOS los inquilinos.
+
+    Sin la variable configurada se niega entera, en vez de responder: una API
+    interna sin token no es "todavia sin proteger", es una filtracion esperando
+    a que alguien la arranque siguiendo el comentario de ejecucion.
+    """
+    import os
+
+    import httpx
+
+    from shared.api_server import app as api
+
+    previo = os.environ.pop("LICITAPRO_API_TOKEN", None)
+    try:
+        transporte = httpx.ASGITransport(app=api)
+        async with httpx.AsyncClient(transport=transporte,
+                                     base_url="http://interna") as c:
+            sin_configurar = await c.get("/api/contratos")
+            assert sin_configurar.status_code == 503
+
+            os.environ["LICITAPRO_API_TOKEN"] = "token-de-prueba"
+            assert (await c.get("/api/contratos")).status_code == 401
+            assert (await c.get("/api/contratos",
+                                headers={"X-API-Token": "otro"})).status_code == 401
+            assert (await c.get("/api/contratos",
+                                headers={"X-API-Token": "token-de-prueba"})
+                    ).status_code == 200
+            # El healthcheck tiene que poder consultarse sin token.
+            assert (await c.get("/api/health")).status_code == 200
+    finally:
+        os.environ.pop("LICITAPRO_API_TOKEN", None)
+        if previo:
+            os.environ["LICITAPRO_API_TOKEN"] = previo
