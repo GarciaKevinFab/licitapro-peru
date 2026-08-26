@@ -1,6 +1,8 @@
 {% extends "_base.html" %}
 {% block titulo %}Suscripción · LicitaPro{% endblock %}
 {% block estilos %}
+.plan li.sin{color:var(--ink-3)}
+
 table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
 table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
@@ -106,18 +108,26 @@ main{max-width:900px}
           <ul>
             <li>{{ p.max_empresas }} empresa(s)</li>
             <li>{% if p.max_regiones %}{{ p.max_regiones }} regiones{% else %}Cobertura nacional{% endif %}</li>
-            <li>Alertas en Telegram</li>
+            {% if p.alertas %}
+              <li>Avisos por WhatsApp, Telegram y correo</li>
+            {% else %}
+              <li class="sin">Sin avisos: entras tú a mirar</li>
+            {% endif %}
             <li>Expedientes automáticos</li>
             {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
           </ul>
-          <form method="post" action="/suscripcion/elegir">
-            <input type="hidden" name="plan" value="{{ p.codigo }}">
-            <select name="periodo">
-              <option value="mensual">Mensual</option>
-              {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
-            </select>
-            <button type="submit" class="sec">Elegir</button>
-          </form>
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            <form method="post" action="/suscripcion/elegir">
+              <input type="hidden" name="plan" value="{{ p.codigo }}">
+              <select name="periodo">
+                <option value="mensual">Mensual</option>
+                {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
+              </select>
+              <button type="submit" class="sec">Elegir</button>
+            </form>
+          {% else %}
+            <p class="ayuda">Es donde te quedas si no renuevas. Tus datos siguen aquí.</p>
+          {% endif %}
         </div>
       {% endfor %}
     </div>

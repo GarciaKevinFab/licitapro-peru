@@ -189,6 +189,11 @@ def _aviso_desde_estado(s: dict) -> dict | None:
         return {"clase": "", "texto": f"prueba: {dias} días"}
     if estado == "vencida":
         return {"clase": "urg", "texto": "pago pendiente"}
+    if s.get("degradado"):
+        # No dice "suspendida" porque no lo esta: sigue teniendo el panel. Decir
+        # lo que perdio -- los avisos -- es lo que da motivo para volver a pagar;
+        # "suspendida" solo suena a puerta cerrada y a error nuestro.
+        return {"clase": "urg", "texto": "plan gratis · sin avisos"}
     if estado == "suspendida":
         return {"clase": "urg", "texto": "suspendida"}
     return None

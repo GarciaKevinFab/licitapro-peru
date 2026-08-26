@@ -84,7 +84,10 @@ async def destinatarios() -> list[dict]:
     salida = []
     for f in filas:
         susc = await estado_suscripcion(f["id"])
-        if not susc.get("acceso"):
+        # Dos condiciones distintas: tener acceso al producto y tener DERECHO a
+        # que le avisen. El plan gratuito cumple la primera y no la segunda, que
+        # es justo donde esta la linea de pago.
+        if not susc.get("acceso") or not susc.get("alertas"):
             continue
         salida.append(dict(f))
     return salida

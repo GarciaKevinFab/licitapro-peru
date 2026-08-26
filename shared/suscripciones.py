@@ -28,7 +28,10 @@ DIAS_PRUEBA = 14
 DIAS_GRACIA = 7           # cuanto sigue funcionando una suscripcion vencida
 MAX_INTENTOS = 4          # reintentos de cobro antes de suspender
 
-ACCESO_PERMITIDO = ("prueba", "activa", "vencida")   # 'vencida' sigue en gracia
+ACCESO_PERMITIDO = ("prueba", "activa", "vencida")
+
+# Plan al que se cae cuando se agota la gracia, en vez de perder el acceso.
+PLAN_GRATUITO = "gratis"   # 'vencida' sigue en gracia
 
 
 async def estado_suscripcion(usuario_id: int) -> dict:
@@ -36,7 +39,8 @@ async def estado_suscripcion(usuario_id: int) -> dict:
     async with connection() as conn:
         fila = await conn.fetchrow(
             """SELECT s.*, p.nombre AS plan_nombre, p.precio_mensual,
-                      p.precio_anual, p.max_empresas, p.max_regiones, p.analisis_ia
+                      p.precio_anual, p.max_empresas, p.max_regiones, p.analisis_ia,
+                      p.alertas
                  FROM suscripciones s
                  JOIN planes p ON p.codigo = s.plan_codigo
                 WHERE s.usuario_id = $1""",
@@ -64,10 +68,40 @@ async def estado_suscripcion(usuario_id: int) -> dict:
 
     d["estado_efectivo"] = estado
     d["existe"] = True
-    d["acceso"] = estado in ACCESO_PERMITIDO
     d["dias_restantes"] = dias
     d["en_gracia"] = estado == "vencida"
+    d["degradado"] = False
+
+    if estado == "suspendida":
+        # Agotada la gracia NO se expulsa: se cae al plan gratuito. Bloquear del
+        # todo empuja al proveedor a la web del competidor, que si le deja
+        # mirar; y el que aun no ha visto pasar una licitacion suya no tiene con
+        # que decidir si pagar. Dejarle el panel no nos cuesta nada -- el pozo
+        # ya esta scrapeado -- y lo que se corta es lo que da valor y cuesta
+        # dinero: los avisos, la IA y las empresas de mas.
+        limites = await _limites_plan(PLAN_GRATUITO)
+        if limites:
+            d.update(limites)
+            d["plan_codigo"] = PLAN_GRATUITO
+            d["degradado"] = True
+            d["acceso"] = True
+            return d
+        # Sin plan gratuito en la tabla se mantiene el corte: es preferible
+        # bloquear a conceder por accidente un acceso sin limites conocidos.
+
+    d["acceso"] = estado in ACCESO_PERMITIDO
     return d
+
+
+async def _limites_plan(codigo: str) -> dict | None:
+    """Capacidades de un plan, con los mismos nombres que trae estado_suscripcion."""
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            """SELECT nombre AS plan_nombre, precio_mensual, precio_anual,
+                      max_empresas, max_regiones, analisis_ia, alertas
+                 FROM planes WHERE codigo = $1""",
+            codigo)
+    return dict(fila) if fila else None
 
 
 async def crear_suscripcion_prueba(usuario_id: int, plan: str = "pro") -> None:
@@ -283,3 +317,15 @@ async def puede_usar_ia(usuario_id: int) -> bool:
     """
     susc = await estado_suscripcion(usuario_id)
     return bool(susc.get("acceso")) and bool(susc.get("analisis_ia"))
+
+
+async def puede_recibir_alertas(usuario_id: int) -> bool:
+    """Si su plan incluye avisos.
+
+    Es la linea de pago del producto: mirar el panel es gratis, que te avisen a
+    tiempo se paga. Se comprueba al ENVIAR y no al pintar la configuracion,
+    porque cada mensaje de WhatsApp cuesta dinero y el ahorro solo es real si
+    la comprobacion esta donde se gasta.
+    """
+    susc = await estado_suscripcion(usuario_id)
+    return bool(susc.get("acceso")) and bool(susc.get("alertas"))
