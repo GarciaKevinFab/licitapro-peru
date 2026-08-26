@@ -1123,7 +1123,8 @@ async def _run_municipalidades(user_id):
 
 async def _run_ocds_oece(user_id):
     from radar_bot.scrapers.ocds_oece import scrape_ocds_oece
-    return await scrape_ocds_oece(user_id)
+    # Sin user_id: el pozo es compartido y se filtra al leer.
+    return await scrape_ocds_oece()
 
 
 # ==================== 9. OCDS CONOSCE (Convocatorias XLSX) ====================

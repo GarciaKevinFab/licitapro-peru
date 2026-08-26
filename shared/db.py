@@ -31,15 +31,39 @@ def _password_obligatoria() -> str:
     return clave
 
 
+# Puerto del pooler en modo transaccion de Supabase. Importa distinguirlo:
+# ese pooler multiplexa varias sesiones sobre una misma conexion real, asi que
+# las sentencias preparadas que asyncpg crea por su cuenta se pisan entre si y
+# revientan con "prepared statement _asyncpg_stmt_ already exists". La conexion
+# directa (5432) y el pooler de sesion no tienen ese problema.
+PUERTO_POOLER_TRANSACCION = 6543
+
+
+def _es_gestionado(host: str) -> bool:
+    """Postgres gestionado (Supabase y compania) exige TLS; el local no lo tiene."""
+    return bool(host) and not host.startswith(("localhost", "127.", "db", "postgres"))
+
+
 async def get_pool() -> asyncpg.Pool:
+    """Pool de conexiones. Sirve igual para el Postgres local y para Supabase.
+
+    Con DATABASE_URL puesta se usa esa y se ignoran las piezas sueltas: es lo
+    que entrega Supabase de una sola pieza, y armarla a mano invita a perder el
+    `?sslmode=` o el usuario `postgres.<ref>` que exige su pooler.
+    """
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
-            port=int(os.getenv("POSTGRES_PORT", "5433")),
-            database=os.getenv("POSTGRES_DB", "licitapro"),
-            user=os.getenv("POSTGRES_USER", "licitapro"),
-            password=_password_obligatoria(),
+        url = os.getenv("DATABASE_URL") or ""
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        puerto = int(os.getenv("POSTGRES_PORT", "5433"))
+
+        if url:
+            from urllib.parse import urlparse
+            partes = urlparse(url)
+            host = partes.hostname or host
+            puerto = partes.port or puerto
+
+        opciones = dict(
             min_size=2,
             max_size=10,
             # La sesion trabaja en hora de Lima. Sin esto, NOW() devuelve la
@@ -49,7 +73,27 @@ async def get_pool() -> asyncpg.Pool:
             # cinco horas antes de cerrar, justo en el caso "cierra hoy".
             server_settings={"timezone": "America/Lima"},
         )
-        log.info("PostgreSQL pool created")
+
+        if puerto == PUERTO_POOLER_TRANSACCION:
+            # Sin esto la app arranca y falla mas tarde, con trafico y de forma
+            # intermitente, que es la peor forma de descubrirlo.
+            opciones["statement_cache_size"] = 0
+        if _es_gestionado(host):
+            opciones["ssl"] = "require"
+
+        if url:
+            _pool = await asyncpg.create_pool(url, **opciones)
+        else:
+            _pool = await asyncpg.create_pool(
+                host=host,
+                port=puerto,
+                database=os.getenv("POSTGRES_DB", "licitapro"),
+                user=os.getenv("POSTGRES_USER", "licitapro"),
+                password=_password_obligatoria(),
+                **opciones,
+            )
+        log.info("Pool PostgreSQL creado contra %s:%s%s", host, puerto,
+                 " (pooler transaccional)" if puerto == PUERTO_POOLER_TRANSACCION else "")
     return _pool
 
 

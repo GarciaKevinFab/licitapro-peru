@@ -38,8 +38,8 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import log_scraping_start, log_scraping_end, get_config, refrescar_licitacion
-from shared.config import DEPARTAMENTOS, normalizar, match_keywords
+from shared.db import log_scraping_start, log_scraping_end, refrescar_licitacion
+from shared.config import DEPARTAMENTOS, normalizar
 
 log = logging.getLogger("radar.ocds_oece")
 
@@ -248,24 +248,27 @@ async def _pagina(cliente: httpx.AsyncClient, page: int) -> dict:
 
 
 async def scrape_ocds_oece(
-    user_id: int = 0,
-    max_paginas: int = 40,
+    max_paginas: int = 400,
     dias_atras: int = 10,
 ) -> list[dict]:
-    """Recorre la API OCDS de la mas reciente hacia atras y guarda lo relevante.
+    """Trae TODAS las convocatorias de la ventana. No filtra por usuario.
+
+    Aqui no se aplica ningun filtro de negocio, y es deliberado: las
+    licitaciones son datos publicos que valen para todos los inquilinos, asi
+    que se scrapean una vez y se guardan enteras. Cada usuario las recorta al
+    leer, en `licitaciones_para_usuario`.
+
+    Filtrar aqui era un error caro: la ingesta usaba la config del usuario 1,
+    de modo que el pozo compartido quedaba reducido a los rubros, las dos
+    regiones y el tope de monto de UN cliente. Cualquier otro suscriptor abria
+    un panel vacio y concluia, con razon, que el producto no funciona.
 
     Los releases vienen ordenados por fecha descendente y son 20 por pagina, asi
     que basta con cortar en cuanto una pagina entera queda fuera de la ventana
-    de `dias_atras`, en vez de recorrer el historico completo.
+    de `dias_atras`, en vez de recorrer el historico completo. `max_paginas` es
+    solo un tope de seguridad: quien manda es la fecha.
     """
     log_id = await log_scraping_start("ocds_oece")
-    config = await get_config(user_id)
-    keywords = list(config["keywords"]) if config and config["keywords"] else []
-    excluir = list(config["keywords_excluir"]) if config and config["keywords_excluir"] else []
-    regiones = list(config["regiones"]) if config and config["regiones"] else []
-    monto_min = config["monto_min"] if config else 0
-    monto_max = config["monto_max"] if config else 999_999_999
-
     corte = datetime.now() - timedelta(days=dias_atras)
     vistos: set[str] = set()
     nuevas: list[dict] = []
@@ -304,19 +307,6 @@ async def scrape_ocds_oece(
                     if not lic:
                         continue
                     encontradas += 1
-
-                    if regiones and lic["departamento"] and lic["departamento"] not in regiones:
-                        continue
-                    monto = lic["monto_referencial"]
-                    if monto is not None and not (monto_min <= monto <= monto_max):
-                        continue
-                    texto_match = f"{lic['objeto']} {lic['entidad']} {lic['nomenclatura'] or ''}"
-                    if keywords and not match_keywords(texto_match, keywords):
-                        continue
-                    # Exclusiones: matan homonimos como "servidores" (informaticos
-                    # vs. servidores publicos), que producen falsos positivos caros.
-                    if excluir and match_keywords(texto_match, excluir):
-                        continue
 
                     if await refrescar_licitacion(lic):
                         nuevas.append(lic)
