@@ -1,6 +1,10 @@
 {% extends "_base.html" %}
 {% block titulo %}Contrato · LicitaPro{% endblock %}
 {% block estilos %}
+.pill.mora{background:var(--urg-soft);color:var(--urg)}
+.nota-plazo{border-left:2px solid var(--ac);padding:2px 0 2px 16px;margin-top:18px;
+  display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:var(--ink-2)}
+
 table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
 table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
@@ -98,13 +102,27 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
       <div class="tabla-caja">
       <table class="datos">
         <thead><tr><th>Concepto</th><th class="num">Factura</th><th class="num">Monto</th>
-          <th>Estado</th><th></th></tr></thead>
+          <th>Plazo legal</th><th>Estado</th><th></th></tr></thead>
         <tbody>
         {% for pg in pagos %}
           <tr>
             <td>{{ pg.concepto }}</td>
             <td class="num">{{ pg.numero_factura or '—' }}</td>
             <td class="num">S/ {{ '{:,.2f}'.format(pg.monto or 0) }}</td>
+            <td>
+              {% if pg.estado == 'pagado' %}<span class="ayuda">cobrado</span>
+              {% elif not pg.fecha_limite_pago %}
+                <span class="ayuda">sin conformidad: el plazo no corre aún</span>
+              {% elif pg.dias_mora == 0 %}
+                vence el {{ pg.fecha_limite_pago.strftime('%d/%m/%Y') }}
+              {% elif pg.en_prorroga %}
+                <span class="pill pend">{{ pg.dias_mora }} día(s) pasado</span>
+                <div class="ayuda">Aún puede ampararse en la prórroga de 5 días.</div>
+              {% else %}
+                <span class="pill mora">{{ pg.dias_mora }} días hábiles de mora</span>
+                <div class="ayuda">Venció el {{ pg.fecha_limite_pago.strftime('%d/%m/%Y') }}. Ya puedes reclamar.</div>
+              {% endif %}
+            </td>
             <td><span class="pill {% if pg.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ pg.estado }}</span></td>
             <td>{% if pg.estado != 'pagado' %}
               <form method="post" action="/pagos/{{ pg.id }}/cobrado">
@@ -118,10 +136,24 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
     {% else %}
       <p class="ayuda">Sin movimientos registrados.</p>
     {% endif %}
+    <div class="nota-plazo">
+      <p><b>El plazo lo marca la conformidad, no la factura.</b> Por la Ley 32069
+         la entidad tiene 10 días hábiles desde que da conformidad para pagarte,
+         ampliables 5 si lo justifica. Anota esa fecha y llevamos la cuenta —
+         contando feriados peruanos.</p>
+      <p class="ayuda">Para ver en qué fase va tu expediente en el MEF hay que
+         entrar a
+         <a href="{{ consulta_mef.url }}" target="_blank" rel="noopener">su consulta oficial</a>,
+         que pide un código de verificación y por eso no podemos hacerla por ti.
+         Necesitarás: {{ consulta_mef.necesitas | join(' ') }}</p>
+    </div>
+
     <form method="post" action="/contratos/{{ c.id }}/pago" class="acciones" style="margin-top:16px">
       <input type="text" name="concepto" placeholder="Concepto" required style="max-width:250px">
       <input type="number" name="monto" step="0.01" min="0" placeholder="Monto" required style="max-width:150px">
       <input type="text" name="numero_factura" placeholder="N.º factura" style="max-width:150px">
+      <input type="date" name="fecha_conformidad" title="Fecha de conformidad" style="max-width:170px">
+      <input type="text" name="expediente_siaf" placeholder="Expediente SIAF" style="max-width:160px">
       <label style="display:flex;align-items:center;gap:6px;font-size:13px">
         <input type="checkbox" name="cobrado" value="1" style="width:auto"> ya cobrado</label>
       <button type="submit" class="sec">Registrar</button>

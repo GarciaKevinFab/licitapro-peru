@@ -70,6 +70,17 @@ TIPO_POR_METODO = {
     "subasta inversa electronica": "SIE",
     "contratacion directa": "CD",
     "comparacion de precios": "CdP",
+    # Regimen anterior a la Ley 30225: no se convocan ya, pero llenan el
+    # historico. Se mapean para poder nombrarlos en la ficha. Ojo: NO entran ni
+    # en CODIGOS_ABREVIADOS ni en CODIGOS_ORDINARIOS de shared.banderas, asi que
+    # siguen sin bandera de plazo -- sus plazos legales eran los de otra ley y
+    # no tenemos una norma medida con la que compararlos.
+    "adjudicacion directa selectiva": "ADS",
+    "adjudicacion de menor cuantia": "AMC",
+    "adjudicacion selectiva": "ASEL",
+    "regimen especial": "RE",
+    "convenio": "CONV",
+    "contratacion internacional": "CI",
 }
 
 ESTADO_POR_DETALLE = {

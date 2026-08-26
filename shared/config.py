@@ -41,6 +41,14 @@ TIPOS_PROCEDIMIENTO = {
     "CD": "Contratación Directa",
     "CdP": "Comparación de Precios",
     "CM": "Contrato Menor (≤8 UIT)",
+    # Procedimientos del regimen anterior a la Ley 30225. Ya no se convocan,
+    # pero siguen en el historico y sin nombre salian como "—" en la ficha.
+    "ADS": "Adjudicación Directa Selectiva",
+    "AMC": "Adjudicación de Menor Cuantía",
+    "ASEL": "Adjudicación Selectiva",
+    "RE": "Régimen Especial",
+    "CONV": "Convenio",
+    "CI": "Contratación Internacional",
 }
 
 

@@ -16,6 +16,9 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from shared.plazos_pago import (
+    dias_de_mora, en_prorroga, enlace_consulta_mef, fecha_limite_pago,
+)
 from shared.db import connection
 from web.auth import usuario_actual
 
@@ -145,7 +148,17 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
 
     return _plantillas(request).TemplateResponse("contrato.html", {
         "request": request, "usuario": usuario, "c": contrato,
-        "plazos": plazos, "pagos": pagos, "estados": ESTADOS,
+        "plazos": plazos,
+        # La mora se calcula al leer: cambia sola cada dia habil, y guardarla
+        # exigiria un proceso nocturno que puede fallar en silencio.
+        "pagos": [
+            {**dict(pg),
+             "dias_mora": dias_de_mora(pg["fecha_limite_pago"]),
+             "en_prorroga": en_prorroga(pg["fecha_limite_pago"])}
+            for pg in pagos
+        ],
+        "consulta_mef": enlace_consulta_mef(),
+        "estados": ESTADOS,
         "cobrado": cobrado, "pendiente": pendiente, "hoy": date.today(),
         "aviso": aviso, "error": error,
     })
@@ -218,11 +231,18 @@ async def completar_plazo(request: Request, plazo_id: int):
 @router.post("/contratos/{contrato_id}/pago")
 async def registrar_cobro(request: Request, contrato_id: int,
                           concepto: str = Form(...), monto: float = Form(...),
-                          numero_factura: str = Form(""), cobrado: str = Form("")):
+                          numero_factura: str = Form(""), cobrado: str = Form(""),
+                          fecha_conformidad: str = Form(""),
+                          expediente_siaf: str = Form("")):
     """Registra una factura emitida o un cobro recibido.
 
     No emite comprobantes: la facturacion electronica quedo fuera de alcance a
     peticion del cliente. Aqui solo se anota lo que ya paso.
+
+    La fecha limite sale del plazo LEGAL, no de un numero redondo. Esta ruta
+    tenia el mismo "+30 dias" que payment_tracker, y por eso el fallo sobrevivio
+    a la primera correccion: habia dos caminos y solo se arreglo uno. Ahora
+    ambos llaman al mismo calculo.
     """
     usuario = await usuario_actual(request)
     if not usuario:
@@ -230,15 +250,31 @@ async def registrar_cobro(request: Request, contrato_id: int,
     if not await _contrato_del_usuario(contrato_id, usuario["id"]):
         return RedirectResponse("/contratos?error=Ese+contrato+no+es+tuyo", status_code=303)
 
+    conformidad = None
+    if fecha_conformidad.strip():
+        try:
+            conformidad = date.fromisoformat(fecha_conformidad.strip())
+        except ValueError:
+            return RedirectResponse(
+                f"/contratos/{contrato_id}?error=Fecha+de+conformidad+invalida",
+                status_code=303)
+
     ya_cobrado = bool(cobrado)
     async with connection() as conn:
+        categoria = await conn.fetchval(
+            """SELECT l.categoria FROM contratos c
+                 JOIN licitaciones l ON l.id = c.licitacion_id
+                WHERE c.id = $1""",
+            contrato_id)
+        limite = fecha_limite_pago(conformidad, categoria)
         await conn.execute(
             """INSERT INTO pagos (contrato_id, concepto, monto, numero_factura,
-                   fecha_factura, fecha_pago_real, fecha_pago_esperada, estado)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
+                   fecha_factura, fecha_pago_real, fecha_conformidad,
+                   fecha_limite_pago, fecha_pago_esperada, expediente_siaf, estado)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10)""",
             contrato_id, concepto.strip(), monto, numero_factura.strip() or None,
             date.today(), date.today() if ya_cobrado else None,
-            date.today() + timedelta(days=30),
+            conformidad, limite, expediente_siaf.strip() or None,
             "pagado" if ya_cobrado else "facturado")
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Registrado", status_code=303)
 
