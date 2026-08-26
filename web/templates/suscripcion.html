@@ -84,7 +84,7 @@ main{max-width:900px}
         </form>
         {% if s.estado_efectivo != 'cancelada' %}
           <form method="post" action="/suscripcion/cancelar"
-                onsubmit="return confirm('¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.')">
+                data-confirmar="¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.">
             <button type="submit" class="peligro">Cancelar</button></form>
         {% endif %}
       </div>

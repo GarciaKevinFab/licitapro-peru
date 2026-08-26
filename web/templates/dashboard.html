@@ -123,6 +123,29 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
   text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
   padding:3px 7px;border-radius:3px;cursor:help}
 .htmx-request .tabla-caja{opacity:.55;transition:opacity .15s}
+
+/* ---------- primeros pasos ---------- */
+.arranque{background:var(--panel);border:1px solid var(--ac);border-radius:6px;
+  padding:20px 22px;margin-bottom:22px;display:flex;flex-direction:column;gap:6px}
+.arr-cab{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.arr-cab h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0;
+  letter-spacing:-.01em}
+.arr-cuenta{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ac);
+  font-variant-numeric:tabular-nums}
+.arr-sub{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+.arr-pasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.arr-pasos li{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:center}
+.arr-marca{width:16px;height:16px;border:1.5px solid var(--line);border-radius:50%;
+  flex:none;position:relative}
+.arr-pasos li.listo .arr-marca{background:var(--ac);border-color:var(--ac)}
+.arr-pasos li.listo .arr-marca::after{content:"";position:absolute;left:5px;top:2px;
+  width:3px;height:7px;border:solid var(--btn-txt);border-width:0 2px 2px 0;
+  transform:rotate(42deg)}
+.arr-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.arr-txt b{font-size:13.5px;font-weight:600}
+.arr-pasos li.listo .arr-txt b{color:var(--ink-3);text-decoration:line-through}
+.arr-txt span{font-size:12.5px;color:var(--ink-2);line-height:1.45}
+.arr-pasos li.listo .arr-txt span{display:none}
 </style>
 </head>
 <body>
@@ -130,6 +153,32 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 {% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
 
 <main>
+  {% if primeros_pasos %}
+  <section class="arranque">
+    <div class="arr-cab">
+      <h2>Te faltan {{ primeros_pasos.total - primeros_pasos.hechos }} paso(s) para
+          que esto trabaje por ti</h2>
+      <span class="arr-cuenta">{{ primeros_pasos.hechos }}/{{ primeros_pasos.total }}</span>
+    </div>
+    <p class="arr-sub">Mientras tanto te mostramos todo lo que publica el Estado,
+       que es mucho más de lo que te interesa.</p>
+    <ol class="arr-pasos">
+      {% for paso in primeros_pasos.pasos %}
+        <li class="{% if paso.hecho %}listo{% endif %}">
+          <span class="arr-marca"></span>
+          <div class="arr-txt">
+            <b>{{ paso.titulo }}</b>
+            <span>{{ paso.detalle }}</span>
+          </div>
+          {% if not paso.hecho %}
+            <a class="btn sec" href="{{ paso.enlace }}">{{ paso.accion }}</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
   <section class="tarjetas">
     <div class="t dato"><div class="n">{{ resumen.vigentes }}</div><div class="l">vigentes ahora</div></div>
     <div class="t {% if resumen.urgentes %}alerta{% endif %}">
@@ -161,7 +210,7 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
     <label class="check"><input type="checkbox" name="vigentes" value="1" {% if vigentes %}checked{% endif %}> Solo vigentes</label>
     <label class="check" title="Postor único, muy pocos postores o un plazo de consultas anómalo para su tipo"><input type="checkbox" name="banderas" value="1" {% if banderas %}checked{% endif %}> Solo con indicios</label>
     <button type="submit">Filtrar</button>
-    <button type="button" class="sec" onclick="location.href='/'">Limpiar</button>
+    <button type="button" class="sec" data-ir-a="/panel">Limpiar</button>
   </form>
 
   <div class="tabla-caja" id="tabla">
@@ -170,5 +219,6 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 </main>
 
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="/static/licitapro.js" defer></script>
 </body>
 </html>

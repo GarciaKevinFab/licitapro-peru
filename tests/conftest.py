@@ -56,17 +56,18 @@ async def usuario(marca):
     detras: la siguiente ejecucion chocaria con el correo repetido y el fallo
     pareceria otro.
     """
-    from shared.db import connection, borrar_cuenta
+    from shared.db import borrar_cuenta, crear_usuario
     from shared.seguridad import hashear_password
-    from shared.suscripciones import crear_suscripcion_prueba
 
+    # Se usa crear_usuario y no un INSERT directo a proposito: esa funcion crea
+    # tambien la fila de user_config y la suscripcion de prueba. Un INSERT a
+    # mano deja la cuenta a medias, y entonces las pruebas comprueban un estado
+    # que ningun usuario real llega a tener nunca -- que es la forma callada de
+    # que una suite pase mientras el producto falla.
     email = f"prueba-{marca}@ejemplo.pe"
-    async with connection() as c:
-        uid = await c.fetchval(
-            """INSERT INTO usuarios (email, password_hash, nombre, activo)
-               VALUES ($1, $2, $3, TRUE) RETURNING id""",
-            email, hashear_password("ClaveDePrueba123!"), "Cuenta de prueba")
-    await crear_suscripcion_prueba(uid)
+    fila = await crear_usuario(email, hashear_password("ClaveDePrueba123!"),
+                               "Cuenta de prueba")
+    uid = fila["id"]
     try:
         yield {"id": uid, "email": email, "password": "ClaveDePrueba123!"}
     finally:

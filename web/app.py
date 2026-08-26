@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -74,20 +75,25 @@ async def exigir_suscripcion(request: Request, call_next):
 # envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
 # acompanan tambien a las respuestas de error y a las redirecciones.
 #
-# Sobre la CSP, con honestidad: las plantillas llevan 3 bloques <style>, 42
-# atributos style= y 3 manejadores on*= en linea. Prohibir lo embebido romperia
-# la aplicacion entera, asi que script-src y style-src admiten 'unsafe-inline'
-# y NO protegen contra XSS. Cerrarlo de verdad exige sacar esos manejadores a
-# un archivo, y eso es una tarea aparte.
+# script-src YA NO admite 'unsafe-inline', y esa es la linea que de verdad
+# protege: con ella puesta, un XSS que consiga inyectar un <script> en la
+# pagina no llega a ejecutarse. Se pudo cerrar al sacar del HTML los tres
+# manejadores on*= y el bloque <script> de la portada; mientras estuvieron ahi,
+# la CSP existia pero no servia contra XSS.
 #
-# Lo que si protege hoy, y no depende de lo embebido:
+# style-src si sigue admitiendolo, y conviene saber por que: quedan 42
+# atributos style= y tres bloques <style> repartidos por las plantillas.
+# Sacarlos es un refactor grande y el riesgo que queda es mucho menor -- con
+# CSS inyectado se pueden hacer trucos de exfiltracion, no ejecutar codigo.
+#
+# El resto no depende de lo embebido y protege desde el primer dia:
 #   form-action     — un XSS no puede reenviar el formulario de acceso a otro sitio
 #   frame-ancestors — nadie puede incrustar la web en un iframe suyo (clickjacking)
 #   base-uri        — impide reescribir la base de las URL relativas
 #   object-src      — mata Flash/applets y sus vectores heredados
 CSP = "; ".join([
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://unpkg.com",
+    "script-src 'self' https://unpkg.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data:",
@@ -138,6 +144,11 @@ from web.propuestas import router as router_propuestas  # noqa: E402
 from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
 from web.webhooks_whatsapp import router as router_wa_webhook
+
+# Los scripts salen de aqui y no del HTML. Es lo que permite que la politica
+# de seguridad prohiba el script embebido, y sin eso la CSP no protege contra
+# XSS por mucho que este puesta.
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 app.include_router(router_auth)
 app.include_router(router_config)
@@ -280,6 +291,57 @@ async def portada(request: Request):
     })
 
 
+async def _primeros_pasos(usuario_id: int) -> dict | None:
+    """Los tres pasos que hacen util la cuenta, y cuales lleva hechos.
+
+    Una cuenta recien creada ve el pozo entero sin que nadie le explique nada, y
+    el primer minuto es el que decide si vuelve. El problema no es que falte
+    informacion: es que sin empresa cargada no puede postular a nada, y sin
+    filtros el panel le muestra seis mil licitaciones que no le interesan.
+
+    Se calcula cada vez en vez de guardar una marca de "ya vio el tutorial":
+    asi el aviso desaparece solo cuando de verdad completo los pasos, y vuelve
+    si algun dia se queda sin empresas. Una marca de vista miente en cuanto el
+    estado cambia.
+
+    Devuelve None cuando esta todo hecho, para que la plantilla no tenga que
+    decidir si vale la pena pintar el bloque.
+    """
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            """SELECT
+                 (SELECT COUNT(*) FROM empresas
+                   WHERE usuario_id = $1 AND activa = TRUE) AS empresas,
+                 (SELECT COALESCE(array_length(keywords, 1), 0) FROM user_config
+                   WHERE usuario_id = $1) AS keywords,
+                 (SELECT (telegram_chat_id IS NOT NULL
+                          OR whatsapp_estado = 'activo') FROM usuarios
+                   WHERE id = $1) AS canal""",
+            usuario_id)
+
+    pasos = [
+        {"hecho": bool(fila["empresas"]),
+         "titulo": "Carga tu empresa",
+         "detalle": "Con su RUC, representante legal y rubros. Sin esto no puedes "
+                    "postular ni generar documentos.",
+         "enlace": "/empresas/nueva", "accion": "Cargar empresa"},
+        {"hecho": bool(fila["keywords"]),
+         "titulo": "Dinos a qué te dedicas",
+         "detalle": "Unas palabras clave y tus regiones. Ahora mismo te estamos "
+                    "mostrando todo lo que publica el Estado, que es demasiado.",
+         "enlace": "/configuracion", "accion": "Ajustar filtros"},
+        {"hecho": bool(fila["canal"]),
+         "titulo": "Elige por dónde te avisamos",
+         "detalle": "WhatsApp o Telegram. Es lo que convierte esto en un radar: "
+                    "si no, tienes que acordarte de entrar.",
+         "enlace": "/configuracion", "accion": "Conectar un canal"},
+    ]
+    if all(p["hecho"] for p in pasos):
+        return None
+    return {"pasos": pasos, "hechos": sum(p["hecho"] for p in pasos),
+            "total": len(pasos)}
+
+
 async def _planes_publicos() -> list[dict]:
     async with connection() as conn:
         filas = await conn.fetch(
@@ -308,6 +370,7 @@ async def panel(request: Request, q: str = "", region: str = "",
         "usuario": usuario,
         "q": q, "region": region, "score_min": score_min, "vigentes": vigentes,
         "banderas": banderas,
+        "primeros_pasos": await _primeros_pasos(uid),
     })
 
 

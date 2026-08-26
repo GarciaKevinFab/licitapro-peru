@@ -57,7 +57,7 @@ table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mo
             <td class="acciones">
               <a class="btn sec" href="/empresas/{{ e.id }}/editar">Editar</a>
               <form method="post" action="/empresas/{{ e.id }}/desactivar"
-                    onsubmit="return confirm('¿Desactivar esta empresa? Sus propuestas y contratos se conservan.')">
+                    data-confirmar="¿Desactivar esta empresa? Sus propuestas y contratos se conservan.">
                 <button type="submit" class="peligro">Desactivar</button>
               </form>
             </td>

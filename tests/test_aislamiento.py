@@ -374,3 +374,81 @@ async def test_una_entidad_con_poco_historial_no_se_juzga(marca):
         async with connection() as c:
             await c.execute(
                 "DELETE FROM licitaciones WHERE entidad_ruc=$1", ruc)
+
+
+# ─── Cabeceras y politica de seguridad ───────────────────
+
+async def test_la_politica_prohibe_el_script_embebido(cliente):
+    """Es la linea que de verdad protege contra XSS.
+
+    Mientras script-src admitia 'unsafe-inline', la CSP estaba puesta y no
+    servia: un XSS podia inyectar un <script> y ejecutarlo igual. Se pudo
+    cerrar al sacar del HTML los tres manejadores on*= y el script de la
+    portada.
+    """
+    r = await cliente.get("/entrar")
+    csp = r.headers["Content-Security-Policy"]
+    script_src = next(d for d in csp.split("; ") if d.startswith("script-src"))
+    assert "'unsafe-inline'" not in script_src
+    # Y lo que protege desde el primer dia, sin depender de lo embebido.
+    assert "frame-ancestors 'none'" in csp
+    assert "form-action 'self'" in csp
+    assert "object-src 'none'" in csp
+
+
+async def test_las_cabeceras_acompanan_a_los_errores(cliente):
+    """El middleware va registrado el ultimo para quedar por fuera. Si quedara
+    por dentro, un 404 saldria sin ninguna cabecera."""
+    r = await cliente.get("/ruta-que-no-existe")
+    assert r.status_code == 404
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+async def test_no_quedan_manejadores_embebidos_en_las_plantillas():
+    """Si alguien vuelve a meter un onclick=, la CSP lo bloquea en silencio y el
+    boton deja de funcionar sin ningun error visible. Mejor detenerlo aqui."""
+    import pathlib
+    import re
+    culpables = []
+    for f in pathlib.Path("web/templates").glob("*.html"):
+        if re.search(r' on[a-z]+="', f.read_text(encoding="utf-8")):
+            culpables.append(f.name)
+    assert not culpables, f"manejadores embebidos en: {culpables}"
+
+
+# ─── Primeros pasos de una cuenta nueva ──────────────────
+
+async def test_una_cuenta_nueva_recibe_la_guia(usuario, cliente):
+    """El primer minuto decide si vuelve. Sin empresa no puede postular, y sin
+    filtros el panel le muestra seis mil licitaciones que no le interesan."""
+    from web.app import _primeros_pasos
+
+    pasos = await _primeros_pasos(usuario["id"])
+    assert pasos is not None
+    assert pasos["hechos"] == 0
+    assert [p["titulo"] for p in pasos["pasos"]][0] == "Carga tu empresa"
+
+
+async def test_la_guia_desaparece_al_completar_los_pasos(usuario, empresa):
+    """Se calcula cada vez en vez de guardar "ya vio el tutorial": asi el aviso
+    vuelve si algun dia se queda sin empresas, y una marca de vista mentiria."""
+    from shared.db import connection
+    from web.app import _primeros_pasos
+
+    async with connection() as c:
+        await c.execute(
+            "UPDATE user_config SET keywords = ARRAY['obra'] WHERE usuario_id=$1",
+            usuario["id"])
+        await c.execute(
+            "UPDATE usuarios SET telegram_chat_id = $2 WHERE id = $1",
+            usuario["id"], 12345)
+
+    assert await _primeros_pasos(usuario["id"]) is None
+
+    # Y si se queda sin empresa activa, vuelve a aparecer.
+    async with connection() as c:
+        await c.execute(
+            "UPDATE empresas SET activa = FALSE WHERE id = $1", empresa)
+    pasos = await _primeros_pasos(usuario["id"])
+    assert pasos is not None and pasos["hechos"] == 2
