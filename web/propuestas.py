@@ -15,7 +15,10 @@ import os
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from urllib.parse import quote_plus
+
 from shared.banderas import describir
+from shared.pdf_firmable import generar_pdf
 from shared.db import connection, empresa_es_de, empresas_de, responder_pregunta
 from web.auth import usuario_actual
 
@@ -55,7 +58,7 @@ async def detalle_licitacion(request: Request, licitacion_id: str, error: str = 
     async with connection() as conn:
         lic = await conn.fetchrow("SELECT * FROM licitaciones WHERE id=$1", licitacion_id)
         if not lic:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse("/panel", status_code=303)
         mias = await conn.fetch(
             """SELECT p.id, p.estado, e.razon_social
                  FROM propuestas p JOIN empresas e ON e.id = p.empresa_id
@@ -273,3 +276,92 @@ async def fijar_precio(request: Request, propuesta_id: int, precio: float = Form
             propuesta_id, precio)
     return RedirectResponse(f"/propuestas/{propuesta_id}?aviso=Precio+guardado",
                             status_code=303)
+
+
+# ─── Declaracion jurada lista para el DNI electronico ────
+
+@router.get("/propuestas/{propuesta_id}/declaracion-jurada")
+async def declaracion_jurada(request: Request, propuesta_id: int,
+                             modo: str = "dnie"):
+    """Genera la Declaracion Jurada de Datos del Postor en PDF.
+
+    Sale en PDF y no en DOCX porque ReFirma, el programa de RENIEC, firma PDF:
+    un .docx no tiene donde alojar una firma digital.
+
+    Dos modos, y no son equivalentes ante una entidad:
+
+      dnie      deja el recuadro preparado y el documento SIN firmar, para que
+                el titular lo firme en su equipo con su DNIe. Es la firma con
+                validez legal equivalente a la manuscrita.
+      escaneada incrusta la imagen de firma y el sello que subio el usuario.
+                Es una representacion visual: no prueba quien firmo ni que el
+                documento no se haya alterado despues.
+
+    La plataforma NO puede firmar con el DNIe del cliente, y no conviene
+    sortearlo: la clave privada vive en el chip de la tarjeta y firmar exigiria
+    pedirle su PIN, que es justo lo que jamas hay que pedir.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+
+    prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if not prop:
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+
+    async with connection() as conn:
+        empresa = await conn.fetchrow(
+            "SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
+    if not empresa:
+        return RedirectResponse(
+            f"/propuestas/{propuesta_id}?error=No+se+encontro+la+empresa",
+            status_code=303)
+
+    emp = dict(empresa)
+    parrafos = [
+        f"El que suscribe, {emp.get('representante_legal') or '________________'}, "
+        f"identificado con DNI N.º {emp.get('dni_representante') or '________'}, "
+        f"en calidad de {emp.get('cargo_representante') or 'representante legal'} "
+        f"de {emp.get('razon_social')}, con RUC N.º {emp.get('ruc') or '___________'} "
+        f"y domicilio en {emp.get('direccion') or '________________________'}, "
+        f"DECLARO BAJO JURAMENTO lo siguiente:",
+
+        "1. Que los datos consignados en el presente documento son veraces y "
+        "corresponden a la situación actual de mi representada.",
+
+        "2. Que no me encuentro incurso en ninguno de los impedimentos para "
+        "contratar con el Estado establecidos en la Ley General de "
+        "Contrataciones Públicas.",
+
+        "3. Que conozco, acepto y me someto a las bases, condiciones y "
+        "procedimientos del proceso de selección.",
+
+        "4. Que me comprometo a mantener vigente mi oferta durante el plazo "
+        "señalado en las bases y a suscribir el contrato en caso de resultar "
+        "adjudicado.",
+
+        f"Proceso: {prop.get('objeto') or ''}",
+        f"Entidad convocante: {prop.get('entidad') or ''}",
+    ]
+
+    con_dnie = (modo or "dnie").lower() != "escaneada"
+    nombre = f"declaracion-jurada-{propuesta_id}.pdf"
+    try:
+        ruta = await generar_pdf(
+            nombre_archivo=nombre,
+            titulo="DECLARACIÓN JURADA DE DATOS DEL POSTOR",
+            subtitulo=prop.get("entidad") or "",
+            parrafos=parrafos,
+            empresa=emp,
+            con_dnie=con_dnie,
+        )
+    except Exception as e:
+        log.error("No se pudo generar la declaracion jurada de la propuesta %s: %s",
+                  propuesta_id, e, exc_info=True)
+        return RedirectResponse(
+            f"/propuestas/{propuesta_id}?error="
+            + quote_plus("No se pudo generar el documento. Inténtalo de nuevo."),
+            status_code=303)
+
+    return FileResponse(ruta, filename=nombre, media_type="application/pdf")

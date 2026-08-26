@@ -45,6 +45,16 @@
       <td class="obj">
         <span class="ent">{{ l.entidad }}</span>
         <a class="desc" href="/licitacion/{{ l.id }}">{{ l.objeto }}</a>
+        {% if l.banderas_nivel and l.banderas_nivel > 0 %}
+          {# El nivel decide el color: un indicio debil no puede leerse igual
+             que un postor unico, o la marca deja de significar nada. #}
+          <span class="marca n{{ l.banderas_nivel }}"
+                title="Tiene indicios que conviene revisar antes de postular">
+            {% if l.banderas_nivel == 3 %}un solo postor
+            {% elif l.banderas_nivel == 2 %}revisar antes de postular
+            {% else %}poca competencia{% endif %}
+          </span>
+        {% endif %}
         {% if l.score_detalle %}
           <details>
             <summary>Por qué este puntaje</summary>

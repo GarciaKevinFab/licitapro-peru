@@ -44,7 +44,7 @@ def _plantillas(request: Request):
 
 
 @router.get("/entrar", response_class=HTMLResponse)
-async def form_entrar(request: Request, siguiente: str = "/"):
+async def form_entrar(request: Request, siguiente: str = "/panel"):
     if await usuario_actual(request):
         return RedirectResponse(siguiente, status_code=303)
     return _plantillas(request).TemplateResponse(
@@ -64,7 +64,7 @@ MAX_INTENTOS_POR_IP = 30
 
 @router.post("/entrar", response_class=HTMLResponse)
 async def hacer_entrar(request: Request, email: str = Form(...),
-                       password: str = Form(...), siguiente: str = Form("/")):
+                       password: str = Form(...), siguiente: str = Form("/panel")):
     """Inicio de sesion con freno a la fuerza bruta.
 
     El freno se comprueba ANTES de mirar la contrasena. Comprobarlo despues
@@ -106,7 +106,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
 @router.get("/registro", response_class=HTMLResponse)
 async def form_registro(request: Request):
     if await usuario_actual(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/panel", status_code=303)
     return _plantillas(request).TemplateResponse(
         "entrar.html", {"request": request, "modo": "registro"})
 

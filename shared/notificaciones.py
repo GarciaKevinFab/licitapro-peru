@@ -339,3 +339,109 @@ async def repartir() -> dict:
 
     log.info("Reparto de avisos: %s", parte)
     return parte
+
+
+# ─── Avisos de contrato: plazos y cobros vencidos ────────
+# Mismo fallo que tenian las alertas de licitaciones: win_bot los mandaba todos
+# a ADMIN_ID. El dueno de un contrato no es el dueno de la plataforma, y lo que
+# aqui se avisa -- un plazo que vence, una entidad que se paso del plazo de
+# pago -- solo le sirve a quien tiene que actuar.
+
+def _canales_de(usuario: dict, config: dict | None) -> list[str]:
+    """Por donde se le puede escribir a este usuario ahora mismo."""
+    canales = []
+    if usuario.get("telegram_chat_id"):
+        canales.append(CANAL_TELEGRAM)
+    if usuario.get("whatsapp_estado") == "activo":
+        canales.append(CANAL_WHATSAPP)
+    if (config or {}).get("email_notificaciones"):
+        canales.append(CANAL_EMAIL)
+    return canales
+
+
+async def _dueno_de_empresa(empresa_id: int) -> dict | None:
+    async with connection() as conn:
+        return await conn.fetchrow(
+            """SELECT u.id, u.nombre, u.email, u.telegram_chat_id,
+                      u.whatsapp_numero, u.whatsapp_estado
+                 FROM empresas e JOIN usuarios u ON u.id = e.usuario_id
+                WHERE e.id = $1 AND u.activo = TRUE""",
+            empresa_id)
+
+
+async def avisar_cobros_vencidos() -> dict:
+    """Avisa a cada proveedor de los pagos a los que se les paso el plazo legal.
+
+    Este es el aviso que convierte el calculo en producto: sin el, el proveedor
+    solo se entera si entra a mirar, y entonces daba igual haber calculado la
+    fecha. Lo que se le dice no es "te deben" sino "ya puedes reclamar", que es
+    la informacion accionable.
+
+    No se avisa durante la prorroga de 5 dias: la entidad todavia puede
+    ampararse en ella, y empujar a reclamar ahi le quema credito al cliente
+    para cuando de verdad tenga razon.
+    """
+    from win_bot.payment_tracker import pagos_vencidos
+
+    parte = {"avisados": 0, "pagos": 0}
+    por_usuario: dict[int, list] = {}
+
+    for pago in await pagos_vencidos():
+        if pago.get("en_prorroga"):
+            continue
+        dueno = await _dueno_de_empresa(pago["empresa_id"])
+        if not dueno:
+            continue
+        por_usuario.setdefault(dueno["id"], []).append((dueno, pago))
+
+    for uid, filas in por_usuario.items():
+        dueno = filas[0][0]
+        config = await get_config_usuario(uid)
+        if not _en_horario(config):
+            continue
+        pagos = [p for _, p in filas]
+        parte["pagos"] += len(pagos)
+
+        lineas = []
+        for p in pagos[:MAX_EN_RESUMEN]:
+            lineas.append(
+                f"• {p.get('concepto') or 'Cobro'} — S/ {float(p['monto'] or 0):,.2f}\n"
+                f"  {p.get('entidad') or ''} · venció el "
+                f"{p['fecha_limite_pago'].strftime('%d/%m/%Y')} "
+                f"({p['dias_mora']} días hábiles)")
+        texto = ("💰 <b>Tienes cobros con el plazo legal vencido</b>\n\n"
+                 + "\n".join(lineas)
+                 + "\n\nLa Ley 32069 da 10 días hábiles desde la conformidad. "
+                   "Ya puedes reclamar formalmente a la entidad.")
+
+        enviado = False
+        for canal in _canales_de(dict(dueno), config):
+            if canal == CANAL_TELEGRAM:
+                enviado |= await _por_telegram_texto(dueno["telegram_chat_id"], texto)
+            elif canal == CANAL_WHATSAPP:
+                ok, _ = await whatsapp.enviar_plantilla(
+                    dueno["whatsapp_numero"], PLANTILLA_AVISO,
+                    [dueno.get("nombre") or "Hola", str(len(pagos)),
+                     "cobros con el plazo vencido"])
+                enviado |= ok
+        parte["avisados"] += bool(enviado)
+
+    log.info("Aviso de cobros vencidos: %s", parte)
+    return parte
+
+
+async def _por_telegram_texto(chat_id: int, texto: str) -> bool:
+    """Envio suelto por Telegram. Comparte transporte con el resumen de avisos."""
+    token = os.getenv("RADAR_BOT_TOKEN") or os.getenv("WIN_BOT_TOKEN")
+    if not token or not chat_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": texto[:4000],
+                      "parse_mode": "HTML", "disable_web_page_preview": True})
+        return r.status_code == 200
+    except Exception as e:
+        log.error("Telegram: fallo avisando a %s: %s", chat_id, e)
+        return False

@@ -249,6 +249,9 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
   *{animation:none!important;transition-duration:.01ms!important}
   .rv{opacity:1;transform:none}
 }
+.plan li.sin{opacity:.6}
+.nota-prueba{text-align:center;margin-top:26px;font-size:14px;opacity:.75;
+  max-width:60ch;margin-left:auto;margin-right:auto}
 </style>
 
 <canvas id="territorio" aria-hidden="true"></canvas>
@@ -451,43 +454,37 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
   </div>
 
   <div class="plans">
-    <div class="plan rv d1">
-      <span class="nm">Básico</span>
-      <div class="pr">S/ 49<small> /mes</small></div>
-      <ul>
-        <li>1 empresa</li>
-        <li>3 departamentos</li>
-        <li>Alertas en Telegram</li>
-        <li>Puntaje de viabilidad</li>
-      </ul>
-      <a class="btn ghost" href="#">Empezar</a>
-    </div>
-
-    <div class="plan feat rv d2">
-      <span class="nm">Pro · el más elegido</span>
-      <div class="pr">S/ 99<small> /mes</small></div>
-      <ul>
-        <li>3 empresas</li>
-        <li>Cobertura nacional</li>
-        <li>Expedientes automáticos</li>
-        <li>Precio sugerido con histórico</li>
-        <li>Seguimiento de contratos</li>
-      </ul>
-      <a class="btn" href="#">Empezar</a>
-    </div>
-
-    <div class="plan rv d3">
-      <span class="nm">Empresa</span>
-      <div class="pr">S/ 199<small> /mes</small></div>
-      <ul>
-        <li>Empresas ilimitadas</li>
-        <li>Varios usuarios</li>
-        <li>Análisis de bases con IA</li>
-        <li>Soporte prioritario</li>
-      </ul>
-      <a class="btn ghost" href="#">Empezar</a>
-    </div>
+    {% for p in planes %}
+      <div class="plan rv d{{ loop.index }}{% if p.codigo == 'pro' %} feat{% endif %}">
+        <span class="nm">{{ p.nombre }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
+        <div class="pr">
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            S/ {{ '%.0f'|format(p.precio_mensual) }}<small> /mes</small>
+          {% else %}
+            Gratis<small> siempre</small>
+          {% endif %}
+        </div>
+        <ul>
+          <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
+          <li>{% if p.max_regiones %}{{ p.max_regiones }} departamento{% if p.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
+          {% if p.alertas %}
+            <li>Avisos por WhatsApp, Telegram y correo</li>
+          {% else %}
+            <li class="sin">Sin avisos: entras tú a buscar</li>
+          {% endif %}
+          <li>Expedientes automáticos</li>
+          {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+          {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
+        </ul>
+        <a class="btn{% if p.codigo != 'pro' %} ghost{% endif %}" href="/registro">
+          {% if p.precio_mensual and p.precio_mensual > 0 %}Empezar{% else %}Entrar gratis{% endif %}</a>
+      </div>
+    {% endfor %}
   </div>
+
+  <p class="nota-prueba">Todas las cuentas empiezan con <b>14 días del plan Pro</b>.
+     Al terminar no te echamos: te quedas en el plan Gratis, con tus datos y tu
+     panel intactos.</p>
 </section>
 
 <!-- ================= CTA ================= -->

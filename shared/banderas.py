@@ -80,6 +80,12 @@ DESCRIPCIONES = {
         "La entidad dejó menos días para consultas y observaciones que la "
         "mayoría de procesos de su mismo tipo. Es el plazo con el que se "
         "cuestionan unas bases dirigidas."),
+    "entidad_postor_unico_frecuente": (
+        NIVEL_MEDIO,
+        "Esta entidad suele adjudicar con un solo postor",
+        "En sus procesos ya resueltos, la mitad o más se adjudicaron con un "
+        "único participante. La media nacional está en el 21%. Puede ser un "
+        "rubro sin competencia, o bases que dejan fuera a casi todos."),
     "ganador_recurrente": (
         NIVEL_MEDIO,
         "El mismo proveedor gana siempre aquí",
@@ -223,6 +229,59 @@ async def marcar_ganadores_recurrentes(minimo_procesos: int = 5,
     return tocadas
 
 
+# Cuantos procesos resueltos hacen falta para juzgar a una entidad. Con menos,
+# dos casualidades dan el 100% y no significan nada.
+MIN_RESUELTOS_ENTIDAD = 5
+# Por encima de que proporcion de postor unico se considera anomala. Medido
+# sobre 127 entidades: la media es 0,21 y solo 18 pasan del 0,5. Ese es el
+# corte que separa lo llamativo de lo corriente.
+CUOTA_POSTOR_UNICO = 0.5
+
+
+async def marcar_entidades_con_mal_historial() -> int:
+    """Marca licitaciones ABIERTAS por el historial de quien las convoca.
+
+    Esto existe porque las otras banderas llegaban tarde. `postor_unico` y
+    `pocos_postores` solo se saben cuando el proceso ya se adjudico, o sea
+    cuando ya no puedes presentarte: avisaban de algo que no podias usar.
+
+    Lo que si sirve ANTES de postular es con quien te estas metiendo. Si una
+    entidad resolvio la mitad de sus procesos con un solo postor, conviene
+    saberlo antes de gastar dias preparando una propuesta para ella.
+
+    Sigue sin ser una acusacion: puede ser un rubro donde no hay competencia.
+    Es un dato que el proveedor no tenia y ahora tiene.
+    """
+    async with connection() as conn:
+        n = await conn.fetch(
+            """WITH historial AS (
+                   SELECT entidad_ruc,
+                          COUNT(*) FILTER (WHERE numero_postores IS NOT NULL) AS resueltos,
+                          COUNT(*) FILTER (WHERE numero_postores = 1) AS con_unico
+                     FROM licitaciones
+                    WHERE entidad_ruc IS NOT NULL
+                    GROUP BY entidad_ruc
+               ),
+               senaladas AS (
+                   SELECT entidad_ruc FROM historial
+                    WHERE resueltos >= $1
+                      AND con_unico::float / resueltos >= $2
+               )
+               UPDATE licitaciones l
+                  SET banderas = CASE
+                          WHEN l.banderas ? 'entidad_postor_unico_frecuente' THEN l.banderas
+                          ELSE COALESCE(l.banderas, '[]'::jsonb)
+                               || '["entidad_postor_unico_frecuente"]'::jsonb END,
+                      banderas_nivel = GREATEST(l.banderas_nivel, $3)
+                 FROM senaladas s
+                WHERE l.entidad_ruc = s.entidad_ruc
+                  AND l.fecha_cierre > NOW()
+             RETURNING 1""",
+            MIN_RESUELTOS_ENTIDAD, CUOTA_POSTOR_UNICO, NIVEL_MEDIO)
+    log.info("Licitaciones abiertas marcadas por historial de la entidad: %s", len(n))
+    return len(n)
+
+
 async def recalcular_todo() -> dict:
     """Recalcula las banderas de toda la tabla. Idempotente.
 
@@ -259,5 +318,8 @@ async def recalcular_todo() -> dict:
                 cambios)
 
     await marcar_ganadores_recurrentes()
+    # Va al final, despues de que las banderas por fila esten puestas: se apoya
+    # en `numero_postores` de los procesos ya resueltos para juzgar a la entidad.
+    parte["abiertas_por_entidad"] = await marcar_entidades_con_mal_historial()
     log.info("Recalculo de banderas: %s", parte)
     return parte

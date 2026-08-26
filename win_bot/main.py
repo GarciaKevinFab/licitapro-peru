@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 log = logging.getLogger("win_bot")
 
+from shared.notificaciones import avisar_cobros_vencidos
 from shared.db import (
     get_pool, get_contratos_activos, get_plazos_proximos, connection,
 )
@@ -104,6 +105,20 @@ async def check_adjudicaciones(app):
             # para verificar si la buena pro fue otorgada a nuestra empresa.
             # Por ahora, se detecta manualmente con /ganar [propuesta_id]
             pass
+
+
+async def _renovar_suscripciones():
+    """Cobra las renovaciones que tocan. Un fallo aqui no puede tumbar el bot.
+
+    Se envuelve porque el script esta escrito para ejecutarse suelto y termina
+    devolviendo un codigo de salida; dentro del planificador una excepcion sin
+    capturar dejaria el trabajo desprogramado en silencio.
+    """
+    try:
+        from tools.renovar_suscripciones import main as renovar
+        await renovar()
+    except Exception as e:
+        log.error("Fallo el cobro de renovaciones: %s", e, exc_info=True)
 
 
 async def check_plazos_proximos(app):
@@ -416,6 +431,16 @@ def main():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_adjudicaciones, "interval", minutes=30, args=[app])
     scheduler.add_job(check_plazos_proximos, "interval", hours=6, args=[app])
+    # Los cobros vencidos se miran una vez al dia: la mora se cuenta en dias
+    # habiles, asi que no cambia mas de una vez por jornada y avisar cada seis
+    # horas seria repetir lo mismo cuatro veces.
+    scheduler.add_job(avisar_cobros_vencidos, "interval", hours=24)
+    # Las renovaciones tambien: el script existia y no lo disparaba nadie, asi
+    # que tal cual estaba habia que ejecutarlo a mano cada dia o ninguna
+    # suscripcion se renovaba nunca. Va aqui, junto a lo demas que mueve dinero.
+    # `renovaciones_pendientes` ya filtra por ultimo_intento, asi que correrlo
+    # a diario no machaca la pasarela con reintentos.
+    scheduler.add_job(_renovar_suscripciones, "interval", hours=24)
     scheduler.start()
 
     log.info("🏆 LicitaWin Bot started!")

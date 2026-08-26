@@ -287,3 +287,90 @@ async def test_borrar_la_cuenta_no_deja_rastro(marca):
         if lic:
             assert await c.fetchval(
                 "SELECT COUNT(*) FROM licitaciones WHERE id=$1", lic) == 1
+
+
+# ─── Banderas sobre licitaciones abiertas ────────────────
+
+async def test_la_bandera_de_entidad_cae_en_licitaciones_ABIERTAS(marca):
+    """Las otras banderas llegaban tarde y esa era la mitad del problema.
+
+    postor_unico y pocos_postores solo se saben cuando el proceso ya se
+    adjudico, o sea cuando ya no puedes presentarte. Medido sobre la base real:
+    cero licitaciones vigentes tenian bandera. Esta se apoya en el historial de
+    quien convoca, que si se sabe antes de postular.
+    """
+    from shared.banderas import (
+        CUOTA_POSTOR_UNICO, MIN_RESUELTOS_ENTIDAD,
+        marcar_entidades_con_mal_historial,
+    )
+    from shared.db import connection
+
+    ruc = "20" + marca[:9]
+    abierta = f"PRUEBA-ABIERTA-{marca}"
+    async with connection() as c:
+        # Historial: todos resueltos con un solo postor, por encima de la cuota.
+        for i in range(MIN_RESUELTOS_ENTIDAD):
+            await c.execute(
+                """INSERT INTO licitaciones
+                       (id, fuente, entidad, entidad_ruc, objeto,
+                        fecha_cierre, numero_postores)
+                   VALUES ($1, 'prueba', 'ENTIDAD CON HISTORIAL', $2,
+                           'Proceso ya resuelto', NOW() - INTERVAL '30 days', 1)
+                   ON CONFLICT (id) DO NOTHING""",
+                f"PRUEBA-HIST-{marca}-{i}", ruc)
+        # Y una convocatoria viva de la misma entidad.
+        await c.execute(
+            """INSERT INTO licitaciones
+                   (id, fuente, entidad, entidad_ruc, objeto, fecha_cierre)
+               VALUES ($1, 'prueba', 'ENTIDAD CON HISTORIAL', $2,
+                       'Convocatoria abierta', NOW() + INTERVAL '10 days')
+               ON CONFLICT (id) DO NOTHING""",
+            abierta, ruc)
+    try:
+        await marcar_entidades_con_mal_historial()
+        async with connection() as c:
+            fila = await c.fetchrow(
+                "SELECT banderas, banderas_nivel FROM licitaciones WHERE id=$1",
+                abierta)
+        assert "entidad_postor_unico_frecuente" in fila["banderas"]
+        assert fila["banderas_nivel"] >= 2
+        assert CUOTA_POSTOR_UNICO == 0.5   # medido: la media nacional es 0,21
+    finally:
+        async with connection() as c:
+            await c.execute(
+                "DELETE FROM licitaciones WHERE entidad_ruc=$1", ruc)
+
+
+async def test_una_entidad_con_poco_historial_no_se_juzga(marca):
+    """Con dos procesos, una casualidad da el 100% y no significa nada."""
+    from shared.banderas import marcar_entidades_con_mal_historial
+    from shared.db import connection
+
+    ruc = "20" + marca[:9]
+    abierta = f"PRUEBA-POCA-{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones
+                   (id, fuente, entidad, entidad_ruc, objeto,
+                    fecha_cierre, numero_postores)
+               VALUES ($1, 'prueba', 'ENTIDAD NUEVA', $2, 'Unico resuelto',
+                       NOW() - INTERVAL '30 days', 1)
+               ON CONFLICT (id) DO NOTHING""",
+            f"PRUEBA-POCA-HIST-{marca}", ruc)
+        await c.execute(
+            """INSERT INTO licitaciones
+                   (id, fuente, entidad, entidad_ruc, objeto, fecha_cierre)
+               VALUES ($1, 'prueba', 'ENTIDAD NUEVA', $2, 'Convocatoria abierta',
+                       NOW() + INTERVAL '10 days')
+               ON CONFLICT (id) DO NOTHING""",
+            abierta, ruc)
+    try:
+        await marcar_entidades_con_mal_historial()
+        async with connection() as c:
+            banderas = await c.fetchval(
+                "SELECT banderas FROM licitaciones WHERE id=$1", abierta)
+        assert "entidad_postor_unico_frecuente" not in (banderas or [])
+    finally:
+        async with connection() as c:
+            await c.execute(
+                "DELETE FROM licitaciones WHERE entidad_ruc=$1", ruc)

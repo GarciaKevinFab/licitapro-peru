@@ -183,7 +183,8 @@ async def _resumen(usuario_id: int) -> dict:
 
 
 async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
-                        score_min: int = 0, solo_vigentes: bool = True) -> list[dict]:
+                        score_min: int = 0, solo_vigentes: bool = True,
+                        con_banderas: bool = False) -> list[dict]:
     """Filtros de la interfaz aplicados SOBRE el conjunto ya scopeado.
 
     El scoping por inquilino ocurre primero y una sola vez, en
@@ -203,6 +204,11 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
     if score_min:
         filas = [f for f in filas
                  if (f["score_viabilidad"] or 0) >= float(score_min)]
+    if con_banderas:
+        # "Solo con indicios" es lo que hace util la funcion: sin este filtro
+        # habria que abrir los procesos uno a uno, que es justo lo que las
+        # banderas pretendian evitar.
+        filas = [f for f in filas if (f.get("banderas_nivel") or 0) > 0]
     filas = filas[:200]
 
     salida = []
@@ -251,27 +257,64 @@ def _aviso_desde_estado(s: dict) -> dict | None:
 
 
 @app.get("/", response_class=HTMLResponse)
+async def portada(request: Request):
+    """Pagina publica para quien todavia no tiene cuenta.
+
+    La plantilla existia y no la servia ninguna ruta: quien llegaba al sitio
+    era redirigido a /entrar sin ver que hace el producto ni cuanto cuesta.
+    Pedirle a alguien que se registre antes de contarle nada es la forma mas
+    rapida de que cierre la pestana.
+
+    Quien ya tiene sesion va derecho a su panel: para el la portada es un paso
+    de mas.
+    """
+    if await usuario_actual(request):
+        return RedirectResponse("/panel", status_code=303)
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        # Los planes se leen de la base y no se repiten a mano en la plantilla:
+        # estaban escritos a fuego y dejaron de coincidir en cuanto se anadio el
+        # plan gratuito. Una pagina publica que promete otra cosa que el sistema
+        # es peor que no tenerla.
+        "planes": await _planes_publicos(),
+    })
+
+
+async def _planes_publicos() -> list[dict]:
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT codigo, nombre, precio_mensual, precio_anual,
+                      max_empresas, max_regiones, analisis_ia, alertas
+                 FROM planes WHERE activo = TRUE ORDER BY orden""")
+    return [dict(f) for f in filas]
+
+
+@app.get("/panel", response_class=HTMLResponse)
 async def panel(request: Request, q: str = "", region: str = "",
-                score_min: int = 0, vigentes: int = 1):
+                score_min: int = 0, vigentes: int = 1,
+                banderas: int = 0):
     # El inquilino sale de la sesion firmada, nunca de la peticion: antes se
     # elegia por querystring y cualquiera podia pasar ?usuario=N.
     usuario = await usuario_actual(request)
     if not usuario:
-        return RedirectResponse("/entrar?siguiente=/", status_code=303)
+        return RedirectResponse("/entrar?siguiente=/panel", status_code=303)
     uid = usuario["id"]
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "resumen": await _resumen(uid),
-        "licitaciones": await _licitaciones(uid, q, region, score_min, bool(vigentes)),
+        "licitaciones": await _licitaciones(uid, q, region, score_min, bool(vigentes),
+                                            bool(banderas)),
         "departamentos": DEPARTAMENTOS,
         "usuario": usuario,
         "q": q, "region": region, "score_min": score_min, "vigentes": vigentes,
+        "banderas": banderas,
     })
 
 
 @app.get("/parts/tabla", response_class=HTMLResponse)
 async def parte_tabla(request: Request, q: str = "", region: str = "",
-                      score_min: int = 0, vigentes: int = 1):
+                      score_min: int = 0, vigentes: int = 1,
+                      banderas: int = 0):
     """Fragmento que HTMX inyecta al filtrar, sin recargar la pagina."""
     usuario = await usuario_actual(request)
     if not usuario:
@@ -280,7 +323,8 @@ async def parte_tabla(request: Request, q: str = "", region: str = "",
                             status_code=401)
     return templates.TemplateResponse("_tabla.html", {
         "request": request,
-        "licitaciones": await _licitaciones(usuario["id"], q, region, score_min, bool(vigentes)),
+        "licitaciones": await _licitaciones(usuario["id"], q, region, score_min,
+                                            bool(vigentes), bool(banderas)),
     })
 
 

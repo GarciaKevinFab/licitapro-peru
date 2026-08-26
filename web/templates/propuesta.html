@@ -1,6 +1,14 @@
 {% extends "_base.html" %}
 {% block titulo %}Propuesta · LicitaPro{% endblock %}
 {% block estilos %}
+.dos-firmas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));
+  gap:16px;margin-top:16px}
+.via{border:1px solid var(--line);border-radius:5px;padding:17px 18px;
+  display:flex;flex-direction:column;gap:9px}
+.via h3{font-family:Sora,sans-serif;font-size:.95rem;font-weight:600;margin:0}
+.via p{font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
+.via .btn{align-self:flex-start;margin-top:auto}
+
 table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
 table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
@@ -109,6 +117,44 @@ main{max-width:900px}
         <a class="btn" href="/propuestas/{{ p.id }}/descargar">Descargar ZIP</a>
       {% endif %}
     </div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Declaración jurada para firmar</h2>
+    <p class="sub">La Declaración Jurada de Datos del Postor, en PDF y con los
+       datos de tu empresa ya puestos.</p>
+
+    <div class="dos-firmas">
+      <div class="via">
+        <h3>Con tu DNI electrónico</h3>
+        <p>Sale sin firmar y con el espacio preparado. La firmas tú en tu
+           computadora con <b>ReFirma</b> de RENIEC, tu lector y tu PIN. Tiene la
+           misma validez legal que una firma manuscrita.</p>
+        <p class="ayuda"><b>Tu PIN no pasa por aquí.</b> La clave vive dentro del
+           chip de tu DNI y no sale nunca; nosotros solo preparamos el documento.
+           Cualquier servicio que te ofrezca firmar con tu DNIe "en la nube" o te
+           está pidiendo el PIN, o no está usando el DNIe de verdad.</p>
+        <a class="btn" href="/propuestas/{{ p.id }}/declaracion-jurada?modo=dnie">
+          Descargar para firmar con DNIe</a>
+      </div>
+      <div class="via">
+        <h3>Con tu firma escaneada</h3>
+        <p>Lleva incrustada la imagen de firma y el sello que cargaste en la
+           empresa. Sirve para trámites que solo piden el papel firmado.</p>
+        <p class="ayuda">Es una representación visual: <b>no prueba quién firmó</b>
+           ni que el documento no se haya alterado después. Si la entidad exige
+           firma digital, usa la otra vía.</p>
+        <a class="btn sec" href="/propuestas/{{ p.id }}/declaracion-jurada?modo=escaneada">
+          Descargar con firma escaneada</a>
+      </div>
+    </div>
+    <p class="ayuda" style="margin-top:14px">¿Todavía no cargaste tu firma o tu
+       sello? Se suben en
+       <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Bases del proceso</h2>
     {% if p.bases_urls %}
       <p class="ayuda" style="margin-top:14px">Bases:
         {% for u in p.bases_urls %}<a href="{{ u }}" target="_blank" rel="noopener">PDF {{ loop.index }}</a> {% endfor %}</p>
