@@ -9,11 +9,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared.config import DEPARTAMENTOS
 from shared.db import (
-    borrar_credencial, estado_credenciales, get_config_usuario,
+    borrar_credencial, borrar_cuenta, estado_credenciales, get_config_usuario,
     guardar_credencial, quitar_whatsapp, set_token_telegram,
     set_whatsapp_pendiente, update_config,
 )
-from shared.seguridad import nuevo_token_telegram
+from shared.seguridad import nuevo_token_telegram, verificar_password
 from shared.whatsapp import configurado as whatsapp_configurado, enviar_plantilla, normalizar_numero
 from shared.suscripciones import regiones_permitidas
 from web.auth import usuario_actual
@@ -219,4 +219,50 @@ async def quitar_whatsapp_web(request: Request):
     await quitar_whatsapp(usuario["id"])
     return RedirectResponse(
         "/configuracion?aviso=" + quote_plus("Ya no recibirás avisos por WhatsApp."),
+        status_code=303)
+
+
+# ─── Borrar la cuenta (Ley 29733) ────────────────────────
+
+@router.post("/configuracion/cuenta/borrar")
+async def borrar_mi_cuenta(request: Request, password: str = Form(""),
+                           confirmo: str = Form("")):
+    """Ejercicio del derecho de supresion. Irreversible.
+
+    Se pide la contrasena, no una casilla sola: es la unica forma de saber que
+    quien borra es el titular y no alguien que se encontro una sesion abierta.
+    Para una accion que no tiene vuelta atras, el coste de teclearla es menor
+    que el de perderlo todo por un clic ajeno.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+
+    if not confirmo:
+        return RedirectResponse(
+            "/configuracion?error=" + quote_plus(
+                "Marca la casilla para confirmar que entiendes que el borrado "
+                "no tiene vuelta atrás."), status_code=303)
+
+    if not verificar_password(password, usuario["password_hash"]):
+        log.warning("Intento de borrado de la cuenta %s con contrasena incorrecta",
+                    usuario["id"])
+        return RedirectResponse(
+            "/configuracion?error=" + quote_plus(
+                "La contraseña no es correcta. No se borró nada."),
+            status_code=303)
+
+    resumen = await borrar_cuenta(usuario["id"])
+    if not resumen.get("borrada"):
+        return RedirectResponse(
+            "/configuracion?error=" + quote_plus(
+                "No pudimos completar el borrado. Escríbenos y lo resolvemos."),
+            status_code=303)
+
+    # La sesion apunta a un usuario que ya no existe: hay que cerrarla aqui, no
+    # esperar a que la siguiente peticion se encuentre el hueco.
+    request.session.clear()
+    return RedirectResponse(
+        "/entrar?aviso=" + quote_plus(
+            "Tu cuenta y todos tus datos se borraron. Gracias por haberlo usado."),
         status_code=303)

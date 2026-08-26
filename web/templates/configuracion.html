@@ -2,6 +2,9 @@
 {% block titulo %}Configuración · LicitaPro Perú{% endblock %}
 
 {% block estilos %}
+.peligro-zona{border-color:var(--urg)}
+.peligro-zona h2{color:var(--urg)}
+
 .wa-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}
 .consiento{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2);line-height:1.45}
 .consiento input{width:auto;margin-top:2px;flex:none}
@@ -248,5 +251,27 @@ table.cred tr:last-child td{border-bottom:none}
 
     <p class="nota">Tu cuenta: <b>{{ usuario.email }}</b></p>
   </section>
+
+  <section class="tarjeta peligro-zona">
+    <h2>Borrar mi cuenta</h2>
+    <p class="sub">Se borra todo: tus empresas, propuestas, contratos, logos y
+       firmas. No hay vuelta atrás y no guardamos copia.</p>
+    <p class="ayuda">Es tu derecho según la Ley 29733. Si solo quieres dejar de
+       recibir avisos, no hace falta esto: desconecta los canales arriba.</p>
+    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form">
+      <label class="campo">
+        <span>Tu contraseña</span>
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <label class="consiento">
+        <input type="checkbox" name="confirmo" value="1" required>
+        <span>Entiendo que se borrará todo y que no se puede recuperar.</span>
+      </label>
+      <div class="acciones">
+        <button type="submit" class="peligro">Borrar mi cuenta para siempre</button>
+      </div>
+    </form>
+  </section>
+
 </main>
 {% endblock %}

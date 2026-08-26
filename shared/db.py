@@ -726,3 +726,53 @@ async def quitar_whatsapp(usuario_id: int) -> None:
                       whatsapp_opt_out_en = NOW()
                 WHERE id = $1""",
             usuario_id)
+
+
+# ─── Borrado de cuenta (Ley 29733) ───────────────────────
+
+async def borrar_cuenta(usuario_id: int) -> dict:
+    """Borra la cuenta y todo lo que cuelga de ella. Irreversible.
+
+    El derecho de supresion de la Ley 29733 exige borrar de verdad, no marcar
+    como inactivo: dejar la fila con una marca sigue siendo tratar el dato. Para
+    las bajas corrientes ya esta `empresas.activa = FALSE`, que es otra cosa.
+
+    Los ARCHIVOS se borran ANTES que la fila, y ese orden importa. Al reves, si
+    algo falla despues del DELETE ya no quedaria de donde sacar las rutas y la
+    firma escaneada del representante legal se quedaria en el disco para
+    siempre, que es justo lo que la ley prohibe. Borrando primero, un fallo deja
+    la cuenta intacta y la operacion se puede repetir.
+
+    Las tablas hijas caen por las cascadas declaradas en la migracion 0006.
+    """
+    from shared.archivos import borrar_imagen, rutas_de, TIPOS as TIPOS_IMAGEN
+
+    resumen = {"empresas": 0, "archivos": 0, "borrada": False}
+
+    async with connection() as conn:
+        empresas = await conn.fetch(
+            "SELECT id FROM empresas WHERE usuario_id=$1", usuario_id)
+    resumen["empresas"] = len(empresas)
+
+    for fila in empresas:
+        # Se cuenta ANTES de borrar: borrar_imagen no devuelve nada, y `rutas_de`
+        # ademas comprueba el disco, asi que el recuento refleja archivos que
+        # existian de verdad y no filas que apuntaban a un hueco.
+        presentes = await rutas_de(fila["id"])
+        for tipo in TIPOS_IMAGEN:
+            try:
+                await borrar_imagen(fila["id"], tipo)
+                resumen["archivos"] += tipo in presentes
+            except Exception as e:
+                # Se registra y se sigue: un archivo que no se pudo borrar no
+                # puede dejar al usuario sin poder ejercer su derecho. Queda el
+                # rastro para limpiarlo a mano.
+                log.error("No se pudo borrar la imagen %s de la empresa %s: %s",
+                          tipo, fila["id"], e)
+
+    async with connection() as conn:
+        borrada = await conn.fetchval(
+            "DELETE FROM usuarios WHERE id=$1 RETURNING id", usuario_id)
+    resumen["borrada"] = bool(borrada)
+    log.info("Cuenta %s borrada: %s", usuario_id, resumen)
+    return resumen
