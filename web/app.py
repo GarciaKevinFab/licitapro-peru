@@ -86,6 +86,7 @@ from web.empresas import router as router_empresas  # noqa: E402
 from web.propuestas import router as router_propuestas  # noqa: E402
 from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
+from web.webhooks_whatsapp import router as router_wa_webhook
 
 app.include_router(router_auth)
 app.include_router(router_config)
@@ -93,6 +94,7 @@ app.include_router(router_empresas)
 app.include_router(router_propuestas)
 app.include_router(router_contratos)
 app.include_router(router_suscripcion)
+app.include_router(router_wa_webhook)
 
 
 def _dias(fecha) -> int | None:

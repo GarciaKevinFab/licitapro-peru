@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 log = logging.getLogger("radar_bot")
 
+from shared.notificaciones import repartir
 from shared.db import (
     get_pool, get_licitaciones_nuevas, marcar_notificada,
     get_config, update_config, get_empresas_activas,
@@ -286,23 +287,21 @@ async def scheduled_scrape(app: Application):
     try:
         results = await run_all_scrapers()
         
-        # Enviar reporte de scraping
+        # El parte tecnico va al administrador; las alertas van a los CLIENTES.
+        # Antes las dos cosas iban a ADMIN_ID, asi que los suscriptores pagaban
+        # por unos avisos que nunca salian de la cuenta del dueno.
         if ADMIN_ID and results["total_nuevas"] > 0:
-            bot = app.bot
-            report = format_scraping_report(results)
-            await bot.send_message(ADMIN_ID, report, parse_mode="HTML")
-            
-            # Enviar alertas de las nuevas
-            lics = await get_licitaciones_nuevas(limit=5)
-            for lic in lics:
-                text, kb = format_licitacion_alert(lic)
-                try:
-                    await bot.send_message(ADMIN_ID, text, reply_markup=kb, parse_mode="HTML")
-                    await marcar_notificada(lic["id"])
-                except Exception as e:
-                    log.error(f"Error sending alert: {e}")
-        
-        log.info(f"Scraping completado: {results['total_nuevas']} nuevas de {len(results['por_fuente'])} fuentes")
+            try:
+                await app.bot.send_message(
+                    ADMIN_ID, format_scraping_report(results), parse_mode="HTML")
+            except Exception as e:
+                log.error(f"No se pudo enviar el parte al administrador: {e}")
+
+        # Reparto real: a cada usuario lo suyo, por sus canales, sin repetir.
+        parte = await repartir()
+        log.info(
+            f"Scraping completado: {results['total_nuevas']} nuevas de "
+            f"{len(results['por_fuente'])} fuentes | avisos: {parte}")
     except Exception as e:
         log.error(f"Scheduled scrape failed: {e}")
 

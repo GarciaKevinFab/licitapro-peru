@@ -661,3 +661,68 @@ async def consumir_token_y_cambiar_password(token_hash: str,
                     WHERE usuario_id = $1 AND usado_en IS NULL""",
                 fila["usuario_id"])
     return True
+
+
+# ─── WhatsApp ────────────────────────────────────────────
+# El numero solo autoriza a escribir cuando el estado es 'activo'. Guardarlo y
+# poder usarlo son dos cosas distintas a proposito: Meta exige consentimiento
+# demostrable y bloquea el numero de la empresa si se escribe sin el.
+
+async def set_whatsapp_pendiente(usuario_id: int, numero_e164: str) -> None:
+    """Guarda el numero a la espera de que su dueno confirme desde WhatsApp."""
+    async with connection() as conn:
+        await conn.execute(
+            """UPDATE usuarios
+                  SET whatsapp_numero = $2,
+                      whatsapp_estado = 'pendiente',
+                      whatsapp_opt_in_en = NULL,
+                      whatsapp_opt_out_en = NULL
+                WHERE id = $1""",
+            usuario_id, numero_e164)
+
+
+async def activar_whatsapp(numero_e164: str) -> int | None:
+    """Marca el numero como confirmado. Devuelve el usuario, o None si no existe.
+
+    Se busca POR NUMERO porque quien confirma lo hace desde WhatsApp, donde no
+    hay sesion de la web: lo unico que trae el webhook es el telefono. Por eso
+    solo se activa si ese numero estaba en 'pendiente' para alguien; asi un
+    mensaje suelto de un desconocido no da de alta nada.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            """UPDATE usuarios
+                  SET whatsapp_estado = 'activo',
+                      whatsapp_opt_in_en = NOW(),
+                      whatsapp_opt_out_en = NULL
+                WHERE whatsapp_numero = $1 AND whatsapp_estado IN ('pendiente','baja')
+             RETURNING id""",
+            numero_e164)
+
+
+async def baja_whatsapp(numero_e164: str) -> int | None:
+    """Registra la baja. Se conserva el numero para no reactivarlo por error.
+
+    Borrarlo dejaria el sistema sin memoria de que esa persona pidio no recibir
+    avisos, y bastaria que alguien lo volviera a escribir para empezar de nuevo.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            """UPDATE usuarios
+                  SET whatsapp_estado = 'baja', whatsapp_opt_out_en = NOW()
+                WHERE whatsapp_numero = $1
+             RETURNING id""",
+            numero_e164)
+
+
+async def quitar_whatsapp(usuario_id: int) -> None:
+    """El usuario retira su numero desde la web."""
+    async with connection() as conn:
+        await conn.execute(
+            """UPDATE usuarios
+                  SET whatsapp_numero = NULL,
+                      whatsapp_estado = 'sin_configurar',
+                      whatsapp_opt_in_en = NULL,
+                      whatsapp_opt_out_en = NOW()
+                WHERE id = $1""",
+            usuario_id)

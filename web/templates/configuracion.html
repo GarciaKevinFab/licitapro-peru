@@ -2,6 +2,10 @@
 {% block titulo %}Configuración · LicitaPro Perú{% endblock %}
 
 {% block estilos %}
+.wa-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.consiento{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2);line-height:1.45}
+.consiento input{width:auto;margin-top:2px;flex:none}
+
 main{max-width:860px}
 .estado{display:flex;align-items:center;gap:9px;margin-bottom:16px}
 .punto{width:9px;height:9px;border-radius:50%;flex:none}
@@ -82,6 +86,70 @@ table.cred tr:last-child td{border-bottom:none}
         </form>
       {% endif %}
     </div>
+  </section>
+
+  <section class="tarjeta">
+    <h2>WhatsApp</h2>
+    <p class="sub">El mismo aviso, en el canal que ya miras. Llega un resumen
+       agrupado, no un mensaje por licitación.</p>
+
+    {% if not whatsapp_disponible %}
+      <div class="estado">
+        <span class="punto no"></span>
+        <span class="txt"><b>Todavía no disponible.</b> Estamos terminando de
+          activar el canal de WhatsApp. Mientras tanto, usa Telegram o el correo.</span>
+      </div>
+
+    {% elif usuario.whatsapp_estado == 'activo' %}
+      <div class="estado">
+        <span class="punto si"></span>
+        <span class="txt"><b>Activo</b> en {{ usuario.whatsapp_numero }}.
+          Responde <b>BAJA</b> desde WhatsApp cuando quieras dejar de recibirlos.</span>
+      </div>
+      <div class="acciones">
+        <form method="post" action="/configuracion/whatsapp/quitar">
+          <button type="submit" class="peligro">Quitar número</button>
+        </form>
+      </div>
+
+    {% elif usuario.whatsapp_estado == 'pendiente' %}
+      <div class="estado">
+        <span class="punto no"></span>
+        <span class="txt"><b>Falta tu confirmación.</b> Te escribimos al
+          {{ usuario.whatsapp_numero }}. Responde <b>ALTA</b> en ese chat y
+          quedará activado.</span>
+      </div>
+      <p class="ayuda">¿No te llegó? Vuelve a enviarlo con el formulario de abajo.</p>
+
+    {% elif usuario.whatsapp_estado == 'baja' %}
+      <div class="estado">
+        <span class="punto no"></span>
+        <span class="txt"><b>Diste de baja</b> los avisos por WhatsApp. Puedes
+          volver a activarlos cuando quieras.</span>
+      </div>
+    {% endif %}
+
+    {% if whatsapp_disponible and usuario.whatsapp_estado != 'activo' %}
+      <form method="post" action="/configuracion/whatsapp" class="wa-form">
+        <label class="campo">
+          <span>Tu número de móvil</span>
+          <input type="text" name="numero" inputmode="tel" placeholder="987654321"
+                 value="{{ usuario.whatsapp_numero or '' }}" required>
+        </label>
+        <p class="ayuda">Escríbelo como quieras: con o sin +51, con espacios o guiones.
+           Tiene que ser un móvil — WhatsApp no funciona en teléfonos fijos.</p>
+        <label class="consiento">
+          <input type="checkbox" name="consiento" value="1" required>
+          <span>Acepto recibir avisos de licitaciones por WhatsApp. Entiendo que
+            puedo darme de baja respondiendo BAJA en cualquier momento.</span>
+        </label>
+        <div class="acciones">
+          <button type="submit">
+            {% if usuario.whatsapp_estado == 'pendiente' %}Reenviar confirmación{% else %}Activar WhatsApp{% endif %}
+          </button>
+        </div>
+      </form>
+    {% endif %}
   </section>
 
   <section class="tarjeta">
