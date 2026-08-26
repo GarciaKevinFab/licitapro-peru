@@ -8,25 +8,106 @@ log = logging.getLogger("win.payments")
 
 
 async def registrar_factura(contrato_id: int, monto: float, concepto: str,
-                             factura_numero: str = None) -> int:
-    """Registra una factura emitida (pago pendiente)."""
+                             factura_numero: str = None,
+                             fecha_conformidad: date = None,
+                             expediente_siaf: str = None) -> int:
+    """Registra una factura emitida y calcula cuando vence el plazo legal.
+
+    Antes ponia "factura + 30 dias corridos", un numero a ojo. La Ley 32069 fija
+    10 DIAS HABILES desde la CONFORMIDAD, y los dos elementos estaban mal:
+
+      - El ancla: el plazo corre desde la conformidad, no desde la factura.
+      - La cuenta: habiles, no corridos.
+
+    Con conformidad el 24 de julio de 2026 el limite real cae el 12 de agosto
+    (dos Fiestas Patrias, la Batalla de Junin y tres fines de semana en medio).
+    La formula vieja apuntaba al 23 de agosto y habria dejado al proveedor
+    esperando mientras la entidad ya estaba en mora desde el 13.
+
+    Sin conformidad NO se inventa fecha: el plazo aun no empezo a correr, y eso
+    es informacion util, no un hueco que rellenar.
+    """
+    from shared.plazos_pago import fecha_limite_pago
+
     async with connection() as conn:
+        # La categoria del proceso decide el plazo, y viaja por el contrato.
+        categoria = await conn.fetchval(
+            """SELECT l.categoria FROM contratos c
+                 JOIN licitaciones l ON l.id = c.licitacion_id
+                WHERE c.id = $1""",
+            contrato_id)
+        limite = fecha_limite_pago(fecha_conformidad, categoria)
         pago_id = await conn.fetchval(
             """INSERT INTO pagos (contrato_id, concepto, monto, fecha_factura,
-                                   estado, numero_factura)
-            VALUES ($1, $2, $3, $4, 'facturado', $5) RETURNING id""",
+                                  estado, numero_factura, fecha_conformidad,
+                                  fecha_limite_pago, fecha_pago_esperada,
+                                  expediente_siaf)
+            VALUES ($1, $2, $3, $4, 'facturado', $5, $6, $7, $7, $8) RETURNING id""",
             contrato_id, concepto, monto, date.today(), factura_numero,
+            fecha_conformidad, limite, expediente_siaf,
         )
 
-        # Estimar fecha de pago (30 días después de factura)
-        from datetime import timedelta
-        await conn.execute(
-            "UPDATE pagos SET fecha_pago_esperada=$2 WHERE id=$1",
-            pago_id, date.today() + timedelta(days=30),
-        )
-
-    log.info(f"Factura registrada: contrato={contrato_id}, monto={format_monto(monto)}")
+    log.info("Factura registrada: contrato=%s monto=%s limite=%s",
+             contrato_id, format_monto(monto), limite or "sin conformidad aun")
     return pago_id
+
+
+async def registrar_conformidad(pago_id: int, fecha: date) -> dict:
+    """Anota la conformidad y recalcula el vencimiento. Es el dato que importa.
+
+    Se puede registrar despues de la factura porque en la practica llega
+    despues: primero se entrega y se factura, y la entidad da la conformidad
+    cuando revisa. Hasta ese momento no hay plazo que contar.
+    """
+    from shared.plazos_pago import fecha_limite_pago, plazo_legal
+
+    async with connection() as conn:
+        categoria = await conn.fetchval(
+            """SELECT l.categoria FROM pagos p
+                 JOIN contratos c ON c.id = p.contrato_id
+                 JOIN licitaciones l ON l.id = c.licitacion_id
+                WHERE p.id = $1""",
+            pago_id)
+        limite = fecha_limite_pago(fecha, categoria)
+        await conn.execute(
+            """UPDATE pagos SET fecha_conformidad=$2, fecha_limite_pago=$3,
+                                fecha_pago_esperada=$3
+                WHERE id=$1""",
+            pago_id, fecha, limite)
+    _, explicacion = plazo_legal(categoria)
+    return {"fecha_limite": limite, "explicacion": explicacion}
+
+
+async def pagos_vencidos(empresa_id: int = None) -> list[dict]:
+    """Pagos cuyo plazo legal ya vencio, con los dias de mora.
+
+    Es la consulta que da sentido a todo esto: no "cuando me pagan" sino "a
+    quien puedo reclamarle ya". La mora se calcula al leer porque cambia sola
+    cada dia habil que pasa; guardarla obligaria a un proceso nocturno que
+    puede fallar en silencio.
+    """
+    from shared.plazos_pago import dias_de_mora, en_prorroga
+
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT p.*, c.numero_contrato, c.empresa_id, l.entidad, l.categoria
+                 FROM pagos p
+                 JOIN contratos c ON c.id = p.contrato_id
+                 LEFT JOIN licitaciones l ON l.id = c.licitacion_id
+                WHERE p.fecha_limite_pago IS NOT NULL
+                  AND p.fecha_pago_real IS NULL
+                  AND p.fecha_limite_pago < CURRENT_DATE
+                  AND ($1::int IS NULL OR c.empresa_id = $1)
+                ORDER BY p.fecha_limite_pago""",
+            empresa_id)
+
+    salida = []
+    for f in filas:
+        d = dict(f)
+        d["dias_mora"] = dias_de_mora(f["fecha_limite_pago"])
+        d["en_prorroga"] = en_prorroga(f["fecha_limite_pago"])
+        salida.append(d)
+    return salida
 
 
 async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,

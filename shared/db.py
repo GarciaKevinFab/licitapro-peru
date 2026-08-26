@@ -44,6 +44,26 @@ def _es_gestionado(host: str) -> bool:
     return bool(host) and not host.startswith(("localhost", "127.", "db", "postgres"))
 
 
+async def _preparar_conexion(conn) -> None:
+    """Hace que JSONB llegue a Python como dict o lista, no como texto.
+
+    Por defecto asyncpg entrega JSONB en crudo. Eso convirtio `banderas` en la
+    cadena '["postor_unico"]', asi que recorrerla iteraba CARACTERES, y la
+    cadena '[]' -- que representa "ninguna bandera" -- resultaba verdadera, de
+    modo que el aviso salia tambien en las licitaciones sin ningun indicio.
+
+    El encoder deja pasar lo que ya viene serializado: hay INSERT que mandan el
+    JSON hecho cadena con un ::jsonb explicito, y volver a serializarlo lo
+    guardaria como un texto entrecomillado dentro del JSON.
+    """
+    def codificar(valor):
+        return valor if isinstance(valor, str) else json.dumps(valor)
+
+    for tipo in ("jsonb", "json"):
+        await conn.set_type_codec(
+            tipo, encoder=codificar, decoder=json.loads, schema="pg_catalog")
+
+
 async def get_pool() -> asyncpg.Pool:
     """Pool de conexiones. Sirve igual para el Postgres local y para Supabase.
 
@@ -72,6 +92,7 @@ async def get_pool() -> asyncpg.Pool:
             # nacia pareciendo caducado, y una licitacion se daba por vencida
             # cinco horas antes de cerrar, justo en el caso "cierra hoy".
             server_settings={"timezone": "America/Lima"},
+            init=_preparar_conexion,
         )
 
         if puerto == PUERTO_POOLER_TRANSACCION:
@@ -335,18 +356,43 @@ async def refrescar_licitacion(data: dict) -> bool:
         fila = await conn.fetchrow(
             "SELECT id FROM licitaciones WHERE id = $1", data["id"]
         )
+        # Los datos de adjudicacion llegan DESPUES de la convocatoria: el mismo
+        # ocid se republica con postores y ganador cuando se resuelve. Por eso
+        # van con COALESCE en el UPDATE -- una republicacion posterior sin esos
+        # campos no puede borrar lo que ya se sabia.
         await conn.execute(
             """INSERT INTO licitaciones
             (id, fuente, tipo, nomenclatura, entidad, entidad_tipo, entidad_ruc,
              objeto, monto_referencial, moneda, fecha_publicacion, fecha_cierre,
-             estado, departamento, url, bases_urls)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+             estado, departamento, url, bases_urls,
+             numero_postores, proveedor_ganador, proveedor_ruc,
+             monto_adjudicado, plazo_consultas_dias, banderas, banderas_nivel,
+             categoria)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+                    $17,$18,$19,$20,$21,$22::jsonb,$23,$24)
             ON CONFLICT (id) DO UPDATE SET
                 estado            = EXCLUDED.estado,
+                -- El tipo se refresca a proposito: al corregir el mapeo de
+                -- procedimientos, las filas ya guardadas conservaban la
+                -- clasificacion vieja y la correccion no llegaba nunca.
+                tipo              = COALESCE(EXCLUDED.tipo, licitaciones.tipo),
                 fecha_cierre      = EXCLUDED.fecha_cierre,
                 monto_referencial = COALESCE(EXCLUDED.monto_referencial,
                                              licitaciones.monto_referencial),
                 bases_urls        = EXCLUDED.bases_urls,
+                numero_postores   = COALESCE(EXCLUDED.numero_postores,
+                                             licitaciones.numero_postores),
+                proveedor_ganador = COALESCE(EXCLUDED.proveedor_ganador,
+                                             licitaciones.proveedor_ganador),
+                proveedor_ruc     = COALESCE(EXCLUDED.proveedor_ruc,
+                                             licitaciones.proveedor_ruc),
+                monto_adjudicado  = COALESCE(EXCLUDED.monto_adjudicado,
+                                             licitaciones.monto_adjudicado),
+                plazo_consultas_dias = COALESCE(EXCLUDED.plazo_consultas_dias,
+                                                licitaciones.plazo_consultas_dias),
+                banderas          = EXCLUDED.banderas,
+                banderas_nivel    = EXCLUDED.banderas_nivel,
+                categoria         = COALESCE(EXCLUDED.categoria, licitaciones.categoria),
                 updated_at        = NOW()""",
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"], data.get("entidad_tipo"),
@@ -355,6 +401,11 @@ async def refrescar_licitacion(data: dict) -> bool:
             data.get("fecha_publicacion"), data.get("fecha_cierre"),
             data.get("estado", "convocado"), data.get("departamento"),
             data.get("url"), data.get("bases_urls", []),
+            data.get("numero_postores"), data.get("proveedor_ganador"),
+            data.get("proveedor_ruc"), data.get("monto_adjudicado"),
+            data.get("plazo_consultas_dias"),
+            json.dumps(data.get("banderas") or []), data.get("banderas_nivel", 0),
+            data.get("categoria"),
         )
         return fila is None
 

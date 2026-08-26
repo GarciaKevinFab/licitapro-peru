@@ -39,6 +39,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import log_scraping_start, log_scraping_end, refrescar_licitacion
+from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
 
 log = logging.getLogger("radar.ocds_oece")
@@ -62,7 +63,7 @@ TIPO_POR_METODO = {
     "licitacion publica": "LP",
     "licitacion publica abreviada": "LPA",
     "concurso publico": "CP",
-    "concurso publico abreviado": "CP",
+    "concurso publico abreviado": "CPA",
     "concurso publico para consultoria": "CP",
     "concurso publico de servicios": "CP",
     "adjudicacion simplificada": "AS",
@@ -126,8 +127,11 @@ def _tipo(metodo: str | None) -> str | None:
     clave = normalizar(metodo).strip()
     if clave in TIPO_POR_METODO:
         return TIPO_POR_METODO[clave]
-    # Coincidencia parcial: "Concurso Publico de Obras" -> CP
-    for k, v in TIPO_POR_METODO.items():
+    # Coincidencia parcial: "Concurso Publico de Obras" -> CP. Se prueban las
+    # claves mas largas primero porque "concurso publico" es prefijo de
+    # "concurso publico abreviado": al reves, toda abreviada caeria en CP y se
+    # mezclaria con los ordinarios, que tienen plazos legales muy distintos.
+    for k, v in sorted(TIPO_POR_METODO.items(), key=lambda kv: -len(kv[0])):
         if clave.startswith(k) or k in clave:
             return v
     return None
@@ -174,12 +178,67 @@ def _departamento(texto: str) -> str | None:
     return None
 
 
-def _ruc(release: dict) -> str | None:
-    for parte in release.get("parties") or []:
-        for extra in parte.get("additionalIdentifiers") or []:
-            if extra.get("scheme") == "PE-RUC" and extra.get("id"):
-                return str(extra["id"])
+def _ruc_de(parte: dict) -> str | None:
+    for extra in parte.get("additionalIdentifiers") or []:
+        if extra.get("scheme") == "PE-RUC" and extra.get("id"):
+            return str(extra["id"])
     return None
+
+
+def _ruc(release: dict, rol: str = "buyer") -> str | None:
+    """RUC de la parte con ese rol.
+
+    Antes devolvia el de la PRIMERA parte con RUC, sin mirar el rol. En una
+    convocatoria solo hay una parte y coincidia por casualidad; en un release ya
+    adjudicado estan la entidad Y el proveedor, asi que podia entregar el RUC
+    del ganador como si fuera el de la entidad. Con las banderas eso importa: la
+    de ganador recurrente cruza los dos RUC, y si se intercambian el resultado
+    es ruido con apariencia de dato.
+    """
+    for parte in release.get("parties") or []:
+        if rol in (parte.get("roles") or []):
+            ruc = _ruc_de(parte)
+            if ruc:
+                return ruc
+    return None
+
+
+def _adjudicacion(release: dict) -> dict:
+    """Postores, ganador y monto adjudicado. Vacio si aun no se resolvio.
+
+    `parties` lista a TODOS los postores con el rol 'tenderer' (se vieron hasta
+    58 en un mismo proceso), asi que contarlos da el numero real de
+    participantes. Es el dato con el que se ve un proceso de postor unico.
+    """
+    partes = release.get("parties") or []
+    tenderers = [p for p in partes if "tenderer" in (p.get("roles") or [])]
+    ganadores = [p for p in partes if "supplier" in (p.get("roles") or [])]
+
+    monto = 0.0
+    for a in release.get("awards") or []:
+        valor = (a.get("value") or {}).get("amount")
+        if valor:
+            monto += float(valor)
+        else:
+            # Algunos awards no traen `value` propio y el importe vive en los
+            # items. Sumarlos evita perder la cifra en esos casos.
+            for it in a.get("items") or []:
+                total = (it.get("totalValue") or {}).get("amount")
+                if total:
+                    monto += float(total)
+
+    datos = {}
+    # Solo se informa el numero de postores si el proceso ya se adjudico: en una
+    # convocatoria abierta `parties` trae solo a la entidad, y un 0 ahi se leeria
+    # como "nadie se presento" cuando en realidad es "todavia no se sabe".
+    if ganadores or "award" in (release.get("tag") or []):
+        datos["numero_postores"] = len(tenderers) or None
+        if ganadores:
+            datos["proveedor_ganador"] = ganadores[0].get("name")
+            datos["proveedor_ruc"] = _ruc_de(ganadores[0])
+    if monto:
+        datos["monto_adjudicado"] = round(monto, 2)
+    return datos
 
 
 def _parsear(release: dict) -> dict | None:
@@ -237,6 +296,14 @@ def _parsear(release: dict) -> dict | None:
         "departamento": _departamento(texto_ubicacion),
         "url": f"{API}?ocid={ocid}",
         "bases_urls": bases,
+        # La propia API cuenta los dias segun su norma; recalcularlos entre
+        # fechas introduciria un error nuestro donde la fuente no tiene ninguno.
+        "plazo_consultas_dias": (tender.get("enquiryPeriod") or {}).get("durationInDays"),
+        # goods / services / works. Determina el plazo legal de pago: bienes y
+        # servicios tienen los 10 dias habiles de la Ley 32069; las obras se
+        # rigen por reglas propias.
+        "categoria": tender.get("mainProcurementCategory"),
+        **_adjudicacion(release),
     }
 
 
@@ -270,6 +337,9 @@ async def scrape_ocds_oece(
     """
     log_id = await log_scraping_start("ocds_oece")
     corte = datetime.now() - timedelta(days=dias_atras)
+    # Los umbrales se leen UNA vez por pasada, no por licitacion: salen de un
+    # percentil sobre toda la tabla y no cambian a mitad del recorrido.
+    umbrales = await umbrales_por_tipo()
     vistos: set[str] = set()
     nuevas: list[dict] = []
     encontradas = 0
@@ -306,6 +376,7 @@ async def scrape_ocds_oece(
                     lic = _parsear(release)
                     if not lic:
                         continue
+                    lic["banderas"], lic["banderas_nivel"] = calcular(lic, umbrales)
                     encontradas += 1
 
                     if await refrescar_licitacion(lic):

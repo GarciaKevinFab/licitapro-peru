@@ -35,6 +35,7 @@ TIPOS_PROCEDIMIENTO = {
     "LP": "Licitación Pública",
     "LPA": "Licitación Pública Abreviada",
     "CP": "Concurso Público",
+    "CPA": "Concurso Público Abreviado",
     "AS": "Adjudicación Simplificada",
     "SIE": "Subasta Inversa Electrónica",
     "CD": "Contratación Directa",

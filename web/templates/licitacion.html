@@ -1,6 +1,16 @@
 {% extends "_base.html" %}
 {% block titulo %}{{ lic.objeto[:50] }} · LicitaPro{% endblock %}
 {% block estilos %}
+.tarjeta.banderas{border-left:3px solid var(--warn)}
+.tarjeta.banderas.n3{border-left-color:var(--urg)}
+.lista-banderas{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:11px}
+.lista-banderas li{display:flex;flex-direction:column;gap:3px;padding-left:13px;border-left:2px solid var(--line)}
+.lista-banderas li.nivel-3{border-left-color:var(--urg)}
+.lista-banderas li.nivel-2{border-left-color:var(--warn)}
+.lista-banderas li.nivel-1{border-left-color:var(--ink-3)}
+.lista-banderas b{font-size:13.5px}
+.lista-banderas span{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+
 table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
 table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
@@ -66,6 +76,30 @@ main{max-width:900px}
       {% if lic.url %}<a class="btn sec" href="{{ lic.url }}" target="_blank" rel="noopener">Ficha oficial</a>{% endif %}
     </div>
   </div>
+
+  {% if banderas %}
+  <div class="tarjeta banderas n{{ lic.banderas_nivel }}">
+    <h2>Antes de postular, revisa esto</h2>
+    <p class="sub">Señales que encontramos en los datos oficiales. <b>No son una
+       acusación</b>: pueden tener explicación. Sirven para decidir si vale la
+       pena invertir tiempo y dinero en esta propuesta.</p>
+    <ul class="lista-banderas">
+      {% for b in banderas %}
+        <li class="nivel-{{ b.nivel }}">
+          <b>{{ b.titulo }}</b>
+          <span>{{ b.detalle }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if lic.numero_postores or lic.proveedor_ganador %}
+      <div class="desglose" style="margin-top:14px">
+        {% if lic.numero_postores %}<div><dt>Postores</dt><dd>{{ lic.numero_postores }}</dd></div>{% endif %}
+        {% if lic.proveedor_ganador %}<div><dt>Ganó</dt><dd>{{ lic.proveedor_ganador }}</dd></div>{% endif %}
+        {% if lic.plazo_consultas_dias %}<div><dt>Días de consultas</dt><dd>{{ lic.plazo_consultas_dias }}</dd></div>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <div class="tarjeta">
     <h2>Postular</h2>

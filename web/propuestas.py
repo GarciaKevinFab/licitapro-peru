@@ -15,6 +15,7 @@ import os
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from shared.banderas import describir
 from shared.db import connection, empresa_es_de, empresas_de, responder_pregunta
 from web.auth import usuario_actual
 
@@ -70,6 +71,9 @@ async def detalle_licitacion(request: Request, licitacion_id: str, error: str = 
             detalle = None
 
     return _plantillas(request).TemplateResponse("licitacion.html", {
+        # Se describen aqui y no en la plantilla: el texto de cada bandera
+        # vive en un solo sitio, junto a la regla que la produce.
+        "banderas": [describir(c) for c in (lic["banderas"] or [])],
         "request": request, "usuario": usuario, "lic": lic,
         "score_detalle": detalle or {}, "propuestas": mias,
         "empresas": await empresas_de(usuario["id"]), "error": error,
