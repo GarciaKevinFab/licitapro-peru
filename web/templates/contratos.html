@@ -70,15 +70,15 @@ table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mo
       <p class="ayuda">No hay propuestas sin contrato asociado.</p>
     {% else %}
       <form method="post" action="/contratos/ganar" class="acciones">
-        <select name="propuesta_id" required style="max-width:380px">
+        <select class="w-380" name="propuesta_id" required>
           {% for p in candidatas %}
             <option value="{{ p.id }}">{{ (p.objeto or 'Propuesta')[:55] }} — {{ p.razon_social }}</option>
           {% endfor %}
         </select>
-        <input type="number" name="monto" step="0.01" min="0" placeholder="Monto adjudicado"
-               required style="max-width:180px">
-        <input type="number" name="plazo_dias" min="1" value="30"
-               title="Plazo de ejecución en días" style="max-width:110px">
+        <input class="w-180" type="number" name="monto" step="0.01" min="0" placeholder="Monto adjudicado"
+               required>
+        <input class="w-110" type="number" name="plazo_dias" min="1" value="30"
+               title="Plazo de ejecución en días">
         <button type="submit">Registrar</button>
       </form>
     {% endif %}

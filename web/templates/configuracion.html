@@ -48,7 +48,7 @@ table.cred tr:last-child td{border-bottom:none}
   </nav>
   <span class="sesion">
     {{ usuario.nombre or usuario.email }}
-    <form method="post" action="/salir" style="display:inline">
+    <form class="en-linea" method="post" action="/salir">
       <button type="submit" class="sec">Salir</button>
     </form>
   </span>
@@ -216,7 +216,7 @@ table.cred tr:last-child td{border-bottom:none}
       </div>
       <p class="ayuda">Sin ninguna marcada se te alertan todas las regiones.</p>
 
-      <div style="margin-top:18px;display:flex;flex-direction:column;gap:15px">
+      <div class="mt-18 col-15">
         <label class="campo"><span>Palabras clave</span>
           <textarea name="keywords" placeholder="software, servidores, cableado estructurado">{{ (config.keywords | join(', ')) if config and config.keywords else '' }}</textarea>
           <p class="ayuda">Separadas por comas. Prefiere raíces sin tilde
@@ -244,7 +244,7 @@ table.cred tr:last-child td{border-bottom:none}
            perder licitaciones buenas.</p>
       </div>
 
-      <div class="acciones" style="margin-top:18px">
+      <div class="acciones mt-18">
         <button type="submit">Guardar filtros</button>
       </div>
     </form>

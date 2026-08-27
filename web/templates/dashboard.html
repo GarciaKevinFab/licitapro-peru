@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
-<style>
+<style nonce="{{ request.state.csp_nonce }}">
 :root{
   --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
   --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
@@ -146,6 +146,29 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 .arr-pasos li.listo .arr-txt b{color:var(--ink-3);text-decoration:line-through}
 .arr-txt span{font-size:12.5px;color:var(--ink-2);line-height:1.45}
 .arr-pasos li.listo .arr-txt span{display:none}
+
+/* Tramos de la barra de puntaje. Ver el comentario en _tabla.html. */
+.sfill.p0{width:0%}
+.sfill.p5{width:5%}
+.sfill.p10{width:10%}
+.sfill.p15{width:15%}
+.sfill.p20{width:20%}
+.sfill.p25{width:25%}
+.sfill.p30{width:30%}
+.sfill.p35{width:35%}
+.sfill.p40{width:40%}
+.sfill.p45{width:45%}
+.sfill.p50{width:50%}
+.sfill.p55{width:55%}
+.sfill.p60{width:60%}
+.sfill.p65{width:65%}
+.sfill.p70{width:70%}
+.sfill.p75{width:75%}
+.sfill.p80{width:80%}
+.sfill.p85{width:85%}
+.sfill.p90{width:90%}
+.sfill.p95{width:95%}
+.sfill.p100{width:100%}
 </style>
 </head>
 <body>

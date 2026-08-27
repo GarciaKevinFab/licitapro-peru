@@ -69,7 +69,7 @@ main{max-width:900px}
         {% endfor %}
       </div>
     {% endif %}
-    <div class="acciones" style="margin-top:18px">
+    <div class="acciones mt-18">
       {% if lic.bases_urls %}{% for u in lic.bases_urls %}
         <a class="btn sec" href="{{ u }}" target="_blank" rel="noopener">Bases (PDF {{ loop.index }})</a>
       {% endfor %}{% endif %}
@@ -92,7 +92,7 @@ main{max-width:900px}
       {% endfor %}
     </ul>
     {% if lic.numero_postores or lic.proveedor_ganador %}
-      <div class="desglose" style="margin-top:14px">
+      <div class="desglose mt-14">
         {% if lic.numero_postores %}<div><dt>Postores</dt><dd>{{ lic.numero_postores }}</dd></div>{% endif %}
         {% if lic.proveedor_ganador %}<div><dt>Ganó</dt><dd>{{ lic.proveedor_ganador }}</dd></div>{% endif %}
         {% if lic.plazo_consultas_dias %}<div><dt>Días de consultas</dt><dd>{{ lic.plazo_consultas_dias }}</dd></div>{% endif %}

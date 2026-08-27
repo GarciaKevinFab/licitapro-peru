@@ -98,7 +98,7 @@ main{max-width:900px}
     <h2>Precio</h2>
     <p class="sub">El estimador se apoya en el histórico de montos de licitaciones parecidas.</p>
     <form method="post" action="/propuestas/{{ p.id }}/precio" class="acciones">
-      <input type="number" name="precio" step="0.01" min="0" style="max-width:190px"
+      <input class="w-190" type="number" name="precio" step="0.01" min="0"
              value="{{ p.precio_ofertado or '' }}" placeholder="S/ 0.00" required>
       <button type="submit">Guardar precio</button>
     </form>
@@ -148,7 +148,7 @@ main{max-width:900px}
           Descargar con firma escaneada</a>
       </div>
     </div>
-    <p class="ayuda" style="margin-top:14px">¿Todavía no cargaste tu firma o tu
+    <p class="ayuda mt-14">¿Todavía no cargaste tu firma o tu
        sello? Se suben en
        <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
   </div>
@@ -156,7 +156,7 @@ main{max-width:900px}
   <div class="tarjeta">
     <h2>Bases del proceso</h2>
     {% if p.bases_urls %}
-      <p class="ayuda" style="margin-top:14px">Bases:
+      <p class="ayuda mt-14">Bases:
         {% for u in p.bases_urls %}<a href="{{ u }}" target="_blank" rel="noopener">PDF {{ loop.index }}</a> {% endfor %}</p>
     {% endif %}
   </div>

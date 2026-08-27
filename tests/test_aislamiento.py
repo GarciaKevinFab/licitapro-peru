@@ -378,22 +378,55 @@ async def test_una_entidad_con_poco_historial_no_se_juzga(marca):
 
 # ─── Cabeceras y politica de seguridad ───────────────────
 
-async def test_la_politica_prohibe_el_script_embebido(cliente):
-    """Es la linea que de verdad protege contra XSS.
+async def test_la_politica_prohibe_lo_embebido(cliente):
+    """Ni script ni estilo en linea. Es lo que hace que la CSP sirva de algo.
 
-    Mientras script-src admitia 'unsafe-inline', la CSP estaba puesta y no
-    servia: un XSS podia inyectar un <script> y ejecutarlo igual. Se pudo
-    cerrar al sacar del HTML los tres manejadores on*= y el script de la
-    portada.
+    Mientras admitia 'unsafe-inline', la politica estaba puesta y no protegia:
+    un XSS podia inyectar un <script> y ejecutarlo igual. Se cerro sacando del
+    HTML los manejadores on*=, el script de la portada y los 44 atributos
+    style=.
     """
     r = await cliente.get("/entrar")
     csp = r.headers["Content-Security-Policy"]
-    script_src = next(d for d in csp.split("; ") if d.startswith("script-src"))
-    assert "'unsafe-inline'" not in script_src
-    # Y lo que protege desde el primer dia, sin depender de lo embebido.
+    for directiva in ("script-src", "style-src"):
+        valor = next(d for d in csp.split("; ") if d.startswith(directiva))
+        assert "'unsafe-inline'" not in valor, valor
+    # Y lo que protege sin depender de lo embebido.
     assert "frame-ancestors 'none'" in csp
     assert "form-action 'self'" in csp
     assert "object-src 'none'" in csp
+
+
+async def test_el_nonce_cambia_en_cada_peticion(cliente):
+    """Un nonce fijo es 'unsafe-inline' con pasos extra: el atacante lo lee del
+    HTML y se lo pone a su propia etiqueta."""
+    import re
+
+    def nonce_de(respuesta):
+        m = re.search(r"'nonce-([^']+)'",
+                      respuesta.headers["Content-Security-Policy"])
+        return m.group(1) if m else None
+
+    primera = await cliente.get("/entrar")
+    segunda = await cliente.get("/entrar")
+    a, b = nonce_de(primera), nonce_de(segunda)
+    assert a and b and a != b
+
+    # Y el <style> de la pagina tiene que traer EXACTAMENTE el de su cabecera:
+    # si no coincide, el navegador descarta los estilos y la web sale desnuda.
+    assert f'<style nonce="{a}">' in primera.text
+
+
+async def test_no_quedan_atributos_style_en_las_plantillas():
+    """Un nonce no cubre los atributos style=: solo vale para elementos <style>.
+
+    Asi que si alguien vuelve a meter uno, el navegador lo ignora en silencio y
+    el elemento se descoloca sin ningun error visible.
+    """
+    import pathlib
+    culpables = [f.name for f in pathlib.Path("web/templates").glob("*.html")
+                 if 'style="' in f.read_text(encoding="utf-8")]
+    assert not culpables, f"estilos embebidos en: {culpables}"
 
 
 async def test_las_cabeceras_acompanan_a_los_errores(cliente):

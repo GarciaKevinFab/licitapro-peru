@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
-<style>
+<style nonce="{{ request.state.csp_nonce }}">
 :root{
   --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
   --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
@@ -91,6 +91,34 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--ink-3);display:flex;gap:8px}
 .pie-app a{color:var(--ink-3);text-decoration:none;border-bottom:1px solid var(--line)}
 .pie-app a:hover{color:var(--ac)}
+
+/* ---------- utilidades ----------
+   Existen para que la politica de seguridad pueda prohibir el estilo en linea.
+   Mientras hubiera atributos style= habia que admitir 'unsafe-inline' en
+   style-src, y con eso puesto la CSP no frena una inyeccion de CSS. Son pocas
+   y con nombre literal a proposito: no es un sistema de utilidades, es la
+   lista cerrada de lo que habia embebido. */
+.mt-12{margin-top:12px}
+.mt-14{margin-top:14px}
+.mt-16{margin-top:16px}
+.mt-18{margin-top:18px}
+.pt-40{padding-top:40px}
+.w-110{max-width:110px}
+.w-120{max-width:120px}
+.w-150{max-width:150px}
+.w-160{max-width:160px}
+.w-170{max-width:170px}
+.w-180{max-width:180px}
+.w-190{max-width:190px}
+.w-250{max-width:250px}
+.w-300{max-width:300px}
+.w-380{max-width:380px}
+.w-total{width:100%}
+.w-total-alto{width:100%;padding:11px}
+.w-auto{width:auto}
+.en-linea{display:inline}
+.fila-check{display:flex;align-items:center;gap:6px;font-size:13px}
+.col-15{display:flex;flex-direction:column;gap:15px}
 {% block estilos %}{% endblock %}
 </style>
 </head>

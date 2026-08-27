@@ -70,15 +70,15 @@ main{max-width:900px}
         {% endif %}
       </div>
       {% if s.en_gracia %}
-        <div class="mensaje aviso" style="margin-top:14px">
+        <div class="mensaje aviso mt-14">
           Tu pago no se completó. Conservas el acceso unos días más mientras lo resuelves.
         </div>
       {% elif s.estado_efectivo == 'suspendida' %}
-        <div class="mensaje mal" style="margin-top:14px">
+        <div class="mensaje mal mt-14">
           Suscripción suspendida. Paga para recuperar el acceso.
         </div>
       {% endif %}
-      <div class="acciones" style="margin-top:16px">
+      <div class="acciones mt-16">
         <form method="post" action="/suscripcion/pagar">
           <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
         </form>
@@ -151,7 +151,7 @@ main{max-width:900px}
       {% endfor %}
       </tbody>
     </table>
-    <p class="ayuda" style="margin-top:12px">La comisión es la que retiene Izipay:
+    <p class="ayuda mt-12">La comisión es la que retiene Izipay:
        4.06% + S/0.81 por cobro, con IGV incluido.</p>
   </div>
   {% endif %}

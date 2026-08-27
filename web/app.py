@@ -5,6 +5,7 @@ impresionar. El tratamiento cinematografico vive en la landing; aqui manda la
 densidad de informacion y la velocidad.
 """
 import os
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -75,38 +76,45 @@ async def exigir_suscripcion(request: Request, call_next):
 # envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
 # acompanan tambien a las respuestas de error y a las redirecciones.
 #
-# script-src YA NO admite 'unsafe-inline', y esa es la linea que de verdad
-# protege: con ella puesta, un XSS que consiga inyectar un <script> en la
-# pagina no llega a ejecutarse. Se pudo cerrar al sacar del HTML los tres
-# manejadores on*= y el bloque <script> de la portada; mientras estuvieron ahi,
-# la CSP existia pero no servia contra XSS.
+# script-src NO admite 'unsafe-inline': con eso puesto, un XSS que consiga
+# inyectar un <script> no llega a ejecutarse. Se pudo cerrar al sacar del HTML
+# los manejadores on*= y el bloque <script> de la portada.
 #
-# style-src si sigue admitiendolo, y conviene saber por que: quedan 42
-# atributos style= y tres bloques <style> repartidos por las plantillas.
-# Sacarlos es un refactor grande y el riesgo que queda es mucho menor -- con
-# CSS inyectado se pueden hacer trucos de exfiltracion, no ejecutar codigo.
+# style-src tampoco lo admite ya. Ahi hubo que resolver dos cosas distintas:
 #
-# El resto no depende de lo embebido y protege desde el primer dia:
-#   form-action     — un XSS no puede reenviar el formulario de acceso a otro sitio
-#   frame-ancestors — nadie puede incrustar la web en un iframe suyo (clickjacking)
-#   base-uri        — impide reescribir la base de las URL relativas
-#   object-src      — mata Flash/applets y sus vectores heredados
-CSP = "; ".join([
-    "default-src 'self'",
-    "script-src 'self' https://unpkg.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data:",
-    "connect-src 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "object-src 'none'",
-])
+#   - Los 44 atributos style= repartidos por las plantillas. Esos se borran y
+#     punto: pasan a clases. Un nonce NO sirve para ellos -- solo vale para
+#     elementos <style>, no para atributos.
+#   - Los bloques <style> que cada plantilla inyecta por {% block estilos %}.
+#     Esos no se pueden sacar a un archivo sin deshacer esa estructura, y su
+#     contenido cambia por pagina, asi que un hash tampoco vale. Por eso llevan
+#     un NONCE distinto en cada peticion: el navegador ejecuta el <style> que
+#     trae el nonce del dia y rechaza cualquier otro que alguien inyecte.
+#
+# El nonce se genera por peticion y NUNCA se reutiliza: un nonce fijo es lo
+# mismo que 'unsafe-inline' con pasos extra, porque el atacante puede leerlo
+# del HTML y ponerselo a su propia etiqueta.
+def _csp(nonce: str) -> str:
+    return "; ".join([
+        "default-src 'self'",
+        "script-src 'self' https://unpkg.com",
+        f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "object-src 'none'",
+    ])
 
 
 @app.middleware("http")
 async def cabeceras_seguridad(request: Request, call_next):
+    # Se genera antes de llamar a la vista: la plantilla tiene que poder
+    # ponerlo en sus <style>, y la cabecera tiene que llevar el mismo.
+    nonce = secrets.token_urlsafe(16)
+    request.state.csp_nonce = nonce
     respuesta = await call_next(request)
     respuesta.headers["X-Content-Type-Options"] = "nosniff"
     respuesta.headers["X-Frame-Options"] = "DENY"
@@ -115,7 +123,7 @@ async def cabeceras_seguridad(request: Request, call_next):
     # inyectado los pida en nuestro nombre.
     respuesta.headers["Permissions-Policy"] = (
         "geolocation=(), microphone=(), camera=(), payment=()")
-    respuesta.headers["Content-Security-Policy"] = CSP
+    respuesta.headers["Content-Security-Policy"] = _csp(nonce)
     if os.getenv("LICITAPRO_ENTORNO", "dev") != "dev":
         # Solo fuera de desarrollo: en local no hay TLS, y mandar HSTS desde
         # localhost deja el navegador del desarrollador forzando https contra

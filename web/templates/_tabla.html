@@ -25,7 +25,11 @@
         {% if l.score_viabilidad %}
           <div class="score">
             <span class="sv">{{ l.score_viabilidad|round|int }}</span>
-            <span class="sbar"><span class="sfill" style="width:{{ l.score_viabilidad|round|int }}%"></span></span>
+            {# El ancho se redondea a tramos de 5%: en una barra de 120 px la
+   diferencia entre 63% y 65% no se ve, y asi el estilo puede vivir en
+   una clase en vez de en un atributo style= que obligaria a admitir
+   'unsafe-inline' en la politica de seguridad. #}
+            <span class="sbar"><span class="sfill p{{ ((l.score_viabilidad|round|int) / 5)|round|int * 5 }}"></span></span>
           </div>
         {% else %}<span class="nd">—</span>{% endif %}
       </td>
