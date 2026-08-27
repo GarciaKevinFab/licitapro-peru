@@ -268,6 +268,13 @@ async def renovaciones_pendientes() -> list[dict]:
                  JOIN planes p ON p.codigo = s.plan_codigo
                 WHERE s.token_tarjeta IS NOT NULL
                   AND s.estado IN ('activa','vencida')
+                  -- Nunca se cobra un plan de precio cero. Sin esto, alguien
+                  -- que cayo al plan gratuito conservando su tarjeta generaria
+                  -- una orden de S/0.00 contra la pasarela cada dia: la
+                  -- rechazaria, sumaria un intento fallido y acabaria
+                  -- suspendiendo a un usuario que no debe nada.
+                  AND COALESCE(CASE WHEN s.periodo='anual' THEN p.precio_anual
+                                    ELSE p.precio_mensual END, 0) > 0
                   AND s.vence < NOW()
                   AND s.intentos_fallidos < $1
                   AND (s.ultimo_intento IS NULL

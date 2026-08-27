@@ -649,3 +649,57 @@ async def test_la_adjudicacion_avisa_pero_no_crea_el_contrato(usuario, marca):
         async with connection() as c:
             await c.execute("DELETE FROM propuestas WHERE licitacion_id=$1", lic)
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+# ─── Cobro de renovaciones ───────────────────────────────
+
+async def test_nunca_se_cobra_un_plan_de_precio_cero(usuario):
+    """Quien cae al plan gratuito conservando su tarjeta no debe generar cobros.
+
+    Sin este filtro, la renovacion diaria lanzaria una orden de S/0.00 contra
+    la pasarela, esta la rechazaria, sumaria un intento fallido y acabaria
+    suspendiendo a un usuario que no debe nada.
+    """
+    from shared.db import connection
+    from shared.seguridad import cifrar
+    from shared.suscripciones import renovaciones_pendientes
+
+    async with connection() as c:
+        await c.execute(
+            """UPDATE suscripciones
+                  SET plan_codigo='gratis', estado='vencida',
+                      vence = NOW() - INTERVAL '5 days', token_tarjeta = $2
+                WHERE usuario_id = $1""",
+            usuario["id"], cifrar("token-de-prueba"))
+
+    pendientes = await renovaciones_pendientes()
+    assert not any(p["usuario_id"] == usuario["id"] for p in pendientes)
+
+    # Y el mismo usuario en un plan de pago SI debe entrar, con su importe.
+    async with connection() as c:
+        await c.execute(
+            "UPDATE suscripciones SET plan_codigo='pro' WHERE usuario_id=$1",
+            usuario["id"])
+    mios = [p for p in await renovaciones_pendientes()
+            if p["usuario_id"] == usuario["id"]]
+    assert len(mios) == 1
+    assert float(mios[0]["monto"]) == 99.0
+
+
+async def test_los_precios_anuales_son_coherentes():
+    """El anual es diez mensualidades en los tres planes de pago: dos meses de
+    regalo. Si alguien cambia un precio suelto, esto lo detiene antes de que un
+    cliente pague un importe que no cuadra con lo que promete la web."""
+    from shared.db import connection
+
+    async with connection() as c:
+        planes = await c.fetch(
+            "SELECT codigo, precio_mensual, precio_anual FROM planes "
+            "WHERE activo = TRUE AND precio_mensual > 0")
+
+    assert planes, "no hay planes de pago activos"
+    for p in planes:
+        esperado = float(p["precio_mensual"]) * 10
+        assert float(p["precio_anual"]) == esperado, (
+            f"{p['codigo']}: anual {p['precio_anual']} no son 10 mensualidades "
+            f"de {p['precio_mensual']}")
