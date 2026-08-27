@@ -41,6 +41,12 @@ form.acc button{width:100%;padding:10px}
           <input type="password" name="password" required minlength="10" autocomplete="new-password">
           <p class="ayuda">Mínimo 10 caracteres.</p></label>
         <button type="submit">Crear cuenta</button>
+    {% if modo == 'registro' %}
+      <p class="ayuda" style="margin-top:12px">Al crear la cuenta aceptas los
+         <a href="/terminos">términos del servicio</a> y la
+         <a href="/privacidad">política de privacidad</a>.</p>
+    {% endif %}
+    
       </form>
       <p class="alterna">¿Ya tienes cuenta? <a href="/entrar">Entrar</a></p>
     {% else %}

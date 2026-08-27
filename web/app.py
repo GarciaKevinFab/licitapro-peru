@@ -291,6 +291,41 @@ async def portada(request: Request):
     })
 
 
+_MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+          "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def _hoy_en_letras() -> str:
+    from datetime import date
+    h = date.today()
+    return f"{h.day} de {_MESES[h.month - 1]} de {h.year}"
+
+
+@app.get("/privacidad", response_class=HTMLResponse)
+async def privacidad(request: Request):
+    """Politica de privacidad. Publica: hay que poder leerla ANTES de registrarse.
+
+    Va tambien en RUTAS_LIBRES: quien tiene la suscripcion suspendida conserva
+    el derecho a leer que hacemos con sus datos y a pedir que los borremos.
+    Condicionar eso a estar al dia con el pago seria lo contrario de lo que
+    exige la Ley 29733.
+    """
+    return templates.TemplateResponse("privacidad.html", {
+        "request": request,
+        "usuario": await usuario_actual(request),
+        "hoy": _hoy_en_letras(),
+    })
+
+
+@app.get("/terminos", response_class=HTMLResponse)
+async def terminos(request: Request):
+    return templates.TemplateResponse("terminos.html", {
+        "request": request,
+        "usuario": await usuario_actual(request),
+        "hoy": _hoy_en_letras(),
+    })
+
+
 async def _primeros_pasos(usuario_id: int) -> dict | None:
     """Los tres pasos que hacen util la cuenta, y cuales lleva hechos.
 

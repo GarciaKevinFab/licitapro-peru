@@ -1,0 +1,127 @@
+{% extends "_base.html" %}
+{% block titulo %}Términos del servicio · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+.legal{max-width:70ch;margin:0 auto}
+.legal h1{font-family:Sora,sans-serif;font-size:1.7rem;font-weight:600;
+  letter-spacing:-.02em;margin:0 0 6px}
+.legal .fecha{font-size:12.5px;color:var(--ink-3);margin:0 0 26px}
+.legal h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;
+  margin:30px 0 10px;letter-spacing:-.01em}
+.legal p{margin:0 0 12px;line-height:1.62}
+.legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
+.legal li{margin-bottom:6px}
+.revisar{background:var(--warn-soft);border:1px solid var(--warn);border-radius:5px;
+  padding:15px 17px;margin-bottom:26px;font-size:13.5px;color:var(--warn);line-height:1.55}
+.legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--ink-3)}
+{% endblock %}
+
+{% block cuerpo %}
+{% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main>
+<article class="legal tarjeta">
+
+  <div class="revisar">
+    <b>Borrador pendiente de revisión legal.</b> Describe lo que el sistema hace
+    de verdad, pero un contrato de servicio tiene consecuencias que no se
+    resuelven leyendo el código. Que lo revise un abogado antes de publicarlo,
+    sobre todo las cláusulas de responsabilidad y la de jurisdicción.
+  </div>
+
+  <h1>Términos del servicio</h1>
+  <p class="fecha">Última actualización: {{ hoy }}</p>
+
+  <p>Al crear una cuenta en LicitaPro Perú aceptas estos términos. Si no estás
+     de acuerdo con alguno, no uses el servicio.</p>
+
+  <h2>1. Qué es LicitaPro</h2>
+  <p>Una herramienta que reúne las convocatorias que publica el Estado peruano,
+     te avisa de las que encajan con tu perfil y te ayuda a preparar los
+     documentos para presentarte.</p>
+  <p><b>No somos el Estado ni tenemos relación con el OECE, el SEACE ni ninguna
+     entidad convocante.</b> Tampoco somos un estudio de abogados ni un asesor
+     en contrataciones: no damos asesoría legal.</p>
+
+  <h2>2. De dónde salen los datos, y qué garantizamos</h2>
+  <p>Las licitaciones vienen de fuentes oficiales y públicas, principalmente la
+     API de Contrataciones Abiertas del OECE. Las mostramos tal como las publica
+     la entidad.</p>
+  <p>Esto importa: <b>la fuente de verdad son las bases oficiales del proceso,
+     no nuestra ficha.</b> Si una entidad publica un dato incompleto o cambia un
+     plazo sin reflejarlo en la API, nosotros mostramos lo que ella publicó.
+     Antes de presentarte, revisa siempre las bases en el SEACE.</p>
+  <p>Hacemos lo razonable para que el servicio funcione y esté al día, pero no
+     garantizamos que esté disponible sin interrupciones ni que te avisemos de
+     absolutamente todas las oportunidades que te podrían interesar.</p>
+
+  <h2>3. Las señales que marcamos no son acusaciones</h2>
+  <p>Cuando indicamos que un proceso o una entidad tiene indicios que conviene
+     revisar — un solo postor, poca competencia, un plazo de consultas más corto
+     de lo habitual para su tipo — estamos mostrando <b>datos públicos
+     calculados</b>, no afirmando que haya irregularidad alguna.</p>
+  <p>Un proceso con un único participante puede tenerlo porque nadie más fabrica
+     lo que se pide. La decisión de presentarte o no es tuya.</p>
+
+  <h2>4. Firma digital</h2>
+  <p>Preparamos documentos en PDF listos para que los firmes con tu DNI
+     electrónico. <b>La firma la haces tú, en tu equipo</b>, con el software de
+     RENIEC y tu lector. No firmamos por ti, no podemos hacerlo y nunca te
+     pediremos tu PIN.</p>
+  <p>Cuando incrustas tu firma escaneada, lo que obtienes es una imagen dentro
+     de un documento: no tiene la validez legal de una firma digital. Si la
+     entidad exige firma digital, la escaneada no sirve.</p>
+
+  <h2>5. Tu cuenta</h2>
+  <ul>
+    <li>Eres responsable de tu contraseña y de lo que se haga desde tu cuenta.</li>
+    <li>Los datos que cargas — RUC, representante legal, experiencia — debes
+        tener derecho a usarlos, y deben ser ciertos.</li>
+    <li>Una cuenta es para una persona o empresa. Compartirla con terceros no
+        está permitido.</li>
+  </ul>
+
+  <h2>6. Planes y pagos</h2>
+  <ul>
+    <li>Toda cuenta empieza con <b>14 días del plan Pro</b>, sin coste.</li>
+    <li>Al terminar la prueba no se cierra tu cuenta: pasa al <b>plan Gratis</b>,
+        conservando tu panel y tus datos, y perdiendo los avisos automáticos, el
+        análisis con IA y las empresas adicionales.</li>
+    <li>Los planes de pago se renuevan automáticamente cada periodo. Puedes
+        cancelar cuando quieras: conservas el acceso hasta el final del periodo
+        que ya pagaste.</li>
+    <li>Si un cobro falla, lo reintentamos durante unos días antes de suspender
+        el plan. No cortamos al primer rebote.</li>
+    <li>Los precios incluyen IGV y pueden cambiar. Un cambio de precio se avisa
+        con antelación y nunca se aplica a un periodo ya pagado.</li>
+  </ul>
+
+  <h2>7. Hasta dónde respondemos</h2>
+  <p>LicitaPro es una herramienta de apoyo. <b>No respondemos por el resultado de
+     tus procesos:</b> no ganar una licitación, presentarte fuera de plazo,
+     descartar una oportunidad o cualquier decisión comercial que tomes son
+     cosas que dependen de ti y de la entidad, no de nosotros.</p>
+  <p>En particular, no respondemos por plazos que la entidad modifique, por
+     documentos que no cumplan un requisito específico de unas bases concretas,
+     ni por avisos que no lleguen por una caída de WhatsApp, Telegram o tu
+     servidor de correo.</p>
+  <p><b>[Límite de responsabilidad económica: pendiente de definir con tu
+     abogado.]</b></p>
+
+  <h2>8. Cancelación</h2>
+  <p>Puedes cerrar tu cuenta cuando quieras desde Configuración, y se borra todo
+     lo tuyo. Podemos suspender una cuenta que incumpla estos términos, que use
+     el servicio para algo ilícito o que intente romper el aislamiento entre
+     clientes; cuando sea posible avisaremos antes.</p>
+
+  <h2>9. Cambios y ley aplicable</h2>
+  <p>Si cambiamos estos términos te avisaremos por correo. Seguir usando el
+     servicio después de un cambio significa que lo aceptas.</p>
+  <p>Se rigen por la ley peruana. <b>[Jurisdicción: pendiente de definir.]</b></p>
+
+  <p class="pie-legal">
+    <a href="/">Volver al inicio</a> &middot; <a href="/privacidad">Política de privacidad</a>
+  </p>
+</article>
+</main>
+{% endblock %}

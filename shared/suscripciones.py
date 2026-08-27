@@ -286,6 +286,10 @@ async def renovaciones_pendientes() -> list[dict]:
 RUTAS_LIBRES = (
     "/entrar", "/registro", "/salir", "/recuperar",
     "/suscripcion", "/webhooks/", "/salud", "/static",
+    # Las paginas legales se leen con la suscripcion suspendida o sin cuenta:
+    # el derecho a saber que hacemos con tus datos y a pedir que los borremos
+    # no depende de estar al dia con el pago.
+    "/privacidad", "/terminos",
 )
 
 

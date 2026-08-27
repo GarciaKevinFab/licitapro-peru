@@ -491,3 +491,45 @@ async def test_la_api_interna_falla_cerrada_sin_token():
         os.environ.pop("LICITAPRO_API_TOKEN", None)
         if previo:
             os.environ["LICITAPRO_API_TOKEN"] = previo
+
+
+# ─── Paginas legales ─────────────────────────────────────
+
+async def test_las_paginas_legales_son_publicas(cliente):
+    """Hay que poder leerlas ANTES de registrarse. Pedir una cuenta para saber
+    que hacemos con tus datos es exactamente lo que la Ley 29733 no quiere."""
+    for ruta in ("/privacidad", "/terminos"):
+        r = await cliente.get(ruta)
+        assert r.status_code == 200, ruta
+        # El aviso de borrador tiene que seguir ahi hasta que un abogado lo
+        # revise: quitarlo sin revision es publicar como definitivo un texto
+        # que nadie valido.
+        assert "pendiente de revisión legal" in r.text
+
+
+async def test_la_privacidad_describe_el_sistema_real(cliente):
+    """No es una plantilla generica: nombra los terceros a los que de verdad se
+    envian datos y los limites concretos del producto."""
+    t = (await cliente.get("/privacidad")).text
+    assert "29733" in t
+    for tercero in ("Meta", "Telegram", "Izipay", "Anthropic"):
+        assert tercero in t, tercero
+    assert "No te pedimos el PIN" in t
+    assert "No guardamos el número de tu tarjeta" in t
+
+
+async def test_las_legales_se_leen_con_la_suscripcion_caida(usuario, cliente):
+    """El derecho a saber que hacemos con tus datos, y a pedir que los
+    borremos, no depende de estar al dia con el pago."""
+    from shared.db import connection
+
+    async with connection() as c:
+        await c.execute(
+            "UPDATE suscripciones SET estado='cancelada', "
+            "vence = NOW() - INTERVAL '60 days' WHERE usuario_id = $1",
+            usuario["id"])
+
+    await cliente.post("/entrar", data={"email": usuario["email"],
+                                        "password": usuario["password"]})
+    assert (await cliente.get("/privacidad")).status_code == 200
+    assert (await cliente.get("/terminos")).status_code == 200

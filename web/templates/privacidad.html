@@ -1,0 +1,181 @@
+{% extends "_base.html" %}
+{% block titulo %}Privacidad · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+.legal{max-width:70ch;margin:0 auto}
+.legal h1{font-family:Sora,sans-serif;font-size:1.7rem;font-weight:600;
+  letter-spacing:-.02em;margin:0 0 6px}
+.legal .fecha{font-size:12.5px;color:var(--ink-3);margin:0 0 26px}
+.legal h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;
+  margin:30px 0 10px;letter-spacing:-.01em}
+.legal p{margin:0 0 12px;line-height:1.62}
+.legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
+.legal li{margin-bottom:6px}
+.legal table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 14px}
+.legal th,.legal td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line-soft);
+  vertical-align:top}
+.legal thead th{background:var(--panel-2);font-size:11px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.revisar{background:var(--warn-soft);border:1px solid var(--warn);border-radius:5px;
+  padding:15px 17px;margin-bottom:26px;font-size:13.5px;color:var(--warn);line-height:1.55}
+.legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--ink-3)}
+.marco-tabla{overflow-x:auto}
+{% endblock %}
+
+{% block cuerpo %}
+{% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main>
+<article class="legal tarjeta">
+
+  <div class="revisar">
+    <b>Borrador pendiente de revisión legal.</b> Este texto describe con
+    exactitud lo que el sistema hace con los datos — está escrito a partir del
+    esquema real, no de una plantilla genérica. Pero no lo ha revisado un
+    abogado. Antes de publicarlo, que lo lea uno: los datos del responsable
+    están sin rellenar y hay decisiones, como los plazos de conservación, que
+    conviene confirmar.
+  </div>
+
+  <h1>Política de privacidad</h1>
+  <p class="fecha">Última actualización: {{ hoy }}</p>
+
+  <p>Esta política explica qué datos personales trata LicitaPro Perú, para qué,
+     con quién se comparten y qué puedes exigir sobre ellos. Se rige por la
+     <b>Ley 29733</b>, Ley de Protección de Datos Personales, y su reglamento.</p>
+
+  <h2>1. Quién es el responsable</h2>
+  <p>El responsable del tratamiento es <b>[razón social pendiente]</b>, con RUC
+     <b>[pendiente]</b> y domicilio en <b>[pendiente]</b>. Para cualquier asunto
+     relacionado con tus datos puedes escribir a <b>[correo pendiente]</b>.</p>
+
+  <h2>2. Qué datos tratamos y por qué</h2>
+  <div class="marco-tabla">
+  <table>
+    <thead><tr><th>Dato</th><th>Para qué</th><th>Si no lo das</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Correo y nombre</td>
+        <td>Identificar tu cuenta, avisarte y recuperar tu contraseña.</td>
+        <td>No se puede crear la cuenta.</td>
+      </tr>
+      <tr>
+        <td>Contraseña</td>
+        <td>Acceder. Se guarda cifrada con bcrypt: <b>no la conocemos ni podemos
+            recuperarla</b>, solo restablecerla.</td>
+        <td>No se puede crear la cuenta.</td>
+      </tr>
+      <tr>
+        <td>Número de WhatsApp</td>
+        <td>Enviarte los avisos de licitaciones. Solo tras confirmarlo tú desde
+            ese teléfono; guardamos la fecha de ese consentimiento y la de tu
+            baja si la pides.</td>
+        <td>No recibes avisos por WhatsApp. Todo lo demás funciona igual.</td>
+      </tr>
+      <tr>
+        <td>Identificador de Telegram</td>
+        <td>Lo mismo, por ese canal. Lo entrega Telegram al vincular; nunca lo
+            escribes tú.</td>
+        <td>No recibes avisos por Telegram.</td>
+      </tr>
+      <tr>
+        <td>Datos de tu empresa: RUC, razón social, representante legal, su DNI
+            y cargo, dirección y teléfono</td>
+        <td>Rellenar los anexos y declaraciones juradas que exige cada proceso.</td>
+        <td>Puedes mirar licitaciones, pero no generar documentos.</td>
+      </tr>
+      <tr>
+        <td>Logo, firma escaneada y sello</td>
+        <td>Incrustarlos en los documentos que generas. Se sirven por una ruta
+            autenticada, nunca por una URL pública adivinable.</td>
+        <td>Los documentos salen sin ellos.</td>
+      </tr>
+      <tr>
+        <td>Datos de pago</td>
+        <td>Cobrar tu suscripción. <b>No guardamos el número de tu tarjeta:</b>
+            solo un identificador que nos devuelve la pasarela, cifrado, más la
+            marca y los cuatro últimos dígitos para que reconozcas cuál es.</td>
+        <td>No puedes contratar un plan de pago.</td>
+      </tr>
+      <tr>
+        <td>Intentos de acceso fallidos, con tu correo y tu IP</td>
+        <td>Frenar a quien intente adivinar contraseñas. Se borran solos a las
+            24 horas, y también en cuanto entras correctamente.</td>
+        <td>No es opcional: es una medida de seguridad, no un servicio.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>3. Con quién se comparten</h2>
+  <p>Solo con quien hace falta para prestarte el servicio, y solo lo que hace
+     falta:</p>
+  <ul>
+    <li><b>Meta (WhatsApp Business).</b> Tu número y tu nombre, únicamente si
+        activaste ese canal.</li>
+    <li><b>Telegram.</b> Tu identificador de chat, únicamente si lo vinculaste.</li>
+    <li><b>Izipay.</b> Los datos del cobro. Tu tarjeta la recibe la pasarela
+        directamente; nosotros nunca la vemos.</li>
+    <li><b>Anthropic.</b> Solo en los planes que incluyen análisis con IA, y solo
+        el texto de las bases de la licitación que analizas. No se envían tus
+        datos personales ni los de tu empresa.</li>
+    <li><b>Servidor de correo.</b> Tu dirección, para mandarte el enlace de
+        recuperación de contraseña.</li>
+  </ul>
+  <p>No vendemos datos a nadie, ni los cedemos con fines publicitarios.</p>
+
+  <h2>4. Lo que NO hacemos</h2>
+  <p>Conviene decirlo explícitamente, porque hay quien sí lo hace:</p>
+  <ul>
+    <li><b>No te pedimos el PIN de tu DNI electrónico</b>, ni podríamos usarlo.
+        La clave vive dentro del chip de tu documento y no sale de ahí: cuando
+        firmas, firmas en tu equipo. Nosotros solo preparamos el PDF.</li>
+    <li><b>No guardamos tus contraseñas del SEACE ni del RNP en claro.</b> Si las
+        cargas, se guardan cifradas y la interfaz solo te dice si están puestas
+        o no; no se pueden volver a ver, tampoco por nosotros.</li>
+    <li><b>No leemos tus documentos</b> más allá de generarlos y guardarlos para
+        que los descargues.</li>
+  </ul>
+
+  <h2>5. Cuánto tiempo los guardamos</h2>
+  <p>Mientras tengas la cuenta abierta. Si la borras, se borran con ella tus
+     empresas, propuestas, contratos, logos y firmas — de verdad, no marcados
+     como inactivos. Los registros de intentos de acceso se eliminan a las 24
+     horas. <b>[Plazo de conservación de los registros contables: pendiente de
+     confirmar con tu contador.]</b></p>
+
+  <h2>6. Tus derechos</h2>
+  <p>La Ley 29733 te reconoce estos, y puedes ejercerlos escribiendo a
+     <b>[correo pendiente]</b>:</p>
+  <ul>
+    <li><b>Acceso.</b> Saber qué datos tuyos tenemos.</li>
+    <li><b>Rectificación.</b> Corregir los que estén mal. La mayoría los puedes
+        editar tú mismo desde tu cuenta.</li>
+    <li><b>Cancelación o supresión.</b> Que los borremos. Está implementado: en
+        Configuración puedes borrar tu cuenta y todo lo que cuelga de ella, sin
+        pedírnoslo a nosotros.</li>
+    <li><b>Oposición.</b> Que dejemos de tratarlos para una finalidad concreta.
+        Para los avisos basta con responder BAJA por WhatsApp o desconectar el
+        canal desde tu cuenta.</li>
+  </ul>
+  <p>Si crees que no atendimos tu solicitud como debíamos, puedes reclamar ante
+     la Autoridad Nacional de Protección de Datos Personales.</p>
+
+  <h2>7. Seguridad</h2>
+  <p>Las contraseñas van con bcrypt y las credenciales que cargas, cifradas. La
+     sesión viaja en una cookie firmada y, fuera de desarrollo, solo por HTTPS.
+     Cada cuenta ve únicamente sus propios datos, y eso se comprueba en cada
+     petición que recibe un identificador desde fuera.</p>
+  <p>Ninguna medida es perfecta. Si detectamos una brecha que afecte a tus
+     datos, te lo diremos.</p>
+
+  <h2>8. Cambios</h2>
+  <p>Si cambiamos esta política te avisaremos por correo antes de que empiece a
+     aplicarse. La fecha de arriba dice cuándo se actualizó por última vez.</p>
+
+  <p class="pie-legal">
+    <a href="/">Volver al inicio</a> &middot; <a href="/terminos">Términos del servicio</a>
+  </p>
+</article>
+</main>
+{% endblock %}
