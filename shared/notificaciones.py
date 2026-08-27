@@ -445,3 +445,139 @@ async def _por_telegram_texto(chat_id: int, texto: str) -> bool:
     except Exception as e:
         log.error("Telegram: fallo avisando a %s: %s", chat_id, e)
         return False
+
+
+# ─── Deteccion de adjudicaciones ─────────────────────────
+
+CANAL_ADJUDICACION = "adjudicacion"
+
+# Formas societarias peruanas. Se quitan antes de comparar porque el mismo
+# proveedor aparece como "SOTOMAYOR FAM E.I.R.L." en un sitio y como
+# "Sotomayor Fam EIRL" en otro, y sin esto no casaria casi nunca.
+_FORMAS = (
+    r"sociedad anonima cerrada",
+    r"sociedad anonima abierta",
+    r"sociedad anonima",
+    r"empresa individual de responsabilidad limitada",
+    r"sociedad comercial de responsabilidad limitada",
+    r"s\s*a\s*c", r"s\s*a\s*a", r"s\s*r\s*l", r"e\s*i\s*r\s*l", r"s\s*a",
+)
+
+
+def _clave_empresa(nombre: str) -> str:
+    """Normaliza una razon social para poder compararla.
+
+    Sin tildes, sin puntuacion y sin forma societaria. Devuelve cadena vacia
+    para lo que no tiene nombre: quien llama comprueba ese vacio, porque dos
+    cadenas vacias serian "iguales" y ese es el peor falso positivo posible.
+    """
+    import re
+
+    from shared.config import normalizar
+
+    t = normalizar(nombre or "")
+    t = re.sub(r"[^\w\s]", " ", t)
+    for forma in _FORMAS:
+        t = re.sub(r"\b" + forma + r"\b", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+async def detectar_adjudicaciones() -> dict:
+    """Avisa cuando el nombre del ganador coincide con el de una empresa propia.
+
+    POR QUE ESTO EXISTE
+
+      `check_adjudicaciones` corria cada 30 minutos, consultaba las propuestas
+      enviadas, iteraba y hacia `pass`. Un TODO decia que hacia falta scrapear
+      el SEACE, y el SEACE pide CAPTCHA. Pero la API OCDS publica el nombre del
+      adjudicatario, asi que ya no hace falta scrapear nada: el dato llegaba y
+      se estaba tirando.
+
+    POR QUE AVISA Y NO CREA EL CONTRATO
+
+      El cruce es por NOMBRE, no por RUC. Medido contra la API: de 2.702
+      procesos resueltos, 2.664 traen el nombre del ganador y CERO traen su
+      RUC -- la parte del proveedor llega con additionalIdentifiers en null.
+
+      Un nombre normalizado es buena pista y mala prueba: dos empresas pueden
+      llamarse casi igual. Crear el contrato solo seria meter datos falsos en
+      la cuenta de alguien y hacerle perseguir un cobro que no existe. Decirle
+      "parece que ganaste, confirmalo" cuesta un clic y no puede equivocarse
+      en su contra.
+    """
+    parte = {"revisadas": 0, "coincidencias": 0, "avisados": 0}
+
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT p.id AS propuesta_id, p.licitacion_id,
+                      e.razon_social, e.usuario_id,
+                      l.proveedor_ganador, l.nomenclatura, l.objeto, l.entidad,
+                      l.monto_adjudicado
+                 FROM propuestas p
+                 JOIN empresas e ON e.id = p.empresa_id
+                 JOIN licitaciones l ON l.id = p.licitacion_id
+                WHERE p.estado = 'enviado'
+                  AND l.proveedor_ganador IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM contratos c
+                                   WHERE c.propuesta_id = p.id)""")
+
+    por_usuario: dict[int, list] = {}
+    for f in filas:
+        parte["revisadas"] += 1
+        mia = _clave_empresa(f["razon_social"])
+        gano = _clave_empresa(f["proveedor_ganador"])
+        # La comprobacion de vacio no sobra: sin ella, dos nombres que se
+        # quedan en nada tras normalizar darian una coincidencia falsa y le
+        # diriamos a alguien que gano un proceso que no gano.
+        if not mia or mia != gano:
+            continue
+        parte["coincidencias"] += 1
+
+        async with connection() as conn:
+            ya = await conn.fetchval(
+                """SELECT 1 FROM notificaciones_enviadas
+                    WHERE usuario_id = $1 AND licitacion_id = $2 AND canal = $3""",
+                f["usuario_id"], f["licitacion_id"], CANAL_ADJUDICACION)
+        if ya:
+            continue
+        por_usuario.setdefault(f["usuario_id"], []).append(dict(f))
+
+    for uid, ganadas in por_usuario.items():
+        async with connection() as conn:
+            usuario = await conn.fetchrow(
+                """SELECT id, nombre, email, telegram_chat_id,
+                          whatsapp_numero, whatsapp_estado
+                     FROM usuarios WHERE id = $1 AND activo = TRUE""", uid)
+        if not usuario:
+            continue
+
+        lineas = []
+        for g in ganadas[:MAX_EN_RESUMEN]:
+            monto = (f"S/ {float(g['monto_adjudicado']):,.2f}"
+                     if g.get("monto_adjudicado") else "monto no publicado")
+            lineas.append(f"• {_titulo(g)}")
+            lineas.append(f"  {g.get('entidad') or ''} · {monto}")
+        texto = (
+            "🏆 <b>Parece que ganaste</b>\n\n"
+            + "\n".join(lineas)
+            + "\n\nEl nombre del adjudicatario coincide con el de tu empresa. "
+              "Entra al panel y confírmalo para empezar a llevar el contrato."
+        )
+
+        enviado = False
+        if usuario["telegram_chat_id"]:
+            enviado |= await _por_telegram_texto(usuario["telegram_chat_id"], texto)
+        if usuario["whatsapp_estado"] == "activo":
+            ok, _ = await whatsapp.enviar_plantilla(
+                usuario["whatsapp_numero"], PLANTILLA_AVISO,
+                [usuario.get("nombre") or "Hola", str(len(ganadas)),
+                 "procesos donde figuras como adjudicatario"])
+            enviado |= ok
+
+        if enviado:
+            await anotar_envio(uid, [g["licitacion_id"] for g in ganadas],
+                               CANAL_ADJUDICACION)
+            parte["avisados"] += 1
+
+    log.info("Deteccion de adjudicaciones: %s", parte)
+    return parte

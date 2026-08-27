@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 log = logging.getLogger("win_bot")
 
-from shared.notificaciones import avisar_cobros_vencidos
+from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicaciones
 from shared.db import (
     get_pool, get_contratos_activos, get_plazos_proximos, connection,
 )
@@ -87,24 +87,20 @@ async def enviar_email_buena_pro(contrato, licitacion):
 
 # ─── Monitor for wins ────────────────────────────────────
 async def check_adjudicaciones(app):
-    """Revisa si alguna propuesta enviada fue adjudicada."""
-    async with connection() as conn:
-        # Buscar propuestas enviadas que aún no tienen contrato
-        props = await conn.fetch(
-            """SELECT p.*, l.objeto, l.entidad, l.nomenclatura, l.estado as lic_estado,
-                      e.razon_social
-            FROM propuestas p
-            JOIN licitaciones l ON p.licitacion_id = l.id
-            JOIN empresas e ON p.empresa_id = e.id
-            WHERE p.estado = 'enviado'
-            AND NOT EXISTS (SELECT 1 FROM contratos c WHERE c.propuesta_id = p.id)"""
-        )
-        
-        for prop in props:
-            # TODO: En la versión completa, aquí se hace scraping de SEACE
-            # para verificar si la buena pro fue otorgada a nuestra empresa.
-            # Por ahora, se detecta manualmente con /ganar [propuesta_id]
-            pass
+    """Avisa al proveedor cuando figura como adjudicatario de una propuesta suya.
+
+    Esto no hacia nada. Consultaba las propuestas enviadas, iteraba y hacia
+    `pass`, con un TODO que decia que hacia falta scrapear el SEACE. El SEACE
+    pide CAPTCHA, asi que el TODO era en la practica "nunca". Pero la API OCDS
+    publica el nombre del adjudicatario: el dato llegaba y se estaba tirando.
+
+    El aviso no crea el contrato. Se cruza por NOMBRE porque la API no entrega
+    el RUC del proveedor, y un nombre es buena pista y mala prueba: quien
+    confirma es el proveedor, con un clic.
+    """
+    parte = await detectar_adjudicaciones()
+    if parte["coincidencias"]:
+        log.info("Adjudicaciones detectadas: %s", parte)
 
 
 async def _renovar_suscripciones():

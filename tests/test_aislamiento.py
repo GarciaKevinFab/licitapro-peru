@@ -566,3 +566,86 @@ async def test_las_legales_se_leen_con_la_suscripcion_caida(usuario, cliente):
                                         "password": usuario["password"]})
     assert (await cliente.get("/privacidad")).status_code == 200
     assert (await cliente.get("/terminos")).status_code == 200
+
+
+# ─── Deteccion de adjudicaciones ─────────────────────────
+
+@pytest.mark.parametrize("mia, gano, casan", [
+    ("Constructora Andina S.A.C.", "CONSTRUCTORA ANDINA SAC", True),
+    ("Sotomayor Fam E.I.R.L.", "SOTOMAYOR FAM EIRL", True),
+    ("Servicios Generales del Perú S.A.C.", "SERVICIOS GENERALES DEL PERU", True),
+    # Una letra de diferencia es otra empresa.
+    ("Constructora Andina SAC", "CONSTRUCTORA ANDINO SAC", False),
+    ("ABC SAC", "XYZ SAC", False),
+])
+def test_el_cruce_de_nombres_no_confunde_empresas(mia, gano, casan):
+    """El cruce va por nombre porque la API no entrega el RUC del proveedor.
+
+    Medido: de 2.702 procesos resueltos, 2.664 traen el nombre del ganador y
+    CERO traen su RUC. Un nombre es buena pista y mala prueba, asi que la
+    normalizacion tiene que quitar la forma societaria sin llegar a fundir dos
+    empresas distintas.
+    """
+    from shared.notificaciones import _clave_empresa
+    assert (_clave_empresa(mia) == _clave_empresa(gano)) is casan
+
+
+def test_un_nombre_que_queda_vacio_no_casa_con_nada():
+    """"SAC" a secas se queda en nada al normalizar. Sin comprobar el vacio,
+    dos cadenas vacias serian iguales y le diriamos a alguien que gano un
+    proceso que no gano: el peor falso positivo que puede dar esto."""
+    from shared.notificaciones import _clave_empresa
+    assert _clave_empresa("SAC") == ""
+    assert _clave_empresa("S.A.C.") == ""
+
+
+async def test_la_adjudicacion_avisa_pero_no_crea_el_contrato(usuario, marca):
+    """Crear el contrato con un cruce por nombre seria meter datos falsos en la
+    cuenta de alguien y hacerle perseguir un cobro que no existe."""
+    from shared.db import connection
+    from shared.notificaciones import detectar_adjudicaciones
+
+    lic = f"PRUEBA-ADJ-{marca}"
+    async with connection() as c:
+        eid = await c.fetchval(
+            """INSERT INTO empresas (razon_social, ruc, usuario_id, activa)
+               VALUES ($1, $2, $3, TRUE) RETURNING id""",
+            "Constructora Andina S.A.C.", "20" + marca[:9], usuario["id"])
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, entidad, objeto,
+                                         fecha_cierre, proveedor_ganador)
+               VALUES ($1, 'prueba', 'ENTIDAD', 'Obra',
+                       NOW() - INTERVAL '5 days', 'CONSTRUCTORA ANDINA SAC')""",
+            lic)
+        await c.execute(
+            "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
+            "VALUES ($1, $2, 'enviado')", lic, eid)
+        # WhatsApp activo: en modo simulado el envio confirma, que es lo que
+        # permite comprobar que el aviso se anota.
+        await c.execute(
+            "UPDATE usuarios SET whatsapp_numero='+51987654321', "
+            "whatsapp_estado='activo' WHERE id=$1", usuario["id"])
+    try:
+        parte = await detectar_adjudicaciones()
+        assert parte["coincidencias"] >= 1
+
+        async with connection() as c:
+            anotados = await c.fetchval(
+                "SELECT COUNT(*) FROM notificaciones_enviadas "
+                "WHERE canal='adjudicacion' AND usuario_id=$1", usuario["id"])
+            contratos = await c.fetchval(
+                "SELECT COUNT(*) FROM contratos WHERE empresa_id=$1", eid)
+        assert anotados == 1
+        assert contratos == 0, "no debe crear el contrato por su cuenta"
+
+        # La siguiente pasada del planificador no puede repetir el aviso.
+        segunda = await detectar_adjudicaciones()
+        assert segunda["avisados"] == 0
+    finally:
+        # La propuesta va primero: propuestas.licitacion_id sigue en NO ACTION
+        # a proposito. Una licitacion es registro publico y no debe poder
+        # borrarse mientras alguien tenga una propuesta apoyada en ella; al
+        # borrar la CUENTA si desaparece todo, por la cascada desde empresas.
+        async with connection() as c:
+            await c.execute("DELETE FROM propuestas WHERE licitacion_id=$1", lic)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)

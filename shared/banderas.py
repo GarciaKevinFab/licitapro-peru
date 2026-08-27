@@ -198,17 +198,26 @@ async def marcar_ganadores_recurrentes(minimo_procesos: int = 5,
     `minimo_procesos` evita el falso positivo tipico: una entidad con dos
     adjudicaciones y el mismo ganador da el 100% y no significa nada.
     """
+    # Se cruza por NOMBRE del proveedor y no por su RUC. Medido contra la API:
+    # la parte del proveedor llega con additionalIdentifiers en null -- solo la
+    # entidad trae PE-RUC. De 2.702 procesos resueltos, 2.664 tienen nombre de
+    # ganador y CERO tienen su RUC. Esta consulta cruzaba por RUC y por eso
+    # marcaba 0 combinaciones: no fallaba, es que el dato no existe.
+    #
+    # El nombre es peor llave que un RUC (una tilde o un "S.A.C." de mas y ya
+    # no casa), pero fallar por defecto hacia "no marco" es el lado correcto:
+    # se pierde alguna coincidencia y no se senala a nadie por error.
     async with connection() as conn:
         filas = await conn.fetch(
             """WITH por_entidad AS (
-                   SELECT entidad_ruc, proveedor_ruc,
+                   SELECT entidad_ruc, proveedor_ganador,
                           COUNT(*) AS ganados,
                           SUM(COUNT(*)) OVER (PARTITION BY entidad_ruc) AS total
                      FROM licitaciones
-                    WHERE proveedor_ruc IS NOT NULL AND entidad_ruc IS NOT NULL
-                    GROUP BY entidad_ruc, proveedor_ruc
+                    WHERE proveedor_ganador IS NOT NULL AND entidad_ruc IS NOT NULL
+                    GROUP BY entidad_ruc, proveedor_ganador
                )
-               SELECT entidad_ruc, proveedor_ruc FROM por_entidad
+               SELECT entidad_ruc, proveedor_ganador FROM por_entidad
                 WHERE total >= $1 AND ganados::float / total >= $2""",
             minimo_procesos, cuota)
 
@@ -221,9 +230,9 @@ async def marcar_ganadores_recurrentes(minimo_procesos: int = 5,
                               ELSE COALESCE(banderas, '[]'::jsonb)
                                    || '["ganador_recurrente"]'::jsonb END,
                           banderas_nivel = GREATEST(banderas_nivel, $3)
-                    WHERE entidad_ruc = $1 AND proveedor_ruc = $2
+                    WHERE entidad_ruc = $1 AND proveedor_ganador = $2
                 RETURNING 1""",
-                f["entidad_ruc"], f["proveedor_ruc"], NIVEL_MEDIO)
+                f["entidad_ruc"], f["proveedor_ganador"], NIVEL_MEDIO)
             tocadas += bool(n)
     log.info("Ganadores recurrentes marcados en %s combinaciones", tocadas)
     return tocadas
