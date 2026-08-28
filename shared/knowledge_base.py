@@ -44,7 +44,7 @@ async def buscar_valor(empresa_id: int, categoria: str, clave: str) -> str | Non
                 empresa_id, f"%{clave}%",
             )
             if miembro:
-                valor = f"{miembro['nombre']} | {miembro['titulo_profesional']} | CIP {miembro['colegiatura']} | {miembro['anos_experiencia']} años"
+                valor = f"{miembro['nombre_completo']} | {miembro['titulo_profesional']} | CIP {miembro['colegiatura']} | {miembro['anos_experiencia']} años"
                 return valor
 
     return None
@@ -102,7 +102,7 @@ async def buscar_experiencia_relevante(empresa_id: int, keywords: list[str], lim
 
     relevantes = []
     for exp in todas:
-        exp_text = f"{exp['objeto']} {' '.join(exp['keywords'] or [])}".lower()
+        exp_text = f"{exp['objeto_contrato']} {' '.join(exp['keywords'] or [])}".lower()
         score = sum(1 for kw in keywords if kw.lower() in exp_text)
         if score > 0:
             relevantes.append({**dict(exp), "_score": score})
