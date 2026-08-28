@@ -143,6 +143,126 @@ form.emp{display:flex;flex-direction:column;gap:15px}
   {% else %}
     <p class="ayuda">Guarda la empresa primero y podrás cargar su logo, firma y sello.</p>
   {% endif %}
+
+  {% if empresa %}
+  <div class="tarjeta">
+    <h2>Experiencia del postor</h2>
+    <p class="sub">Los contratos que ya ejecutaste. Es lo que más pesa: el comité
+       puntúa la experiencia acreditada, el análisis de viabilidad la usa para
+       decirte si encajas, y con esto se arma el
+       <code>03_Experiencia_Postor.docx</code> del expediente.</p>
+
+    {% if experiencia %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr>
+            <th>Objeto</th><th>Entidad</th><th class="num">Monto</th>
+            <th>Fin</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for x in experiencia %}
+              <tr>
+                <td>{{ x.objeto_contrato }}
+                    {% if x.numero_contrato %}<span class="ent">Contrato {{ x.numero_contrato }}</span>{% endif %}</td>
+                <td>{{ x.entidad_contratante }}</td>
+                <td class="num">{% if x.monto %}S/ {{ '{:,.0f}'.format(x.monto) }}{% else %}—{% endif %}</td>
+                <td>{% if x.fecha_fin %}{{ x.fecha_fin.strftime('%m/%Y') }}{% else %}—{% endif %}
+                    {% if x.conformidad %}<span class="pill ok">conformidad</span>{% endif %}</td>
+                <td><form method="post" action="/empresas/{{ empresa.id }}/experiencia/{{ x.id }}/borrar">
+                      <button type="submit" class="peligro">Quitar</button></form></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="mensaje aviso">Sin experiencia registrada. Mientras esté así, el
+        análisis de viabilidad puntuará bajo cualquier licitación de tu rubro, y
+        con razón: para el comité, la experiencia que no se acredita no existe.</div>
+    {% endif %}
+
+    <form method="post" action="/empresas/{{ empresa.id }}/experiencia" class="mt-14">
+      <label class="campo"><span>Objeto del contrato *</span>
+        <input type="text" name="objeto_contrato" required
+               placeholder="Mejoramiento del sistema de agua potable de…"></label>
+      <div class="rejilla mt-14">
+        <label class="campo"><span>Entidad contratante *</span>
+          <input type="text" name="entidad_contratante" required
+                 placeholder="Municipalidad Distrital de…"></label>
+        <label class="campo"><span>Monto en soles</span>
+          <input type="text" name="monto" placeholder="480000"></label>
+        <label class="campo"><span>N.º de contrato</span>
+          <input type="text" name="numero_contrato" placeholder="0021-2025-MDCH"></label>
+        <label class="campo"><span>Inicio</span>
+          <input type="date" name="fecha_inicio"></label>
+        <label class="campo"><span>Fin</span>
+          <input type="date" name="fecha_fin"></label>
+      </div>
+      <label class="check mt-14">
+        <input type="checkbox" name="conformidad" value="1">
+        <span>Tiene constancia de conformidad</span></label>
+      <div class="acciones mt-14">
+        <button type="submit" class="sec">Agregar experiencia</button></div>
+    </form>
+    <p class="ayuda">La conformidad importa: sin ella la entidad puede no computar
+       el contrato al calificar tu experiencia.</p>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Equipo técnico</h2>
+    <p class="sub">Los profesionales que puedes proponer. Van a la propuesta
+       técnica, y el análisis los tiene en cuenta al evaluar si cubres el plantel
+       clave que exigen las bases.</p>
+
+    {% if equipo %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr>
+            <th>Nombre</th><th>Título</th><th>Especialidad</th>
+            <th class="num">Años</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for m in equipo %}
+              <tr>
+                <td>{{ m.nombre_completo }}
+                    {% if m.colegiatura %}<span class="ent">{{ m.colegiatura }}</span>{% endif %}</td>
+                <td>{{ m.titulo_profesional or '—' }}</td>
+                <td>{{ m.especialidad or '—' }}</td>
+                <td class="num">{{ m.anos_experiencia or 0 }}</td>
+                <td><form method="post" action="/empresas/{{ empresa.id }}/equipo/{{ m.id }}/borrar">
+                      <button type="submit" class="peligro">Quitar</button></form></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="mensaje aviso">Sin profesionales registrados. El validador te lo
+        avisará en cada expediente hasta que agregues al menos uno.</div>
+    {% endif %}
+
+    <form method="post" action="/empresas/{{ empresa.id }}/equipo" class="mt-14">
+      <div class="rejilla">
+        <label class="campo"><span>Nombre completo *</span>
+          <input type="text" name="nombre_completo" required></label>
+        <label class="campo"><span>Título profesional</span>
+          <input type="text" name="titulo_profesional" placeholder="Ingeniero Civil"></label>
+        <label class="campo"><span>Especialidad</span>
+          <input type="text" name="especialidad" placeholder="Obras de saneamiento"></label>
+        <label class="campo"><span>Colegiatura</span>
+          <input type="text" name="colegiatura" placeholder="CIP 123456"></label>
+        <label class="campo"><span>DNI</span>
+          <input type="text" name="dni"></label>
+        <label class="campo"><span>Años de experiencia</span>
+          <input type="number" name="anos_experiencia" min="0" max="70" value="0"></label>
+        <label class="campo"><span>Cargo habitual</span>
+          <input type="text" name="cargo_habitual" placeholder="Residente de obra"></label>
+      </div>
+      <div class="acciones mt-14">
+        <button type="submit" class="sec">Agregar profesional</button></div>
+    </form>
+  </div>
+  {% endif %}
 </main>
 {% endblock %}
 
