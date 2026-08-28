@@ -48,6 +48,14 @@ main{max-width:900px}
 .pregunta form{display:flex;gap:9px;align-items:flex-start}
 .pregunta form input{flex:1}
 .resp{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ok);margin:0}
+.rango{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline}
+.rango div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:3px}
+.rango div b{font-family:"JetBrains Mono",monospace;font-size:15px;font-weight:600;
+  font-variant-numeric:tabular-nums}
+.rango .destacado b{font-size:22px;letter-spacing:-.02em}
+.lista-falta{margin:7px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.lista-falta li{font-size:13px;line-height:1.45}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='propuestas' %}{% include "_nav.html" %}{% endwith %}
@@ -96,8 +104,29 @@ main{max-width:900px}
 
   <div class="tarjeta">
     <h2>Precio</h2>
-    <p class="sub">El estimador se apoya en el histórico de montos de licitaciones parecidas.</p>
-    <form method="post" action="/propuestas/{{ p.id }}/precio" class="acciones">
+    {% if precio %}
+      <div class="rango">
+        <div><span>Cuartil bajo</span><b>S/ {{ '{:,.0f}'.format(precio.precio_bajo) }}</b></div>
+        <div class="destacado"><span>Mediana</span><b>S/ {{ '{:,.0f}'.format(precio.precio_mediana) }}</b></div>
+        <div><span>Cuartil alto</span><b>S/ {{ '{:,.0f}'.format(precio.precio_alto) }}</b></div>
+      </div>
+      {# Cuántas adjudicaciones sostienen el número, y con qué anchura. Un
+         rango sobre cinco muestras y otro sobre ochenta se leen igual si no
+         se dice. #}
+      {% if precio.nota %}
+        <p class="sub">{{ precio.nota }}</p>
+      {% else %}
+        <p class="sub">La mitad central de {{ precio.muestras }} licitación(es)
+           parecida(s). Los extremos de esa muestra van de
+           S/ {{ '{:,.0f}'.format(precio.extremo_min) }} a
+           S/ {{ '{:,.0f}'.format(precio.extremo_max) }}: el emparejamiento es
+           por palabras del objeto, así que los bordes arrastran casos que no
+           se parecen en nada.</p>
+      {% endif %}
+    {% else %}
+      <p class="sub">Sin monto referencial ni histórico comparable, no hay nada que estimar.</p>
+    {% endif %}
+    <form method="post" action="/propuestas/{{ p.id }}/precio" class="acciones mt-14">
       <input class="w-190" type="number" name="precio" step="0.01" min="0"
              value="{{ p.precio_ofertado or '' }}" placeholder="S/ 0.00" required>
       <button type="submit">Guardar precio</button>
@@ -106,13 +135,41 @@ main{max-width:900px}
 
   <div class="tarjeta">
     <h2>Expediente</h2>
+
+    {% if validacion %}
+      {% if validacion.faltantes %}
+        {# Bloquean. Sin estos campos la entidad devuelve la oferta en mesa de
+           partes, y enterarse allí es enterarse cuando ya venció el plazo. #}
+        <div class="mensaje mal">
+          <strong>Falta esto para poder armar el expediente:</strong>
+          <ul class="lista-falta">
+            {% for f in validacion.faltantes %}<li>{{ f.desc }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <p class="sub">Los {{ validacion.requeridos_total }} datos obligatorios están completos.</p>
+      {% endif %}
+
+      {% if validacion.warnings %}
+        {# No bloquean: se puede presentar sin equipo técnico registrado, solo
+           se puntúa peor. Avisar sin impedir. #}
+        <div class="mensaje aviso">
+          <strong>Se puede presentar así, pero conviene revisar:</strong>
+          <ul class="lista-falta">
+            {% for w in validacion.warnings %}<li>{{ w }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endif %}
+
     <p class="sub">Genera los anexos y declaraciones con los datos de la empresa, y arma
        el ZIP para subir a SEACE.</p>
     <div class="acciones">
       <form method="post" action="/propuestas/{{ p.id }}/generar">
         <button type="submit" class="sec">Generar documentos</button></form>
       <form method="post" action="/propuestas/{{ p.id }}/expediente">
-        <button type="submit" class="sec">Armar expediente ZIP</button></form>
+        <button type="submit" class="sec"
+                {% if validacion and validacion.faltantes %}disabled{% endif %}>Armar expediente ZIP</button></form>
       {% if p.expediente_zip_path %}
         <a class="btn" href="/propuestas/{{ p.id }}/descargar">Descargar ZIP</a>
       {% endif %}

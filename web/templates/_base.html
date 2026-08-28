@@ -76,7 +76,17 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .mensaje{border-radius:5px;padding:11px 15px;margin-bottom:16px;font-size:13.5px}
 .mensaje.ok{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
 .mensaje.mal{background:var(--urg-soft);color:var(--urg);border:1px solid var(--urg)}
-.mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)}
+/* La tipografia se repite aqui porque `.aviso` son DOS cosas con el mismo
+   nombre: la insignia del menu (mono, mayusculas, 10px) y el color de este
+   cuadro de mensaje. Las dos reglas pesan igual -- una clase cada una -- asi
+   que decide el orden del archivo, y la insignia va despues. Sin esto, un
+   `class="mensaje aviso"` salia en MAYUSCULAS a 10px y el aviso del validador
+   se leia como un grito.
+   El arreglo de fondo es renombrar la insignia; esta definida en diez
+   plantillas y usada en dos sitios de _nav.html. */
+.mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);
+  font-size:13.5px;text-transform:none;letter-spacing:normal;
+  font-family:inherit;padding:11px 15px;border-radius:5px}
 
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
