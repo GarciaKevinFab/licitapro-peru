@@ -97,7 +97,15 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
   <div class="tarjeta">
     <h2>Cobros</h2>
     <p class="sub">Registro interno de lo facturado y lo cobrado. No emite comprobantes:
-       la factura electrónica la sigue emitiendo tu contador.</p>
+       la factura electrónica la sigue emitiendo tu contador. La «proforma» es un
+       documento de acompañamiento y lo dice en su portada; no sustituye a la
+       factura ante SUNAT.</p>
+    <p class="sub">
+      <a href="/contratos/{{ c.id }}/conformidad">Descargar acta de conformidad</a>
+      — el plazo legal de pago corre en días hábiles desde la conformidad, no
+      desde la factura, así que tenerla firmada es lo que te deja reclamar con
+      una fecha concreta.
+    </p>
     {% if pagos %}
       <div class="tabla-caja">
       <table class="datos">
@@ -124,10 +132,12 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
               {% endif %}
             </td>
             <td><span class="pill {% if pg.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ pg.estado }}</span></td>
-            <td>{% if pg.estado != 'pagado' %}
-              <form method="post" action="/pagos/{{ pg.id }}/cobrado">
-                <button type="submit" class="sec">Marcar cobrado</button></form>
-            {% else %}{{ pg.fecha_pago_real.strftime('%d/%m/%y') if pg.fecha_pago_real else '' }}{% endif %}</td>
+            <td class="acciones">
+              <a class="btn sec" href="/contratos/{{ c.id }}/pagos/{{ pg.id }}/proforma">Proforma</a>
+              {% if pg.estado != 'pagado' %}
+                <form method="post" action="/pagos/{{ pg.id }}/cobrado">
+                  <button type="submit" class="sec">Marcar cobrado</button></form>
+              {% else %}<span class="ayuda">{{ pg.fecha_pago_real.strftime('%d/%m/%y') if pg.fecha_pago_real else '' }}</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

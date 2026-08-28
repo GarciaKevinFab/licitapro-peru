@@ -11,10 +11,12 @@ Igual que en propuestas, la propiedad se deriva por JOIN contra
 empresas.usuario_id: nunca de un id que mande el cliente.
 """
 import logging
+import os
 from datetime import date, timedelta
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from shared.plazos_pago import (
     dias_de_mora, en_prorroga, enlace_consulta_mef, fecha_limite_pago,
@@ -299,3 +301,89 @@ async def marcar_cobrado(request: Request, pago_id: int):
                WHERE id=$1""", pago_id)
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Cobro+registrado",
                             status_code=303)
+
+
+# ─── Documentos del contrato ─────────────────────────────
+#
+# Los generadores vivian SOLO en Telegram (`/factura`, `/conformidad`). El
+# producto se mudo al panel hace tiempo y estos dos se quedaron atras: quien no
+# usara Telegram no tenia forma de sacarlos. Se generan al vuelo y no se
+# guardan, porque son un reflejo de filas que ya estan en la base -- guardarlos
+# obligaria a regenerarlos en cada cambio, o a repartir copias desactualizadas.
+
+@router.get("/contratos/{contrato_id}/pagos/{pago_id}/proforma")
+async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
+    """Proforma de cobro de un pago ya registrado.
+
+    NO es un comprobante de pago. La facturacion electronica quedo fuera de
+    alcance, asi que este documento sirve para acompanar el tramite, no para
+    sustituir a la factura que hay que emitir ante SUNAT. El propio DOCX lo
+    dice en la portada.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _contrato_del_usuario(contrato_id, usuario["id"]):
+        return RedirectResponse("/contratos?error=Ese+contrato+no+es+tuyo",
+                                status_code=303)
+
+    async with connection() as conn:
+        # El contrato_id va en el WHERE ademas del pago: los dos llegan por la
+        # URL y ya se comprobo que el contrato es suyo. Sin esto, un pago de
+        # otro contrato se colaria cambiando un numero.
+        pago = await conn.fetchrow(
+            "SELECT * FROM pagos WHERE id=$1 AND contrato_id=$2",
+            pago_id, contrato_id)
+    if not pago:
+        return RedirectResponse(f"/contratos/{contrato_id}?error=Ese+pago+no+existe",
+                                status_code=303)
+
+    try:
+        from win_bot.invoice_gen import generar_factura
+        ruta = await generar_factura(contrato_id, float(pago["monto"]),
+                                     pago["concepto"] or "Servicio prestado",
+                                     pago["numero_factura"])
+    except Exception as e:
+        log.error("Proforma del pago %s fallo: %s", pago_id, e, exc_info=True)
+        ruta = None
+
+    if not ruta or not os.path.isfile(ruta):
+        return RedirectResponse(
+            f"/contratos/{contrato_id}?error={quote_plus('No se pudo generar la proforma')}",
+            status_code=303)
+    return FileResponse(ruta, filename=os.path.basename(ruta),
+                        media_type="application/vnd.openxmlformats-officedocument"
+                                   ".wordprocessingml.document")
+
+
+@router.get("/contratos/{contrato_id}/conformidad")
+async def descargar_conformidad(request: Request, contrato_id: int,
+                                observaciones: str = ""):
+    """Acta de conformidad del bien o servicio entregado.
+
+    Importa mas de lo que parece: el plazo legal de pago se cuenta en dias
+    habiles DESDE la conformidad, no desde la factura. Tener el acta a mano es
+    lo que permite reclamar con una fecha concreta encima de la mesa.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _contrato_del_usuario(contrato_id, usuario["id"]):
+        return RedirectResponse("/contratos?error=Ese+contrato+no+es+tuyo",
+                                status_code=303)
+
+    try:
+        from win_bot.conformity_gen import generar_acta_conformidad
+        ruta = await generar_acta_conformidad(contrato_id, observaciones.strip())
+    except Exception as e:
+        log.error("Acta de conformidad de %s fallo: %s", contrato_id, e,
+                  exc_info=True)
+        ruta = None
+
+    if not ruta or not os.path.isfile(ruta):
+        return RedirectResponse(
+            f"/contratos/{contrato_id}?error={quote_plus('No se pudo generar el acta')}",
+            status_code=303)
+    return FileResponse(ruta, filename=os.path.basename(ruta),
+                        media_type="application/vnd.openxmlformats-officedocument"
+                                   ".wordprocessingml.document")
