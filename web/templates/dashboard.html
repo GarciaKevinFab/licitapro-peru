@@ -3,6 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{# HTMX inyecta al arrancar una hoja de estilos propia para `htmx-indicator`.
+   Nuestra CSP no admite estilos en linea, asi que el navegador la bloqueaba y
+   dejaba un error en la consola en cada carga del panel. No se pierde nada al
+   desactivarla: la espera se marca con `.htmx-request`, que se define mas
+   abajo en este mismo archivo y por tanto lleva el nonce, y `htmx-indicator`
+   no se usa en ninguna plantilla.
+   Va aqui y no en _base.html porque esta plantilla NO hereda de ella, y es la
+   unica que carga HTMX.
+   Se apaga con una meta y no con JS porque script-src tampoco admite en linea. #}
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 <title>Panel · LicitaPro Perú</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

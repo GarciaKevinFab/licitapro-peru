@@ -1,0 +1,155 @@
+{% extends "_base.html" %}
+{% block titulo %}Gasto de IA · LicitaPro{% endblock %}
+{% block estilos %}
+main{max-width:980px}
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.tabla-caja{overflow-x:auto}
+.ent{font-size:11.5px;color:var(--ink-3);display:block}
+.cifras{display:flex;flex-wrap:wrap;gap:28px;margin-top:4px}
+.cifras div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:3px}
+.cifras div b{font-family:"JetBrains Mono",monospace;font-size:24px;font-weight:600;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.margen-mal{color:var(--urg)}
+.margen-bien{color:var(--ok)}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+{% endblock %}
+{% block cuerpo %}
+{% with activo='' %}{% include "_nav.html" %}{% endwith %}
+<main>
+  {% set mes = g.por_mes[0] if g.por_mes else none %}
+
+  <div class="tarjeta">
+    <h2>Gasto de IA este mes</h2>
+    {% if mes %}
+      <div class="cifras">
+        <div><span>Coste</span><b>S/ {{ '{:,.2f}'.format(mes.soles) }}</b></div>
+        <div><span>En dólares</span><b>US$ {{ '{:,.2f}'.format(mes.usd) }}</b></div>
+        <div><span>Análisis</span><b>{{ mes.analisis }}</b></div>
+        <div><span>Cuentas</span><b>{{ mes.usuarios }}</b></div>
+      </div>
+    {% else %}
+      <p class="sub">Todavía no se ha hecho ningún análisis con IA este mes.</p>
+    {% endif %}
+
+    {# El heurístico es gratis, pero si aparece mucho significa que clientes de
+       pago están recibiendo el respaldo en lugar de lo que compraron. #}
+    {% if g.heuristicos_del_mes %}
+      <div class="mensaje aviso mt-14">
+        <strong>{{ g.heuristicos_del_mes }} análisis salieron por el camino heurístico.</strong>
+        Pasa cuando la API falla o no hay clave. No cuesta dinero y no gasta
+        cuota, pero un cliente de Pro que recibe el heurístico no está recibiendo
+        lo que paga. Si el número no es pequeño, mira los logs de
+        <code>shared.ia</code>.
+      </div>
+    {% endif %}
+
+    <p class="ayuda mt-14">
+      Calculado sobre {{ g.modelo }} a US$ {{ g.tarifa.entrada }} por millón de
+      tokens de entrada y US$ {{ g.tarifa.salida }} de salida, al cambio de
+      S/ {{ g.tarifa.cambio }}. Lo que se guarda son los tokens, que no caducan;
+      el precio sí. Si cambias de modelo, ajusta
+      <code>LICITAPRO_IA_USD_ENTRADA</code> y <code>LICITAPRO_IA_USD_SALIDA</code>.
+    </p>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Por plan, este mes</h2>
+    <p class="sub">La pregunta que importa: cuánto de lo que cobras se va en pagar
+       el análisis de ese mismo plan.</p>
+    {% if g.por_plan %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr>
+            <th>Plan</th><th class="num">Cuentas</th><th class="num">Análisis</th>
+            <th class="num">Coste</th><th class="num">Por cuenta</th>
+            <th class="num">Del precio</th>
+          </tr></thead>
+          <tbody>
+            {% for p in g.por_plan %}
+              {% set por_cuenta = (p.soles / p.usuarios) if p.usuarios else 0 %}
+              {% set pct = (por_cuenta / p.precio_mensual * 100) if p.precio_mensual else none %}
+              <tr>
+                <td>{{ p.plan }}
+                    {% if p.precio_mensual %}<span class="ent">S/ {{ '{:,.0f}'.format(p.precio_mensual) }} al mes{% if p.tope %} · tope {{ p.tope }}{% endif %}</span>{% endif %}</td>
+                <td class="num">{{ p.usuarios }}</td>
+                <td class="num">{{ p.analisis }}</td>
+                <td class="num">S/ {{ '{:,.2f}'.format(p.soles) }}</td>
+                <td class="num">S/ {{ '{:,.2f}'.format(por_cuenta) }}</td>
+                {# Por encima del 25% del precio, el plan deja de tener el margen
+                   que aparenta. El umbral está puesto a ojo, pero tener uno hace
+                   que la cifra se lea sola. #}
+                <td class="num {% if pct is not none %}{{ 'margen-mal' if pct > 25 else 'margen-bien' }}{% endif %}">
+                  {% if pct is not none %}{{ '{:.1f}'.format(pct) }} %{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="sub">Sin consumo este mes.</p>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Quién consume más, este mes</h2>
+    <p class="sub">Donde aparece el uso anómalo antes de que llegue la factura.</p>
+    {% if g.top %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr>
+            <th>Cuenta</th><th>Plan</th><th class="num">Análisis</th><th class="num">Coste</th>
+          </tr></thead>
+          <tbody>
+            {% for u in g.top %}
+              <tr>
+                <td>{{ u.nombre or u.email }}<span class="ent">{{ u.email }}</span></td>
+                <td><span class="pill neutro">{{ u.plan }}</span></td>
+                <td class="num">{{ u.analisis }}</td>
+                <td class="num">S/ {{ '{:,.2f}'.format(u.soles) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="sub">Sin consumo este mes.</p>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Últimos meses</h2>
+    {% if g.por_mes %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr>
+            <th>Mes</th><th class="num">Cuentas</th><th class="num">Análisis</th>
+            <th class="num">Tokens</th><th class="num">Coste</th>
+          </tr></thead>
+          <tbody>
+            {% for m in g.por_mes %}
+              <tr>
+                <td>{{ m.mes.strftime('%m/%Y') }}</td>
+                <td class="num">{{ m.usuarios }}</td>
+                <td class="num">{{ m.analisis }}</td>
+                <td class="num">{{ '{:,}'.format(m.entrada + m.salida) }}</td>
+                <td class="num">S/ {{ '{:,.2f}'.format(m.soles) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="sub">Sin historial todavía.</p>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}
