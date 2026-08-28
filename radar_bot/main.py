@@ -302,6 +302,21 @@ async def scheduled_scrape(app: Application):
         log.info(
             f"Scraping completado: {results['total_nuevas']} nuevas de "
             f"{len(results['por_fuente'])} fuentes | avisos: {parte}")
+
+        # Vigilancia de la fuente principal. Va DESPUES del reparto y en su
+        # propio try: que falle el aviso de "la fuente se seco" no puede
+        # impedir que salgan las alertas por las que pagan los clientes.
+        try:
+            from shared import vigilancia
+            estado = await vigilancia.revisar()
+            if estado["seca"]:
+                log.warning("Fuente %s seca: %s corridas sin novedades",
+                            estado["fuente"], estado["racha"])
+            if estado["avisar"] and ADMIN_ID:
+                await app.bot.send_message(ADMIN_ID, vigilancia.mensaje(estado),
+                                           parse_mode="HTML")
+        except Exception as e:
+            log.error("La vigilancia de fuentes fallo: %s", e, exc_info=True)
     except Exception as e:
         log.error(f"Scheduled scrape failed: {e}")
 

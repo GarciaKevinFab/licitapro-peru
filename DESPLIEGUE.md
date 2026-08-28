@@ -143,14 +143,57 @@ distinto de cero si algo va mal, así que sirven en CI.
 fija esa zona. No es cosmético: con el contenedor en UTC, un token de Telegram
 nace caducado y una licitación se da por vencida cinco horas antes de cerrar.
 
-**n8n comparte la base de datos.** El `docker-compose.yml` de desarrollo levanta
-n8n contra la misma base `licitapro`, y sus tablas conviven con las del
-producto. No rompe nada hoy, pero conviene separarlas antes de crecer. El
-compose de producción no incluye n8n.
+**n8n se retiró.** Duplicaba a los planificadores de `radar_bot` y `win_bot`, y
+lo hacía peor: `/api/daily-summary` usaba el flag global `licitaciones.notificado`,
+la lógica de un solo inquilino que se reemplazó porque quemaba cada licitación
+para todos los clientes menos el primero. Se borraron `shared/api_server.py`,
+`n8n-workflows/` y el servicio del compose de desarrollo.
+
+Si tu base de desarrollo es la de siempre, las ~40 tablas que n8n dejó
+(`execution_entity`, `credentials_entity`, `workflow_entity`…) siguen ahí. Ya no
+las usa nadie; borrarlas es opcional y conviene mirarlas antes.
 
 **Una sola fuente de licitaciones.** Hoy solo `ocds_oece` entrega convocatorias
-vigentes. Si OECE cambia su API, el producto se queda sin datos. Vale la pena
-vigilar `scraping_log` y alertar cuando una corrida no traiga nada nuevo.
+vigentes. Si OECE cambia su API, el producto se queda sin datos, y el fallo es
+silencioso: el scraper no revienta, devuelve cero, y el panel sigue enseñando lo
+viejo.
+
+`shared/vigilancia.py` lo detecta y avisa por Telegram a `TELEGRAM_ADMIN_ID`
+tras 12 corridas seguidas sin novedades, y luego una vez al día mientras dure.
+El umbral está en `UMBRAL_CORRIDAS`: por debajo de 12 saltaría cada fin de
+semana, y un aviso que salta cada sábado deja de leerse.
+
+## Análisis con IA
+
+Lo pagas tú, con una sola `ANTHROPIC_API_KEY`; el cliente no configura nada.
+
+**Lo que cuesta, medido:** unos 500 tokens de entrada y 1.700 de salida por
+análisis de viabilidad, ~US$0,046 (S/0,17) con `claude-opus-5`. Una propuesta
+técnica sale más cara, ~4.900 tokens de salida, unos US$0,13 (S/0,47).
+
+**El tope** vive en `planes.analisis_ia_mes` y se cambia sin desplegar:
+
+```sql
+SELECT codigo, precio_mensual, analisis_ia, analisis_ia_mes FROM planes;
+UPDATE planes SET analisis_ia_mes = 120 WHERE codigo = 'pro';
+```
+
+Sale en 60 al mes para Pro y 300 para Empresa. Ese segundo número merece un
+repaso: 300 análisis son ~S/51 de los S/199 del plan, un 26% del precio. Si un
+cliente lo agota de verdad todos los meses, el margen no da lo que parece.
+
+**Para gastar menos** sin tocar código: baja `LICITAPRO_IA_ESFUERZO` o cambia
+`LICITAPRO_MODELO_IA` a `claude-sonnet-5`, unas 2,5 veces más barato por token.
+Los análisis pierden finura — distinguir "consultoría de obra" de "ejecución de
+obra" es justamente el tipo de matiz por el que se paga.
+
+**Para saber el gasto real:** `shared.ia.gasto_del_mes()` devuelve análisis,
+usuarios y tokens del mes en curso. No los convierte a dinero a propósito: la
+tarifa cambia sin avisar a este código.
+
+Sin `ANTHROPIC_API_KEY` el producto sigue funcionando. La ficha muestra el
+análisis por reglas, marcado en pantalla como tal para que nadie crea que pagó
+por el otro.
 
 **Recuperación de contraseña.** Funciona por correo, así que **necesita SMTP
 configurado** (`SMTP_USER` y `SMTP_PASSWORD`). Sin SMTP el enlace no se envía a
