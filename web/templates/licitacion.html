@@ -47,11 +47,33 @@ main{max-width:900px}
   display:flex;gap:7px;align-items:baseline}
 .desglose dt{color:var(--ink-3);margin:0}
 .desglose dd{margin:0;font-weight:600;font-family:"JetBrains Mono",monospace}
+
+.cab-ia{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cab-ia h2{margin:0}
+.analisis{border:1px solid var(--line);border-radius:5px;padding:16px;margin:14px 0}
+.analisis header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.analisis header b{font-size:14px;flex:1;min-width:0}
+.analisis .puntaje{font-family:"JetBrains Mono",monospace;font-size:20px;font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.analisis .puntaje small{font-size:11px;color:var(--ink-3);font-weight:400}
+.analisis .resumen{margin:11px 0 0;font-size:13.5px;line-height:1.55}
+.analisis .procedencia{margin:9px 0 0;font-size:12px;color:var(--warn)}
+.analisis .porque{margin:13px 0 0;padding-top:11px;border-top:1px solid var(--line-soft);
+  font-size:12.5px;color:var(--ink-2);line-height:1.5}
+/* Dos columnas cuando caben; una sola en pantallas estrechas. A favor y en
+   contra se leen enfrentados, que es como se decide. */
+.rejilla-ia{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));
+  gap:14px;margin-top:15px}
+.rejilla-ia span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:6px}
+.rejilla-ia ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px}
+.rejilla-ia li{font-size:12.5px;line-height:1.5;color:var(--ink-2)}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
 <main>
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   <div class="tarjeta cabecera">
     <span class="ent">{{ lic.entidad }}</span>
     <h1>{{ lic.objeto }}</h1>
@@ -100,6 +122,84 @@ main{max-width:900px}
     {% endif %}
   </div>
   {% endif %}
+
+  <div class="tarjeta">
+    <div class="cab-ia">
+      <h2>Análisis de viabilidad</h2>
+      {% if cuota_ia.tope is not none and cuota_ia.por_plan %}
+        <span class="pill neutro">{{ cuota_ia.usados }} / {{ cuota_ia.tope }} este mes</span>
+      {% endif %}
+    </div>
+
+    {% for a in analisis %}
+      {% set r = a.resultado %}
+      <article class="analisis">
+        <header>
+          <b>{{ a.razon_social }}</b>
+          <span class="pill {% if a.recomendacion == 'licitar' %}ok{% elif a.recomendacion == 'pasar' %}urg{% else %}pend{% endif %}">{{ a.recomendacion }}</span>
+          <span class="puntaje">{{ r.score_viabilidad }}<small>/100</small></span>
+        </header>
+
+        {# Se dice de dónde salió. Un cliente que paga por el análisis con IA y
+           ve el heurístico sin saberlo tiene una queja legítima. #}
+        {% if a.origen == 'heuristico' %}
+          <p class="procedencia">Análisis por reglas, sin IA. No mira los datos de tu empresa.</p>
+        {% endif %}
+
+        <p class="resumen">{{ r.resumen }}</p>
+
+        <div class="rejilla-ia">
+          {% if r.fortalezas %}
+            <div><span>A favor</span><ul>{% for f in r.fortalezas %}<li>{{ f }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if r.riesgos %}
+            <div><span>Riesgos</span><ul>{% for x in r.riesgos %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if r.requisitos_clave %}
+            <div><span>Requisitos</span><ul>{% for x in r.requisitos_clave %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if r.informacion_que_falta %}
+            <div><span>Falta saber</span><ul>{% for x in r.informacion_que_falta %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          {% endif %}
+        </div>
+
+        {% if r.precio_sugerido_min or r.competidores_estimados %}
+          <div class="desglose">
+            {% if r.precio_sugerido_min %}<div><dt>Rango sugerido</dt><dd>S/ {{ '{:,.0f}'.format(r.precio_sugerido_min) }} – {{ '{:,.0f}'.format(r.precio_sugerido_max) }}</dd></div>{% endif %}
+            {% if r.competidores_estimados %}<div><dt>Competidores</dt><dd>~{{ r.competidores_estimados }}</dd></div>{% endif %}
+          </div>
+        {% endif %}
+
+        <p class="porque">{{ r.justificacion_score }}</p>
+      </article>
+    {% endfor %}
+
+    {% if not empresas %}
+      <div class="vacio">
+        <p><strong>Necesitas una empresa registrada.</strong> El análisis compara
+           esta licitación con tu experiencia y tu equipo: sin esos datos no hay
+           nada que comparar.</p>
+        <a class="btn" href="/empresas/nueva">Agregar empresa</a>
+      </div>
+    {% elif not cuota_ia.por_plan %}
+      <div class="vacio">
+        <p>El análisis con IA no está incluido en tu plan {{ cuota_ia.plan }}.</p>
+        <a class="btn" href="/suscripcion">Ver planes</a>
+      </div>
+    {% elif cuota_ia.restantes == 0 %}
+      <p class="sub">Has usado los {{ cuota_ia.tope }} análisis de este mes.
+         El contador vuelve a cero el día 1.</p>
+    {% else %}
+      <p class="sub">Evalúa esta licitación contra la experiencia, el equipo y los
+         rubros de una de tus empresas. Tarda unos segundos.</p>
+      <form method="post" action="/licitacion/{{ lic.id }}/analizar" class="acciones">
+        <select name="empresa_id" required>
+          {% for e in empresas %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
+        </select>
+        <button type="submit">{% if analisis %}Volver a analizar{% else %}Analizar{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
 
   <div class="tarjeta">
     <h2>Postular</h2>
