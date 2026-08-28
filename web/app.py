@@ -153,6 +153,7 @@ from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
 from web.webhooks_whatsapp import router as router_wa_webhook
 from web.admin import router as router_admin  # noqa: E402
+from web.informes import router as router_informes  # noqa: E402
 
 # Los scripts salen de aqui y no del HTML. Es lo que permite que la politica
 # de seguridad prohiba el script embebido, y sin eso la CSP no protege contra
@@ -167,6 +168,7 @@ app.include_router(router_contratos)
 app.include_router(router_suscripcion)
 app.include_router(router_wa_webhook)
 app.include_router(router_admin)
+app.include_router(router_informes)
 
 
 def _dias(fecha) -> int | None:

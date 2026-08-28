@@ -79,6 +79,12 @@ main{max-width:900px}
     <h1>{{ lic.objeto }}</h1>
     <div class="metas">
       <div><span>Puntaje</span><b>{% if lic.score_viabilidad %}{{ lic.score_viabilidad | round | int }}{% else %}—{% endif %}</b></div>
+      {# Seguir no abre expediente: es para las que todavía estás evaluando. #}
+      <div>
+        <form method="post" action="/licitacion/{{ lic.id }}/seguir">
+          <button type="submit" class="sec">{% if seguida %}★ Siguiendo{% else %}☆ Seguir{% endif %}</button>
+        </form>
+      </div>
       <div><span>Cierre</span><b>{{ lic.fecha_cierre.strftime('%d/%m/%Y %H:%M') if lic.fecha_cierre else '—' }}</b></div>
       <div><span>Monto</span><b>{% if lic.monto_referencial %}S/ {{ '{:,.0f}'.format(lic.monto_referencial) }}{% else %}no publicado{% endif %}</b></div>
       <div><span>Tipo</span><b>{{ lic.tipo or '—' }}</b></div>

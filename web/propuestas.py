@@ -66,6 +66,10 @@ async def detalle_licitacion(request: Request, licitacion_id: str,
                  FROM propuestas p JOIN empresas e ON e.id = p.empresa_id
                 WHERE p.licitacion_id = $1 AND e.usuario_id = $2""",
             licitacion_id, usuario["id"])
+        seguida = await conn.fetchval(
+            """SELECT EXISTS(SELECT 1 FROM licitaciones_seguidas
+                              WHERE usuario_id=$1 AND licitacion_id=$2)""",
+            usuario["id"], licitacion_id)
 
     detalle = lic["score_detalle"]
     if isinstance(detalle, str):
@@ -87,8 +91,60 @@ async def detalle_licitacion(request: Request, licitacion_id: str,
         # por empresa suya que lo haya pedido.
         "analisis": await ia.analisis_guardado(usuario["id"], licitacion_id),
         "cuota_ia": await ia.cuota(usuario["id"]),
+        "seguida": seguida,
         "error": error, "aviso": aviso,
     })
+
+
+@router.post("/licitacion/{licitacion_id}/seguir")
+async def alternar_seguimiento(request: Request, licitacion_id: str,
+                               volver: str = Form("")):
+    """Marca o desmarca interes en una licitacion, sin abrir expediente.
+
+    POR QUE HACE FALTA UN PASO INTERMEDIO
+
+      Hasta ahora la unica accion era postular, y postular abre un expediente
+      con sus preguntas y sus documentos. Es demasiado compromiso para algo que
+      todavia estas evaluando: entre "me avisaron" y "me presento" hay dias de
+      leer bases y mandar consultas.
+
+      Sin donde apuntarlo, quien duda acaba llevando la lista en otro sitio --
+      que es justo donde empieza a no necesitar el producto.
+
+    El destino vuelve por formulario porque se sigue desde dos sitios, la ficha
+    y la tabla del panel, y el usuario espera quedarse donde estaba.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse(f"/entrar?siguiente=/licitacion/{licitacion_id}",
+                                status_code=303)
+
+    async with connection() as conn:
+        # DELETE primero y, si no borro nada, INSERT. Un viaje de ida y vuelta
+        # menos que consultar antes, y sin ventana entre la consulta y la
+        # escritura.
+        estado = await conn.execute(
+            """DELETE FROM licitaciones_seguidas
+                WHERE usuario_id=$1 AND licitacion_id=$2""",
+            usuario["id"], licitacion_id)
+        # asyncpg devuelve el estado de Postgres, "DELETE <n>". Se lee el
+        # numero y no se compara contra la cadena entera: comparar con un
+        # literal que parece SQL confunde a `tools/auditar_sql.py`, que lo
+        # recoge como una consulta y falla al validarla.
+        borradas = int(estado.rsplit(" ", 1)[-1])
+        if borradas == 0:
+            await conn.execute(
+                """INSERT INTO licitaciones_seguidas (usuario_id, licitacion_id)
+                   VALUES ($1,$2) ON CONFLICT DO NOTHING""",
+                usuario["id"], licitacion_id)
+
+    destino = volver.strip() or f"/licitacion/{licitacion_id}"
+    # Solo rutas propias: `volver` llega de un formulario, y sin esta
+    # comprobacion seria una redireccion abierta hacia donde quisiera quien
+    # montara el enlace.
+    if not destino.startswith("/") or destino.startswith("//"):
+        destino = f"/licitacion/{licitacion_id}"
+    return RedirectResponse(destino, status_code=303)
 
 
 @router.post("/licitacion/{licitacion_id}/analizar")

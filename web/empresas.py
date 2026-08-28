@@ -33,8 +33,14 @@ router = APIRouter()
 CAMPOS = (
     "razon_social", "ruc", "representante_legal", "dni_representante",
     "cargo_representante", "direccion", "departamento", "telefono", "email",
-    "rnp_numero",
+    "rnp_numero", "rnp_categoria",
 )
+
+# `rnp_vigencia` NO va en CAMPOS porque es DATE y todo lo de arriba es texto.
+# Llevaba en el esquema desde el principio sin que nadie pudiera escribirla: el
+# formulario tenia el numero de RNP y no su fecha de caducidad. Y mientras
+# tanto el analisis de viabilidad afirma que la inscripcion vigente es
+# condicion para contratar.
 
 
 def _plantillas(request: Request):
@@ -101,6 +107,9 @@ async def form_editar(request: Request, empresa_id: int,
             """SELECT * FROM equipo_tecnico WHERE empresa_id=$1
                 ORDER BY anos_experiencia DESC NULLS LAST, nombre_completo""",
             empresa_id)
+        vencimientos = await conn.fetch(
+            """SELECT * FROM vencimientos WHERE empresa_id=$1
+                ORDER BY fecha_vencimiento""", empresa_id)
 
     return _plantillas(request).TemplateResponse("empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": empresa,
@@ -108,6 +117,7 @@ async def form_editar(request: Request, empresa_id: int,
         "imagenes": await rutas_de(empresa_id),
         "tipos_imagen": TIPOS_IMAGEN,
         "experiencia": experiencia, "equipo": equipo,
+        "vencimientos": vencimientos, "hoy": date.today(),
         "aviso": aviso, "error": error,
     })
 
@@ -244,6 +254,56 @@ async def agregar_miembro(
     return RedirectResponse(f"{destino}?aviso=Profesional+agregado", status_code=303)
 
 
+@router.post("/empresas/{empresa_id}/vencimiento")
+async def agregar_vencimiento(request: Request, empresa_id: int,
+                              tipo: str = Form(...),
+                              fecha_vencimiento: str = Form(...),
+                              descripcion: str = Form("")):
+    """Anota algo que caduca: poliza, carta fianza, certificado, vigencia.
+
+    El RNP NO se anota aqui: vive en `empresas.rnp_vigencia` porque es un
+    atributo de la empresa exigido por ley, con su categoria, y el analisis de
+    viabilidad lo consulta como tal. La vista de informes une los dos origenes.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya",
+                                status_code=303)
+
+    destino = f"/empresas/{empresa_id}/editar"
+    fecha = _fecha(fecha_vencimiento)
+    if not tipo.strip() or not fecha:
+        return RedirectResponse(
+            f"{destino}?error={quote_plus('Hace falta el tipo y una fecha valida')}",
+            status_code=303)
+
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO vencimientos (empresa_id, tipo, descripcion,
+                                         fecha_vencimiento)
+               VALUES ($1,$2,$3,$4)""",
+            empresa_id, tipo.strip(), descripcion.strip() or None, fecha)
+    return RedirectResponse(f"{destino}?aviso=Vencimiento+anotado", status_code=303)
+
+
+@router.post("/empresas/{empresa_id}/vencimiento/{venc_id}/borrar")
+async def borrar_vencimiento(request: Request, empresa_id: int, venc_id: int):
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya",
+                                status_code=303)
+    async with connection() as conn:
+        await conn.execute(
+            "DELETE FROM vencimientos WHERE id=$1 AND empresa_id=$2",
+            venc_id, empresa_id)
+    return RedirectResponse(f"/empresas/{empresa_id}/editar?aviso=Vencimiento+eliminado",
+                            status_code=303)
+
+
 @router.post("/empresas/{empresa_id}/equipo/{miembro_id}/borrar")
 async def borrar_miembro(request: Request, empresa_id: int, miembro_id: int):
     usuario = await usuario_actual(request)
@@ -284,9 +344,11 @@ async def guardar(request: Request, empresa_id: int = Form(0), rubros: str = For
                 """UPDATE empresas SET razon_social=$2, ruc=$3,
                        representante_legal=$4, dni_representante=$5,
                        cargo_representante=$6, direccion=$7, departamento=$8,
-                       telefono=$9, email=$10, rnp_numero=$11, rubros=$12
+                       telefono=$9, email=$10, rnp_numero=$11,
+                       rnp_categoria=$12, rnp_vigencia=$13, rubros=$14
                    WHERE id=$1""",
-                empresa_id, *[datos[c] for c in CAMPOS], lista_rubros,
+                empresa_id, *[datos[c] for c in CAMPOS],
+                _fecha(formulario.get('rnp_vigencia') or ''), lista_rubros,
             )
             aviso = "Empresa+actualizada"
         else:
@@ -303,10 +365,13 @@ async def guardar(request: Request, empresa_id: int = Form(0), rubros: str = For
                 await conn.execute(
                     """INSERT INTO empresas (razon_social, ruc, representante_legal,
                            dni_representante, cargo_representante, direccion,
-                           departamento, telefono, email, rnp_numero, rubros,
+                           departamento, telefono, email, rnp_numero,
+                           rnp_categoria, rnp_vigencia, rubros,
                            usuario_id, activa)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE)""",
-                    *[datos[c] for c in CAMPOS], lista_rubros, usuario["id"],
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)""",
+                    *[datos[c] for c in CAMPOS],
+                    _fecha(formulario.get('rnp_vigencia') or ''),
+                    lista_rubros, usuario["id"],
                 )
             except Exception as e:
                 log.warning("Alta de empresa fallida: %s", e)

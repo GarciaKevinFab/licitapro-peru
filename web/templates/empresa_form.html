@@ -60,6 +60,15 @@ form.emp{display:flex;flex-direction:column;gap:15px}
         <label class="campo"><span>N.º RNP</span>
           <input type="text" name="rnp_numero"
                  value="{{ empresa.rnp_numero if empresa and empresa.rnp_numero else '' }}"></label>
+        <label class="campo"><span>Capítulo del RNP</span>
+          <input type="text" name="rnp_categoria" placeholder="Ejecutor de Obras"
+                 value="{{ empresa.rnp_categoria if empresa and empresa.rnp_categoria else '' }}"></label>
+        {# Esta fecha existía en la base desde el principio y no había forma de
+           escribirla. Con el RNP vencido no se puede contratar: sin ella, el
+           producto deja preparar expedientes que no se pueden presentar. #}
+        <label class="campo"><span>Vence el RNP</span>
+          <input type="date" name="rnp_vigencia"
+                 value="{{ empresa.rnp_vigencia.isoformat() if empresa and empresa.rnp_vigencia else '' }}"></label>
       </div>
       <div class="rejilla">
         <label class="campo"><span>Representante legal</span>
@@ -206,6 +215,47 @@ form.emp{display:flex;flex-direction:column;gap:15px}
     </form>
     <p class="ayuda">La conformidad importa: sin ella la entidad puede no computar
        el contrato al calificar tu experiencia.</p>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Otros vencimientos</h2>
+    <p class="sub">Pólizas, cartas fianza, certificados, vigencias de poder.
+       Aparecen en <a href="/informes">Informes</a> cuando falten menos de 60 días.
+       El RNP no se anota aquí: su fecha está arriba, con su capítulo.</p>
+
+    {% if vencimientos %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr><th>Documento</th><th>Vence</th><th></th></tr></thead>
+          <tbody>
+            {% for v in vencimientos %}
+              {% set dias = (v.fecha_vencimiento - hoy).days %}
+              <tr>
+                <td>{{ v.tipo }}{% if v.descripcion %}<span class="ent">{{ v.descripcion }}</span>{% endif %}</td>
+                <td>{{ v.fecha_vencimiento.strftime('%d/%m/%Y') }}
+                    {% if dias < 0 %}<span class="pill urg">vencido</span>
+                    {% elif dias <= 30 %}<span class="pill pend">{{ dias }} día(s)</span>{% endif %}</td>
+                <td><form method="post" action="/empresas/{{ empresa.id }}/vencimiento/{{ v.id }}/borrar">
+                      <button type="submit" class="peligro">Quitar</button></form></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <form method="post" action="/empresas/{{ empresa.id }}/vencimiento" class="mt-14">
+      <div class="rejilla">
+        <label class="campo"><span>Documento *</span>
+          <input type="text" name="tipo" required placeholder="Póliza CAR"></label>
+        <label class="campo"><span>Detalle</span>
+          <input type="text" name="descripcion" placeholder="Rímac, póliza 4471"></label>
+        <label class="campo"><span>Vence el *</span>
+          <input type="date" name="fecha_vencimiento" required></label>
+      </div>
+      <div class="acciones mt-14">
+        <button type="submit" class="sec">Anotar vencimiento</button></div>
+    </form>
   </div>
 
   <div class="tarjeta">

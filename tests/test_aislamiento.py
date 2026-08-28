@@ -658,6 +658,110 @@ async def test_no_se_descarga_la_proforma_de_un_contrato_ajeno(
             await c.execute("DELETE FROM contratos WHERE id=$1", contrato)
 
 
+# ─── Seguimiento, vencimientos y exportacion ─────────────
+
+async def test_seguir_no_deja_redirigir_fuera_del_sitio(usuario, marca, cliente):
+    """`volver` llega de un formulario, o sea de fuera.
+
+    Sin comprobarlo seria una redireccion abierta: basta con montar un enlace
+    con `volver=//otro-sitio` para sacar al usuario del panel justo despues de
+    una accion que el mismo pidio, que es cuando menos se sospecha.
+    """
+    from shared.db import connection
+
+    lid = f"prueba-seg-{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, entidad, objeto)
+               VALUES ($1,'prueba','Entidad','Objeto de prueba')
+               ON CONFLICT (id) DO NOTHING""", lid)
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+        for destino in ("//evil.example", "https://evil.example", "javascript:1"):
+            r = await cliente.post(f"/licitacion/{lid}/seguir",
+                                   data={"volver": destino})
+            assert r.headers["location"] == f"/licitacion/{lid}", destino
+
+        # Y una ruta propia si se respeta.
+        r = await cliente.post(f"/licitacion/{lid}/seguir", data={"volver": "/panel"})
+        assert r.headers["location"] == "/panel"
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones_seguidas WHERE licitacion_id=$1", lid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lid)
+
+
+async def test_seguir_alterna_y_no_duplica(usuario, marca, cliente):
+    """Seguir dos veces no es un estado distinto de seguir una."""
+    from shared.db import connection
+
+    lid = f"prueba-seg2-{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, entidad, objeto)
+               VALUES ($1,'prueba','Entidad','Objeto de prueba')
+               ON CONFLICT (id) DO NOTHING""", lid)
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+
+        async def cuantas():
+            async with connection() as c:
+                return await c.fetchval(
+                    """SELECT COUNT(*) FROM licitaciones_seguidas
+                        WHERE usuario_id=$1 AND licitacion_id=$2""",
+                    usuario["id"], lid)
+
+        await cliente.post(f"/licitacion/{lid}/seguir")
+        assert await cuantas() == 1
+        await cliente.post(f"/licitacion/{lid}/seguir")   # alterna: deja de seguir
+        assert await cuantas() == 0
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones_seguidas WHERE licitacion_id=$1", lid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lid)
+
+
+async def test_no_se_anotan_vencimientos_en_una_empresa_ajena(
+        usuario, empresa, marca, cliente):
+    from shared.db import borrar_cuenta, connection, crear_usuario
+    from shared.seguridad import hashear_password
+
+    email = f"intruso-venc-{marca}@ejemplo.pe"
+    intruso = await crear_usuario(email, hashear_password("ClaveDePrueba123!"), "Intruso")
+    try:
+        await cliente.post("/entrar", data={"email": email,
+                                            "password": "ClaveDePrueba123!"})
+        r = await cliente.post(f"/empresas/{empresa}/vencimiento", data={
+            "tipo": "Poliza inventada", "fecha_vencimiento": "2027-01-01"})
+        assert r.status_code == 303
+        assert "no+es+tuya" in r.headers["location"]
+
+        async with connection() as c:
+            assert await c.fetchval(
+                "SELECT COUNT(*) FROM vencimientos WHERE empresa_id=$1", empresa) == 0
+    finally:
+        await borrar_cuenta(intruso["id"])
+
+
+async def test_el_csv_lo_abre_excel_en_espanol(usuario, cliente):
+    """Dos detalles que parecen manias y deciden si la exportacion sirve.
+
+    Sin BOM, Excel lee el archivo como ANSI y toda tilde sale rota en cada
+    fila. Con comas en vez de punto y coma, la configuracion regional de Peru
+    mete la fila entera en la primera columna. Cualquiera de las dos convierte
+    la funcion en algo que el usuario prueba una vez y no vuelve a usar.
+    """
+    await cliente.post("/entrar", data={"email": usuario["email"],
+                                        "password": usuario["password"]})
+    r = await cliente.get("/informes/cobros.csv")
+    assert r.status_code == 200
+    assert r.content.startswith(b"\xef\xbb\xbf"), "falta el BOM"
+    assert b";" in r.content.split(b"\n")[0], "la cabecera no usa punto y coma"
+    assert "attachment" in r.headers.get("content-disposition", "")
+
+
 # ─── Paginas legales ─────────────────────────────────────
 
 async def test_las_paginas_legales_son_publicas(cliente):
