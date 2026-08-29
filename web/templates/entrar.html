@@ -1,5 +1,6 @@
 {% extends "_base.html" %}
-{% block titulo %}{% if modo == 'registro' %}Crear cuenta{% else %}Entrar{% endif %} · LicitaPro Perú{% endblock %}
+{% block titulo %}{% if modo == 'registro' %}Crear cuenta{% else %}Entrar{% endif %} · LicitaPro Perú
+{% endblock %}
 
 {% block estilos %}
 /* ============================================================================
@@ -144,10 +145,30 @@ form.acc{animation-delay:.13s}
   .marca,.caja h1,.lead,form.acc,.alterna,.argumento > *{animation:none}
   form.acc button:hover{transform:none}
 }
+/* ---------- VOLVER AL INICIO ----------
+   El logotipo ya enlaza a "/", pero un logo que es enlace no es descubrible:
+   hay que saberlo. Para alguien que no es tecnico -- que es exactamente quien
+   usa esto -- la salida tiene que tener texto y una flecha.
+
+   Arriba a la izquierda y no dentro de la tarjeta: ahi compite con el boton de
+   entrar, y esta pantalla tiene UNA accion principal. Fuera de la caja se ve
+   sin robarle protagonismo. */
+.volver{
+  position:absolute;top:clamp(18px,3vh,30px);left:clamp(18px,4vw,34px);
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:13.5px;color:var(--ink-3);text-decoration:none;
+  padding:7px 12px 7px 9px;border-radius:8px;
+  transition:color .2s ease,background .2s ease;
+}
+.volver:hover{color:var(--ac);background:var(--ac-soft)}
+.volver .fl{transition:transform .25s cubic-bezier(.22,1,.36,1)}
+.volver:hover .fl{transform:translateX(-3px)}
+@media (prefers-reduced-motion:reduce){ .volver:hover .fl{transform:none} }
 {% endblock %}
 
 {% block cuerpo %}
 <div class="acceso">
+  <a class="volver" href="/"><span class="fl">&larr;</span> Volver al inicio</a>
 
   <section class="argumento">
     <h2>El Estado publica<br><span class="apagado">cientos al día.</span><br>Nosotros encontramos las tuyas.</h2>
