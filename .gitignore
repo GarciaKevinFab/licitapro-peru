@@ -45,3 +45,6 @@ graphify-out/
 
 # Pruebas
 .pytest_cache/
+
+# Entorno aislado de la tarea programada que trae OECE desde esta maquina.
+.venv-tarea/
