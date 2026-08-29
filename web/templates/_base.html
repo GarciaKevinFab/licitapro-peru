@@ -6,7 +6,7 @@
 <title>{% block titulo %}LicitaPro Perú{% endblock %}</title>
 {# Un solo SVG sirve de favicon en claro y en oscuro, y escala a cualquier
    tamano. No hacen falta los seis PNG de siempre. #}
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -214,7 +214,7 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
     <a href="/">Inicio</a>
   </span>
 </footer>
-<script src="/static/licitapro.js" defer></script>
+<script src="{{ estatico('licitapro.js') }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

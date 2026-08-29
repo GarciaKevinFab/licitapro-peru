@@ -193,6 +193,36 @@ from web.informes import router as router_informes  # noqa: E402
 # XSS por mucho que este puesta.
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
+
+# ---------------------------------------------------- estaticos con version
+# POR QUE NO BASTA CON SUBIR EL ARCHIVO
+#
+#   Cloudflare cachea /static/* cuatro horas. Tras un despliegue el HTML llega
+#   fresco -- es dinamico -- pero el JS y el CSS siguen siendo los viejos hasta
+#   que caduque la copia del borde. Y un script viejo contra un marcado nuevo
+#   NO da error: simplemente no encuentra las clases que busca y no hace nada.
+#
+#   Eso paso al renombrar `.counter` a `.cifra`: los contadores de la portada
+#   se quedaron en cero durante horas, sin un solo error en consola. El sintoma
+#   -- "los numeros no suben" -- no se parece en nada a la causa, que es lo que
+#   lo hace caro de encontrar.
+#
+#   Poner la marca de tiempo del archivo en la URL convierte cada despliegue en
+#   una direccion distinta: ni el navegador ni el borde tienen nada que reusar,
+#   y el problema deja de existir en vez de esperar a que caduque.
+def estatico(nombre: str) -> str:
+    """URL de un estatico con la marca de tiempo del archivo detras."""
+    try:
+        marca = int((BASE / "static" / nombre).stat().st_mtime)
+    except OSError:
+        # Si el archivo no esta, se devuelve la ruta pelada: que falle de forma
+        # visible al cargarla, y no aqui en silencio.
+        return f"/static/{nombre}"
+    return f"/static/{nombre}?v={marca}"
+
+
+templates.env.globals["estatico"] = estatico
+
 app.include_router(router_auth)
 app.include_router(router_config)
 app.include_router(router_empresas)
