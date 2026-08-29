@@ -6,7 +6,15 @@
 .caja{width:100%;max-width:430px}
 .caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
   font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
-.caja .marca .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.caja .marca{color:var(--ink);text-decoration:none;justify-content:center}
+.caja .marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
+.caja .marca .pe{color:var(--ink-3);font-weight:400}
+/* Los campos con fondo --panel-2 y no --bg: sobre la tarjeta --panel, en
+   oscuro esos dos valores estan tan cerca que el recuadro desaparecia. */
+.caja input[type=email]{background:var(--panel-2);border-radius:9px;padding:12px 14px;font-size:15px}
+.caja input:focus{outline:none;border-color:var(--ac);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent)}
+.caja button{padding:13px;border-radius:10px;font-size:15px;font-weight:600}
 .caja h1{font-family:Sora,sans-serif;font-size:1.4rem;font-weight:600;margin:0 0 6px;
   letter-spacing:-.02em;text-align:center}
 .caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
@@ -21,7 +29,16 @@ form.acc button{width:100%;padding:10px}
 {% block cuerpo %}
 <div class="acceso">
   <div class="caja">
-    <div class="marca"><span class="pip"></span> LicitaPro Perú</div>
+    <a class="marca" href="/">
+      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+      LicitaPro <span class="pe">Perú</span>
+    </a>
 
     {% if paso == 'pedir' %}
       <h1>Restablecer contraseña</h1>

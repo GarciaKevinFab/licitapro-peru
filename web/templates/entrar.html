@@ -2,28 +2,181 @@
 {% block titulo %}{% if modo == 'registro' %}Crear cuenta{% else %}Entrar{% endif %} · LicitaPro Perú{% endblock %}
 
 {% block estilos %}
-.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
-.caja{width:100%;max-width:420px}
-.caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
-  font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
-.caja .marca .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
-.caja h1{font-family:Sora,sans-serif;font-size:1.45rem;font-weight:600;margin:0 0 6px;
-  letter-spacing:-.02em;text-align:center}
-.caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
-form.acc{display:flex;flex-direction:column;gap:15px;background:var(--panel);
-  border:1px solid var(--line);border-radius:6px;padding:24px}
-form.acc button{width:100%;padding:10px}
-.alterna{text-align:center;font-size:13px;color:var(--ink-3);margin-top:18px}
+/* ============================================================================
+   ACCESO — entrar y crear cuenta
+
+   QUE ESTABA MAL
+
+     Una caja de 420px flotando en el centro de una pantalla vacia. No estaba
+     "limpia": estaba sin terminar. Tres sintomas concretos:
+
+       1. Los campos no se veian. El input usaba --bg sobre una tarjeta --panel,
+          y en oscuro esos dos valores estan tan cerca que el recuadro
+          desaparecia: quedaba un borde finisimo y nada dentro.
+       2. Todo pesaba lo mismo. Un titulo a 1.45rem sobre texto de 13px no es
+          jerarquia, es tamano de letra distinto.
+       3. La pagina no decia nada. Es lo primero que ve quien llega desde la
+          portada, y lo unico que hacia era pedir datos.
+
+   QUE SE HACE
+
+     Dos columnas en pantalla ancha: a la izquierda el motivo por el que estas
+     aqui, a la derecha el formulario. En movil solo el formulario -- ahi el
+     argumento estorba, porque quien abre el login en el telefono viene a
+     entrar, no a que le convenzan otra vez.
+   ========================================================================== */
+
+.acceso{
+  min-height:100svh;
+  display:grid;
+  grid-template-columns:1fr;
+  align-items:center;
+  gap:clamp(32px,6vw,72px);
+  max-width:1080px;
+  margin:0 auto;
+  padding:clamp(28px,6vh,64px) clamp(20px,5vw,40px);
+  position:relative;
+}
+/* Halo detras, del color de acento. Da profundidad sin dibujar nada: sin el,
+   el fondo plano hace que la tarjeta parezca pegada con celo. */
+.acceso::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(52% 40% at 24% 8%,
+    color-mix(in srgb, var(--ac) 13%, transparent), transparent 68%);
+}
+@media (min-width:960px){
+  .acceso{grid-template-columns:1fr 420px}
+}
+
+/* ---------- columna del argumento (solo en ancho) ---------- */
+.argumento{display:none}
+@media (min-width:960px){ .argumento{display:block} }
+.argumento h2{
+  font-family:Sora,sans-serif;font-weight:600;
+  font-size:clamp(1.9rem,3.1vw,2.7rem);line-height:1.04;letter-spacing:-.035em;
+  margin:0 0 18px;text-wrap:balance;
+}
+.argumento h2 .apagado{color:var(--ink-3)}
+.argumento .bajada{color:var(--ink-2);font-size:1.02rem;max-width:38ch;margin:0 0 34px;line-height:1.55}
+.puntos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:17px}
+.puntos li{display:flex;gap:13px;align-items:flex-start;font-size:.94rem;color:var(--ink-2);max-width:40ch}
+.puntos .n{
+  flex:none;width:23px;height:23px;border-radius:50%;
+  background:var(--ac-soft);color:var(--ac);
+  display:flex;align-items:center;justify-content:center;
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:600;margin-top:1px;
+}
+.puntos b{color:var(--ink);font-weight:600;display:block;margin-bottom:2px}
+
+/* ---------- columna del formulario ---------- */
+.caja{width:100%;max-width:420px;justify-self:center}
+.marca{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.022em;
+  margin-bottom:24px;color:var(--ink);text-decoration:none;
+}
+.marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
+.marca .pe{color:var(--ink-3);font-weight:400}
+
+.caja h1{
+  font-family:Sora,sans-serif;font-size:clamp(1.75rem,2.6vw,2.1rem);font-weight:600;
+  margin:0 0 7px;letter-spacing:-.03em;text-align:center;line-height:1.05;
+}
+.lead{text-align:center;color:var(--ink-3);font-size:14px;margin:0 0 26px}
+
+form.acc{
+  display:flex;flex-direction:column;gap:16px;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:28px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04), 0 18px 44px -30px rgba(0,0,0,.45);
+}
+
+/* LOS CAMPOS, QUE ERAN EL PROBLEMA DE FONDO.
+   Fondo --panel-2 y no --bg: sobre la tarjeta --panel se distingue tanto en
+   claro como en oscuro. Y 12px de alto interior en vez de 8, porque por debajo
+   de 44px totales el dedo falla, y esto se rellena con el pulgar. */
+form.acc input[type=text],
+form.acc input[type=email],
+form.acc input[type=password]{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:12px 14px;
+  font-size:15px;
+  transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+form.acc input:focus{
+  outline:none;
+  border-color:var(--ac);
+  background:var(--panel);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent);
+}
+form.acc label.campo>span{font-size:10.5px;letter-spacing:.09em}
+
+form.acc button{
+  width:100%;padding:13px;border-radius:10px;font-size:15px;font-weight:600;
+  margin-top:4px;
+  transition:transform .2s cubic-bezier(.22,1,.36,1), filter .2s ease;
+}
+form.acc button:hover{filter:brightness(1.07);transform:translateY(-1px)}
+form.acc button:active{transform:translateY(0)}
+
+.alterna{text-align:center;font-size:13.5px;color:var(--ink-3);margin-top:20px;line-height:1.9}
+.alterna a{font-weight:500}
+.legal{font-size:12px;color:var(--ink-3);margin:2px 0 0;line-height:1.5}
+
+/* ---------- entrada ----------
+   Animacion CSS con fill-mode backwards, NO una clase puesta desde JS. Si el
+   script fallara, un formulario de acceso invisible dejaria a la persona fuera
+   de su propia cuenta. Eso no puede depender de JavaScript. */
+@keyframes entra{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+.marca,.caja h1,.lead,form.acc,.alterna,.argumento > *{
+  animation:entra .7s cubic-bezier(.22,1,.36,1) backwards;
+}
+.caja h1{animation-delay:.05s}
+.lead{animation-delay:.09s}
+form.acc{animation-delay:.13s}
+.alterna{animation-delay:.19s}
+.argumento .bajada{animation-delay:.06s}
+.argumento .puntos{animation-delay:.12s}
+
+@media (prefers-reduced-motion:reduce){
+  .marca,.caja h1,.lead,form.acc,.alterna,.argumento > *{animation:none}
+  form.acc button:hover{transform:none}
+}
 {% endblock %}
 
 {% block cuerpo %}
 <div class="acceso">
+
+  <section class="argumento">
+    <h2>El Estado publica<br><span class="apagado">cientos al día.</span><br>Nosotros encontramos las tuyas.</h2>
+    <p class="bajada">
+      Vigilamos el SEACE sin descanso y te avisamos solo de lo que encaja con
+      tu empresa.
+    </p>
+    <ul class="puntos">
+      <li><span class="n">1</span><span><b>Detectar</b>Cada convocatoria pasa por tus filtros: rubro, región, monto y experiencia.</span></li>
+      <li><span class="n">2</span><span><b>Preparar</b>Anexos rellenados y el expediente listo para subir.</span></li>
+      <li><span class="n">3</span><span><b>Cobrar</b>Te avisamos cuando la entidad se pasa del plazo legal de pago.</span></li>
+    </ul>
+  </section>
+
   <div class="caja">
-    <div class="marca"><span class="pip"></span> LicitaPro Perú</div>
+    <a class="marca" href="/">
+      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+      LicitaPro <span class="pe">Perú</span>
+    </a>
 
     {% if modo == 'registro' %}
       <h1>Crear cuenta</h1>
-      <p class="lead">Empieza a recibir las licitaciones de tu rubro.</p>
+      <p class="lead">14 días del plan Pro. Sin tarjeta.</p>
     {% else %}
       <h1>Entrar</h1>
       <p class="lead">Accede a tu panel de licitaciones.</p>
@@ -41,12 +194,9 @@ form.acc button{width:100%;padding:10px}
           <input type="password" name="password" required minlength="10" autocomplete="new-password">
           <p class="ayuda">Mínimo 10 caracteres.</p></label>
         <button type="submit">Crear cuenta</button>
-    {% if modo == 'registro' %}
-      <p class="ayuda mt-12">Al crear la cuenta aceptas los
-         <a href="/terminos">términos del servicio</a> y la
-         <a href="/privacidad">política de privacidad</a>.</p>
-    {% endif %}
-    
+        <p class="legal">Al crear la cuenta aceptas los
+          <a href="/terminos">términos del servicio</a> y la
+          <a href="/privacidad">política de privacidad</a>.</p>
       </form>
       <p class="alterna">¿Ya tienes cuenta? <a href="/entrar">Entrar</a></p>
     {% else %}
