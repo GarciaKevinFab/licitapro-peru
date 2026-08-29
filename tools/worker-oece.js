@@ -94,12 +94,22 @@ export default {
     // Se devuelve el cuerpo y el codigo TAL CUAL. Si OECE responde 403 tambien
     // desde aqui, el scraper tiene que verlo: convertirlo en 200 con lista
     // vacia seria repetir exactamente el bug que acabamos de arreglar.
+    //
+    // X-Colo dice EN QUE CENTRO DE DATOS se ejecuto esto, y no es un adorno:
+    // un Worker corre por defecto en el borde mas cercano a QUIEN LO LLAMA, no
+    // al destino. Por eso la misma peticion daba 200 desde una PC en Peru
+    // (corria en Lima) y 403 desde el VPS en Estados Unidos.
+    //
+    // Con Smart Placement activado, Cloudflare deberia moverlo cerca del
+    // origen. Esta cabecera es como se comprueba: si pone LIM, esta en Lima y
+    // funciona por el motivo que creemos, no por casualidad.
     const cuerpo = await respuesta.arrayBuffer();
     return new Response(cuerpo, {
       status: respuesta.status,
       headers: {
         "Content-Type": respuesta.headers.get("content-type") || "application/json",
         "X-Origen-Estado": String(respuesta.status),
+        "X-Colo": (peticion.cf && peticion.cf.colo) || "desconocido",
       },
     });
   },
