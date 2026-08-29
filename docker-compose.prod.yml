@@ -104,7 +104,34 @@ services:
       # generador se limita a saltarse la que no encuentra.
       - datos_expedientes:/app/data
 
+  # El proxy que termina TLS. Es lo unico que asoma a internet: todo lo demas
+  # vive en la red interna de compose.
+  #
+  # Caddy pide y renueva el certificado de Let's Encrypt por su cuenta. Para
+  # que funcione, el dominio de LICITAPRO_DOMINIO tiene que apuntar YA a la IP
+  # de este servidor: la validacion se hace entrando desde fuera por el 80.
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      LICITAPRO_DOMINIO: ${LICITAPRO_DOMINIO:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Los certificados van en un volumen: sin el, cada reinicio pediria uno
+      # nuevo y Let's Encrypt limita cuantos se emiten por semana. Ese limite
+      # se agota rapido y deja el sitio sin TLS hasta que pase la ventana.
+      - caddy_datos:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   datos_postgres:
   datos_redis:
   datos_expedientes:
+  caddy_datos:
+  caddy_config:

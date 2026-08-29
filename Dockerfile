@@ -34,4 +34,15 @@ EXPOSE 8200
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8200/salud || exit 1
 
-CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8200"]
+# --proxy-headers hace que uvicorn lea X-Forwarded-Proto y X-Forwarded-For del
+# proxy. Sin eso, detras de Caddy toda peticion se ve como http y viniendo de
+# la IP del proxy: las URLs absolutas saldrian en http, y el freno a los
+# intentos de acceso contaria todos los fallos contra una sola IP -- la del
+# proxy --, con lo que el primer atacante dejaria bloqueados a todos.
+#
+# --forwarded-allow-ips=* es aceptable AQUI y solo aqui: este contenedor no
+# asoma a internet. Publica en 127.0.0.1 y solo lo alcanza Caddy por la red
+# interna de compose. Expuesto directo, ese comodin permitiria falsear la IP
+# de origen.
+CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8200", \
+     "--proxy-headers", "--forwarded-allow-ips=*"]

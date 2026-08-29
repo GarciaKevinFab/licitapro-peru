@@ -28,37 +28,70 @@ deliberado: descubrir que falta después de migrar de servidor sería tarde.
 Pon también `LICITAPRO_ENTORNO=produccion`, que además marca la cookie de
 sesión como `https_only`.
 
-## 2. Levantar
+## 2. El dominio, antes de levantar nada
+
+Pon `LICITAPRO_DOMINIO=tudominio.pe` en el `.env` y **apunta ya el DNS a la IP
+de este servidor** (un registro `A`, y otro para `www` si lo quieres).
+
+Este paso va primero porque Caddy pide el certificado a Let's Encrypt entrando
+desde fuera por el puerto 80. Si el DNS todavía no resuelve, el intento falla
+—y Let's Encrypt limita cuántas veces puedes reintentar por semana.
+
+Comprueba que ya propagó antes de seguir:
+
+```bash
+dig +short tudominio.pe
+```
+
+Con el `.env` sin `LICITAPRO_DOMINIO`, Caddy sirve en el puerto 80 **sin TLS**.
+Sirve para verificar que el despliegue arranca; no para producción.
+
+## 3. Levantar
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Levanta seis servicios: `postgres`, `redis`, `migraciones` (corre
-`alembic upgrade head` y termina), `web`, y los bots `radar`, `prep` y `win`.
-La web espera a que las migraciones terminen bien; si fallan, no arranca sobre
-un esquema a medias.
+Levanta siete servicios: `postgres`, `redis`, `migraciones` (corre
+`alembic upgrade head` y termina), `web`, los bots `radar`, `prep` y `win`, y
+`proxy`. La web espera a que las migraciones terminen bien; si fallan, no
+arranca sobre un esquema a medias.
 
-Comprobar:
+Comprobar, en este orden:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps
+```
+
+```bash
 curl -fsS http://127.0.0.1:8200/salud
 ```
 
-## 3. Proxy con TLS
-
-El servicio `web` publica **solo en 127.0.0.1**, nunca en la interfaz pública.
-Delante va un proxy con certificado. Con Caddy es todo lo que hace falta:
-
-```caddyfile
-licitapro.pe {
-    reverse_proxy 127.0.0.1:8200
-}
+```bash
+curl -fsSI https://tudominio.pe/salud | head -1
 ```
 
+Si el segundo responde y el tercero no, el problema es el certificado. Los
+motivos, por frecuencia: el DNS aún no apunta aquí, el puerto 80 está cerrado
+en el cortafuegos del proveedor, u otro proceso lo tiene ocupado.
+
+```bash
+docker compose -f docker-compose.prod.yml logs proxy | tail -30
+```
+
+## 4. Qué asoma a internet y qué no
+
+Solo `proxy`, en los puertos 80 y 443. Todo lo demás vive en la red interna de
+compose: `postgres` no publica puerto y `web` solo en `127.0.0.1:8200`, que
+desde fuera del servidor no se alcanza.
+
+Cierra el resto en el cortafuegos del proveedor. Si dejas el 5432 abierto,
+tarde o temprano alguien prueba `postgres/postgres` contra él.
+
 Sin TLS la cookie de sesión viaja en claro y cualquiera en la red puede
-robarla. No es opcional.
+robarla. No es opcional. Y hay un motivo más inmediato: **Izipay revisa la web
+desde fuera antes de habilitarte los cobros**, y pide que esté "terminada y
+activa". Con http a secas o un certificado autofirmado, esa revisión no pasa.
 
 ## 4. Activar cobros con Izipay
 

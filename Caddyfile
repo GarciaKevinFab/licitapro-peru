@@ -1,0 +1,54 @@
+# Proxy inverso con TLS. Es la pieza que faltaba para poder publicar.
+#
+# DESPLIEGUE.md ya traia un Caddyfile de ejemplo, pero solo como texto para
+# instalar Caddy a mano en el host. Un ejemplo en la documentacion es algo que
+# alguien tiene que copiar bien; esto es un servicio que arranca con el resto.
+#
+# POR QUE CADDY Y NO NGINX CON CERTBOT
+#
+#   Nginx necesita: emitir el certificado a mano la primera vez, un cron de
+#   renovacion, un hook que recargue nginx al renovar, y acordarse de que todo
+#   eso existe. Cada pieza puede fallar en silencio, y el sintoma llega noventa
+#   dias despues en forma de navegador en rojo.
+#
+#   Caddy pide el certificado a Let's Encrypt solo, lo renueva solo y recarga
+#   solo. Para quien ademas tiene que llevar el negocio, eso no es comodidad:
+#   es la diferencia entre que el TLS siga vivo dentro de un ano o no.
+#
+# EL DOMINIO SALE DEL ENTORNO
+#
+#   `LICITAPRO_DOMINIO` en el .env. Sin definir, Caddy sirve en :80 sin TLS --
+#   sirve para probar el despliegue y NO para produccion: la aplicacion manda
+#   HSTS fuera de desarrollo, asi que sin certificado de verdad el navegador se
+#   queda forzando https contra un puerto que no lo habla, y eso solo se
+#   arregla limpiando el estado del navegador de cada visitante.
+#
+# PARA QUE IZIPAY PUEDA VERIFICAR
+#
+#   Piden que la web este "terminada y activa", y la revisan desde fuera. Eso
+#   exige dominio propio y HTTPS valido: con autofirmado o con http a secas, la
+#   revision no pasa.
+
+{$LICITAPRO_DOMINIO::80} {
+	# El panel corre en la red interna de compose, asi que se llega por el
+	# nombre del servicio y no hace falta que publique puerto al exterior.
+	reverse_proxy web:8200
+
+	encode gzip zstd
+
+	# La aplicacion ya manda su propia Content-Security-Policy con nonce por
+	# peticion, HSTS, X-Frame-Options y las demas. NO se repiten aqui: dos
+	# origenes para la misma cabecera acaban discrepando, y el dia que se
+	# endurezca la politica en el codigo el proxy seguiria mandando la vieja.
+	header {
+		# Esta si es cosa del proxy: que no anuncie que es Caddy.
+		-Server
+	}
+
+	# Sin esto, un fallo del panel se ve como una pagina en blanco y no queda
+	# rastro de que peticion lo provoco.
+	log {
+		output stdout
+		format console
+	}
+}
