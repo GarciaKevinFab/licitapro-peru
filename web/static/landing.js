@@ -30,11 +30,31 @@
   }
 
   /* ------------------------------------------------- titular del hero
-     Se activa en el siguiente fotograma, no de inmediato: si la clase se
-     pusiera en el mismo tick en que se pinta, el navegador no tendria estado
-     inicial desde el que interpolar y las lineas apareceran de golpe. */
-  const hero = document.querySelector(".hero");
-  if (hero) requestAnimationFrame(() => hero.classList.add("listo"));
+     Ya NO se toca desde aqui. Antes se le ponia una clase con
+     requestAnimationFrame, y rAF no corre en pestanas en segundo plano: quien
+     abriera el enlace con ctrl+clic se encontraba el titular invisible, porque
+     las lineas se quedaban desplazadas dentro de su mascara.
+     Ahora es una animacion CSS con fill-mode forwards. Que el texto principal
+     de la pagina dependa de un script para verse es un error, no una opcion. */
+
+  /* RED DE SEGURIDAD PARA TODO LO DEMAS
+     Si algo de aqui abajo lanza -- un navegador sin IntersectionObserver, una
+     extension que rompe el DOM, un fallo mio --, lo peor que puede pasar es
+     que se pierdan las animaciones. Lo que NO puede pasar es que la pagina se
+     quede en blanco porque medio contenido esta a opacity 0 esperando una
+     clase que nunca llega. */
+  const revelarTodo = () => {
+    document.querySelectorAll(".rv").forEach((el) => el.classList.add("in"));
+    document.querySelectorAll(".cifra").forEach((c) => {
+      c.classList.add("viva");
+      const n = c.querySelector(".n");
+      if (n) n.textContent = Number(c.dataset.hasta || 0).toLocaleString("es-PE") + (c.dataset.sufijo || "");
+    });
+  };
+  /* Se registra ANTES del codigo que podria fallar, que es el unico orden en
+     que sirve de algo. Es idempotente, asi que no importa que un error de
+     carga de una fuente lo dispare tambien. */
+  addEventListener("error", revelarTodo);
 
   /* ------------------------------------------------------------ revelados
      Un observador para toda la pagina. `unobserve` tras revelar: lo que ya

@@ -158,10 +158,19 @@ body::after{
    contenedor crea el efecto de asomarse, y sale mucho mas barato que animar un
    clip-path. */
 .linea{display:block;overflow:hidden;padding-bottom:.06em}
-.linea > span{display:block;transform:translate3d(0,105%,0);transition:transform 1.15s var(--ease)}
-.hero.listo .linea > span{transform:none}
-.hero.listo .linea:nth-child(2) > span{transition-delay:.09s}
-.hero.listo .linea:nth-child(3) > span{transition-delay:.18s}
+/* ANIMACION CSS, NO TRANSICION DISPARADA POR JS.
+   La primera version ponia una clase desde landing.js con requestAnimationFrame
+   y el titular arrancaba desplazado 105% dentro de su mascara. Pero rAF NO se
+   ejecuta en pestanas en segundo plano: quien abriera el enlace con ctrl+clic
+   -- o cualquiera cuyo JS fallara -- se encontraba el titular INVISIBLE, con el
+   texto ahi pero fuera de la mascara.
+   Hacer que el texto dependa de JS para verse es el error. Con una animacion
+   CSS y fill-mode forwards, el navegador la ejecuta al pintar y el titular
+   acaba visible pase lo que pase con el script. */
+.linea > span{display:block;transform:translate3d(0,105%,0);animation:subir 1.15s var(--ease) forwards}
+.linea:nth-child(2) > span{animation-delay:.09s}
+.linea:nth-child(3) > span{animation-delay:.18s}
+@keyframes subir{to{transform:none}}
 .apagado{color:var(--txt-3)}
 .bajada{max-width:46ch;margin:calc(var(--paso) * 1.5) 0 0;color:var(--txt-2);font-size:clamp(1.06rem,1.45vw,1.32rem)}
 .acciones{display:flex;flex-wrap:wrap;gap:14px;margin-top:calc(var(--paso) * 1.7)}
