@@ -30,8 +30,46 @@ sesión como `https_only`.
 
 ## 2. El dominio, antes de levantar nada
 
-Pon `LICITAPRO_DOMINIO=tudominio.pe` en el `.env` y **apunta ya el DNS a la IP
-de este servidor** (un registro `A`, y otro para `www` si lo quieres).
+### Dónde se registra un `.pe`
+
+**Cloudflare no vende `.pe`** — su registrador responde «El TLD no es
+compatible». Eso no impide usar Cloudflare: no puede *venderte* el dominio,
+pero sí puede *gestionarle el DNS*. Son dos cosas distintas y se hacen en dos
+sitios.
+
+1. Registra en **[punto.pe](https://punto.pe)** o en uno de sus
+   comercializadores (a veces más barato). Tarifa oficial: **S/110 el primer
+   año**, S/200 por dos, S/295 por tres.
+2. Coge `licitapro.pe` **y también `licitapro.com.pe`**. Son S/110 más, y en
+   Perú mucha gente teclea `.com.pe` por costumbre; el segundo se redirige al
+   primero.
+3. En punto.pe, cambia los **servidores de nombres** a los que te dé
+   Cloudflare al añadir el dominio a tu cuenta.
+4. En Cloudflare, crea el registro `A` hacia la IP del VPS.
+
+El dominio debería estar a nombre del **mismo RUC** con el que abras la cuenta
+de Izipay.
+
+### El orden con Cloudflare importa
+
+**Primero la nube gris (solo DNS).** Caddy pide su certificado a Let's Encrypt
+entrando desde fuera por el puerto 80; con el tráfico proxeado desde el primer
+momento te metes en un problema del huevo y la gallina, porque el modo correcto
+de Cloudflare exige que el origen ya tenga certificado válido.
+
+Cuando `https://tudominio.pe/salud` responda, enciende la nube naranja.
+
+**Y entonces, en SSL/TLS, elige «Full (strict)».** No «Flexible». Con Flexible,
+Cloudflare habla http con tu servidor, Caddy redirige a https, y se forma un
+bucle de redirecciones; además la aplicación manda HSTS, así que el navegador
+del visitante se queda atrapado.
+
+El `Caddyfile` ya trae los rangos de Cloudflare como proxies de confianza. Sin
+eso, la app vería a todos los visitantes con la IP del borde de Cloudflare y el
+freno a la fuerza bruta bloquearía a muchos usuarios de golpe por culpa de uno.
+
+Pon `LICITAPRO_DOMINIO=tudominio.pe` en el `.env` y **comprueba que el DNS ya
+apunta a la IP de este servidor** antes de levantar el compose.
 
 Este paso va primero porque Caddy pide el certificado a Let's Encrypt entrando
 desde fuera por el puerto 80. Si el DNS todavía no resuelve, el intento falla
