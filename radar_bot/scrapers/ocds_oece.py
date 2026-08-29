@@ -33,6 +33,7 @@ Notas de la estructura OCDS, verificadas contra la API:
 """
 import logging
 import hashlib
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -45,6 +46,38 @@ from shared.config import DEPARTAMENTOS, normalizar
 log = logging.getLogger("radar.ocds_oece")
 
 API = "https://contratacionesabiertas.oece.gob.pe/api/v1/releases"
+
+# ---------------------------------------------------------- pasarela opcional
+# POR QUE HACE FALTA SALIR POR OTRO SITIO
+#
+#   OECE responde 403 a todo el trafico de este servidor -- API y portada por
+#   igual -- porque sale por una IP de datacenter fuera de Peru. Desde una
+#   conexion peruana la misma URL da 200. No es el formato ni las cabeceras:
+#   probado con User-Agent de navegador y con Referer, mismo 403.
+#
+#   Con OECE_PROXY_URL configurada, las peticiones van a un Worker de
+#   Cloudflare (tools/worker-oece.js) que las hace desde su red y devuelve la
+#   respuesta tal cual.
+#
+#   Sin configurar se va directo, como siempre: asi el desarrollo desde una
+#   maquina peruana no necesita nada, y si algun dia OECE deja de bloquear
+#   basta con vaciar la variable.
+_PROXY = (os.getenv("OECE_PROXY_URL") or "").rstrip("/")
+_PROXY_SECRETO = os.getenv("OECE_PROXY_SECRETO") or ""
+
+
+def _destino() -> tuple[str, dict]:
+    """URL y cabeceras a usar: por la pasarela si esta puesta, o directo."""
+    if _PROXY and _PROXY_SECRETO:
+        return f"{_PROXY}/api/v1/releases", {**HEADERS, "x-oece-secreto": _PROXY_SECRETO}
+    # Media configuracion es peor que ninguna: con URL y sin secreto el Worker
+    # responde 401, y pareceria que quien nos bloquea es OECE.
+    if _PROXY and not _PROXY_SECRETO:
+        log.warning(
+            "OECE_PROXY_URL esta puesta pero falta OECE_PROXY_SECRETO: se ignora "
+            "la pasarela y se va directo, que probablemente de 403."
+        )
+    return API, HEADERS
 
 HEADERS = {
     "User-Agent": (
@@ -320,7 +353,8 @@ def _parsear(release: dict) -> dict | None:
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=12))
 async def _pagina(cliente: httpx.AsyncClient, page: int) -> dict:
-    r = await cliente.get(API, params={"page": page}, timeout=45)
+    url, cabeceras = _destino()
+    r = await cliente.get(url, params={"page": page}, headers=cabeceras, timeout=45)
     r.raise_for_status()
     return r.json()
 
