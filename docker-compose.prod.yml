@@ -4,25 +4,15 @@
 #
 #   cp .env.example .env  &&  editar .env
 #   docker compose -f docker-compose.prod.yml up -d --build
+#
+# LA BASE ES SUPABASE, y viene entera en DATABASE_URL. Por eso aqui NO hay
+# servicio postgres: en produccion el dato vive fuera del servidor, con sus
+# copias gestionadas, y no en un volumen que se va con el VPS.
+#
+# El Postgres local sigue estando en docker-compose.yml, que es el de
+# desarrollo. Alli si conviene: cada uno con su base, sin tocar la de nadie.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER:?falta POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
-      TZ: America/Lima
-    volumes:
-      - datos_postgres:/var/lib/postgresql/data
-    # Sin puertos publicados: solo se llega desde la red interna de compose.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -33,12 +23,6 @@ services:
     build: .
     command: alembic upgrade head
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: "no"
 
   web:
@@ -46,14 +30,10 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
       LICITAPRO_ENTORNO: produccion
     ports:
       - "127.0.0.1:8200:8200"   # detras de un proxy con TLS, nunca expuesto directo
     depends_on:
-      postgres:
-        condition: service_healthy
       migraciones:
         condition: service_completed_successfully
     volumes:
@@ -64,9 +44,6 @@ services:
     command: python -m radar_bot.main
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -76,9 +53,6 @@ services:
     command: python -m prep_bot.main
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -90,9 +64,6 @@ services:
     command: python -m win_bot.main
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -104,12 +75,6 @@ services:
       # generador se limita a saltarse la que no encuentra.
       - datos_expedientes:/app/data
 
-  # El proxy que termina TLS. Es lo unico que asoma a internet: todo lo demas
-  # vive en la red interna de compose.
-  #
-  # Caddy pide y renueva el certificado de Let's Encrypt por su cuenta. Para
-  # que funcione, el dominio de LICITAPRO_DOMINIO tiene que apuntar YA a la IP
-  # de este servidor: la validacion se hace entrando desde fuera por el 80.
   # ── Como se llega al panel desde internet: elige UNO ──────────────────
   #
   #   --profile tunnel   Cloudflare Tunnel. Es el camino recomendado y el que
@@ -131,7 +96,12 @@ services:
     # contenedor a las tres de la manana.
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?falta CLOUDFLARE_TUNNEL_TOKEN en .env}
+      # Sin `:?` a proposito. Compose interpola TODOS los servicios aunque el
+      # perfil no este activo, asi que exigirla aqui impedia arrancar el stack
+      # normal a quien -- como este VPS -- corre cloudflared en el host y por
+      # tanto nunca define esta variable. Si el perfil se usa vacia, cloudflared
+      # protesta al arrancar, que es donde corresponde.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - web
     profiles: ["tunnel"]
@@ -157,7 +127,6 @@ services:
       - web
 
 volumes:
-  datos_postgres:
   datos_redis:
   datos_expedientes:
   caddy_datos:
