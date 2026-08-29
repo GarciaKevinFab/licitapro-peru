@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LicitaPro">
+  <!-- OPCION A: anillo partido en dos arcos (barrido de radar) -->
+  <rect width="64" height="64" rx="14" fill="#0A0D12"/>
+  <g fill="#2B7C6A">
+    <circle cx="32.2" cy="12.0" r="2.1"/>
+    <circle cx="16.8" cy="16.8" r="1.9"/>
+    <circle cx="11.3" cy="31.0" r="2.3"/>
+    <circle cx="22.4" cy="35.5" r="1.3"/>
+    <circle cx="25.1" cy="49.5" r="2.0"/>
+    <circle cx="49.7" cy="51.6" r="1.5"/>
+  </g>
+  <circle cx="42.5" cy="34.0" r="6.9" fill="#34E0B4"/>
+  <!-- Dos arcos con dos huecos: dasharray sobre un circulo, que es exacto y
+       no depende de calcular puntos de un path a mano. -->
+  <circle cx="42.5" cy="34.0" r="12.7" fill="none" stroke="#34E0B4"
+          stroke-width="2.9" stroke-linecap="round"
+          stroke-dasharray="30 10 30 10" transform="rotate(-58 42.5 34)"/>
+</svg>

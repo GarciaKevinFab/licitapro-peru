@@ -1,0 +1,33 @@
+DEJA AQUI EL LOGO Y EL FAVICON CUANDO TE LOS ENTREGUEN
+=======================================================
+
+Suelta los archivos en esta carpeta, avisame, y yo me encargo del resto:
+optimizarlos, renombrarlos, moverlos a web/static/, enlazarlos en las
+plantillas, anadir las metaetiquetas og: y desplegar.
+
+No hace falta que respetes nombres ni formatos exactos: yo los adapto.
+Manda lo que te den.
+
+LO QUE ESPERO (por orden de utilidad)
+------------------------------------
+
+  1. favicon        SVG preferible. Si solo hay PNG, que sea >= 256x256.
+  2. logo claro     SVG. Version horizontal con el nombre, para fondo claro.
+  3. logo oscuro    SVG. La misma, para fondo oscuro.
+  4. isotipo        SVG. Solo el simbolo, sin texto.
+  5. og:image       PNG 1200x630. Es lo que se ve al pegar el enlace en
+                    WhatsApp, que en Peru es EL canal. Hoy no sale nada.
+
+SI SOLO PUEDES CONSEGUIR UNO
+----------------------------
+
+  El og:image. El favicon ya existe hecho a mano y funciona; la imagen para
+  compartir no existe y es la que decide si alguien pincha tu enlace cuando
+  lo mandas a un grupo.
+
+ANTES DE ACEPTAR EL FAVICON
+---------------------------
+
+  Abrelo como pestana del navegador con otras diez pestanas abiertas. Si no
+  lo distingues de un vistazo, esta demasiado detallado. Es la unica prueba
+  que importa en un favicon, y el que ya tienes la pasa.
