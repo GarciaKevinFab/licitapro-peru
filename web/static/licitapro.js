@@ -68,3 +68,68 @@
 
   tarjetas.forEach((el) => obs.observe(el));
 })();
+
+
+/* ------------------------------------------------------- cifras que suben
+   Los cuatro numeros del panel y el puntaje de la ficha cuentan hasta su
+   valor al cargar.
+
+   POR QUE 700 ms Y NO 1600 COMO EN LA PORTADA
+     En la portada el contador ES el contenido y se mira una vez. Aqui el
+     numero es un dato que alguien vino a consultar, y hacerle esperar para
+     leerlo es cobrarle un peaje por la animacion. 700 ms se percibe como
+     "aparecio con vida", no como "todavia no puedo leerlo".
+
+   POR QUE SE LEE EL VALOR DEL DOM Y NO DE UN data-*
+     El servidor ya escribio el numero correcto ahi. Duplicarlo en un atributo
+     es una segunda fuente de verdad que algun dia va a discrepar de la
+     primera. Si el texto no es un entero -- un guion, un "-" de dato ausente --
+     no se toca y se queda como esta.
+*/
+(() => {
+  "use strict";
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const subirCifra = (nodo, escribir) => {
+    const original = (nodo.textContent || "").trim();
+    const bruto = original.replace(/[.,\s]/g, "");
+    if (!/^\d+$/.test(bruto)) return;          // guiones y vacios se respetan
+    const destino = parseInt(bruto, 10);
+    if (destino <= 0) return;                   // un cero no gana nada contando
+
+    // Si el servidor escribio "1.234", hay que devolverlo con su separador al
+    // terminar. Sin esto la animacion "arregla" el numero a 1234 y deja el
+    // panel peor formateado que antes de animarlo.
+    const conFormato = original !== bruto;
+    const pinta = (v) => (conFormato ? v.toLocaleString("es-PE") : String(v));
+
+    const DURACION = 700;
+    let t0 = null;
+    const paso = (t) => {
+      if (t0 === null) t0 = t;
+      const p = Math.min((t - t0) / DURACION, 1);
+      const suave = p === 1 ? 1 : 1 - Math.pow(2, -9 * p);
+      escribir(pinta(Math.round(destino * suave)));
+      if (p < 1) requestAnimationFrame(paso);
+    };
+    requestAnimationFrame(paso);
+  };
+
+  // Panel: las cuatro cifras de resumen.
+  document.querySelectorAll(".tarjetas .t .n").forEach((n) => {
+    subirCifra(n, (v) => { n.textContent = String(v); });
+  });
+
+  // Ficha: puntaje de cabecera y puntaje del analisis.
+  document.querySelectorAll(".metas b").forEach((b) => {
+    subirCifra(b, (v) => { b.textContent = String(v); });
+  });
+  document.querySelectorAll(".analisis .puntaje").forEach((el) => {
+    // Lleva un <small>/100</small> dentro: se toca SOLO el primer nodo de
+    // texto, o se borraria el sufijo al escribir.
+    const nodo = el.firstChild;
+    if (!nodo || nodo.nodeType !== 3) return;
+    const falso = { textContent: nodo.nodeValue };
+    subirCifra(falso, (v) => { nodo.nodeValue = String(v); });
+  });
+})();

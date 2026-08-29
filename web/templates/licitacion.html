@@ -68,6 +68,32 @@ main{max-width:900px}
   color:var(--ink-3);font-weight:600;margin-bottom:6px}
 .rejilla-ia ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px}
 .rejilla-ia li{font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+
+/* ---------- PROFUNDIDAD EN LA FICHA ----------
+   Aqui se decide si presentarse o no. El movimiento tiene un solo trabajo:
+   llevar la vista al puntaje y a su desglose, que es lo que sostiene esa
+   decision. Nada mas se mueve. */
+.cabecera{perspective:1000px}
+.metas b{font-variant-numeric:tabular-nums}
+
+/* Las fichas del desglose se levantan al pasar por encima. Son la explicacion
+   del puntaje: que reaccionen invita a leerlas, que es justo lo que queremos
+   que pase antes de postular. */
+.desglose div{
+  transition:transform .3s cubic-bezier(.22,1,.36,1), background .3s ease;
+}
+.desglose div:hover{transform:translateY(-2px);background:var(--ac-soft)}
+.desglose div:hover dt{color:var(--ac)}
+.analisis .puntaje{font-variant-numeric:tabular-nums}
+
+/* EL BLOQUE DE BANDERAS NO SE MUEVE, A PROPOSITO.
+   Es la advertencia de direccionamiento. Si se comporta como el resto de
+   tarjetas, se lee como decoracion; quieto entre cosas que responden, se lee
+   como lo que es. */
+
+@media (prefers-reduced-motion:reduce){
+  .desglose div,.desglose div:hover{transform:none;transition:none}
+}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
