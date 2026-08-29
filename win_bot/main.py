@@ -85,7 +85,7 @@ async def enviar_email_buena_pro(contrato, licitacion):
         await aiosmtplib.send(
             msg, hostname=smtp_host, port=smtp_port,
             username=smtp_user, password=smtp_pass,
-            use_tls=False, start_tls=True,
+            **({'use_tls': True, 'start_tls': False} if smtp_port == 465 else {'use_tls': False, 'start_tls': True}),
         )
         log.info(f"Email enviado a {destinatario}")
         return True

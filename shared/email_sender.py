@@ -20,6 +20,19 @@ EMAIL_FROM = os.getenv("SMTP_USER", "noreply@licitapro.pe")
 EMAIL_DEST = os.getenv("EMAIL_DESTINATARIO")
 
 
+# EL MODO DE TLS DEPENDE DEL PUERTO, Y NO SE PUEDE FIJAR
+#
+#   465 habla TLS desde el primer byte (implicito). 587 empieza en claro y sube
+#   con STARTTLS. Son incompatibles: pedir STARTTLS en el 465 deja la conexion
+#   colgada o la corta el servidor, y al reves falla la negociacion.
+#
+#   Estaba fijo en STARTTLS. Funcionaba con el 587 de Gmail, que era el valor
+#   por defecto, y se rompia en cuanto alguien ponia el 465 -- que es
+#   justamente lo que recomienda cPanel para este dominio.
+def _modo_tls(puerto: int) -> dict:
+    return {"use_tls": True, "start_tls": False} if puerto == 465 else {"use_tls": False, "start_tls": True}
+
+
 async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
     """Envía un email HTML vía SMTP."""
     if not SMTP_USER or not SMTP_PASS:
@@ -36,7 +49,7 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
         await aiosmtplib.send(
             msg, hostname=SMTP_HOST, port=SMTP_PORT,
             username=SMTP_USER, password=SMTP_PASS,
-            use_tls=False, start_tls=True,
+            **_modo_tls(SMTP_PORT),
         )
         log.info(f"Email enviado a {destinatario}: {asunto}")
         return True
