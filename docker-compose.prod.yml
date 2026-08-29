@@ -42,6 +42,12 @@ services:
   radar:
     build: .
     command: python -m radar_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -51,6 +57,12 @@ services:
   prep:
     build: .
     command: python -m prep_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -62,6 +74,12 @@ services:
   win:
     build: .
     command: python -m win_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
     depends_on:

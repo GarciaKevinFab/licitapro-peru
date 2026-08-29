@@ -61,10 +61,29 @@ aquí solo se añade otro *hostname*.
 
 1. Cloudflare → **Zero Trust → Networks → Tunnels**. Reutiliza el túnel
    existente o crea uno nuevo (*Create a tunnel → Docker*).
-2. Copia el token al `.env`: `CLOUDFLARE_TUNNEL_TOKEN=...`
-3. En *Public Hostnames*: `licitapro.sisac.pe` → `http://web:8200`.
-   `web` es el nombre del servicio en la red de compose; **no hay que publicar
-   ningún puerto**.
+2. En *Public Hostnames*: `licitapro.sisac.pe` → y aquí **el servicio depende
+   de dónde corra `cloudflared`**. Equivocarse no da un error legible: da un
+   502 de Cloudflare, sin nada en los logs del panel.
+
+   | `cloudflared` corre… | Servicio | Cómo se levanta |
+   |---|---|---|
+   | en el **host** (systemd) | `http://localhost:8200` | `…up -d` |
+   | como **contenedor** | `http://web:8200` | `…--profile tunnel up -d` |
+
+   `web:8200` solo resuelve dentro de la red de compose. Si `cloudflared` está
+   en el host, ese nombre no existe para él; lo que sí alcanza es el puerto que
+   `web` publica en `127.0.0.1:8200`.
+
+   Compruébalo antes de elegir:
+
+   ```bash
+   systemctl is-active cloudflared
+   ```
+
+   **En este VPS corre en el host**: servicio `http://localhost:8200`, y el
+   stack se levanta **sin** `--profile tunnel`.
+3. Solo si `cloudflared` va como contenedor: copia el token al `.env`
+   (`CLOUDFLARE_TUNNEL_TOKEN=...`). Con el servicio del host no hace falta.
 4. El CNAME lo crea Cloudflare solo, ya proxeado.
 
 En **SSL/TLS elige «Full (strict)»**, nunca «Flexible». Con Flexible, Cloudflare
@@ -88,12 +107,29 @@ muchos usuarios de golpe por culpa de uno solo.
 
 ## 4. Levantar
 
+### Antes, si la base está vacía: el esquema base
+
 ```bash
-docker compose -f docker-compose.prod.yml --profile tunnel up -d --build
+docker compose -f docker-compose.prod.yml run --rm -T --entrypoint python migraciones tools/crear_esquema.py
 ```
 
-Ocho servicios: `postgres`, `redis`, `migraciones` (corre `alembic upgrade head`
-y termina), `web`, los bots `radar`, `prep` y `win`, y `tunnel`. La web espera a
+**Una sola vez, y solo sobre una base nueva.** `0001_baseline` no crea nada a
+propósito — da por hecho que el esquema ya existe — así que sin este paso la
+`0002` intenta `ALTER TABLE empresas` sobre una tabla que nadie creó y el
+despliegue se para con `relation "empresas" does not exist`, que no apunta a
+`shared/schema.sql` por ningún lado. Salta esto si la base ya tiene sus tablas.
+
+### Y ya sí, el stack
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Añade `--profile tunnel` **solo** si `cloudflared` va como contenedor (ver §3).
+
+Cinco servicios: `redis`, `migraciones` (corre `alembic upgrade head` y
+termina), `web`, y los bots `radar`, `prep` y `win`. **No hay `postgres`**: en
+producción la base es Supabase y vive fuera del servidor. La web espera a
 que las migraciones terminen bien; si fallan, no arranca sobre un esquema a
 medias.
 
