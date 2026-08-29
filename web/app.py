@@ -71,6 +71,46 @@ async def exigir_suscripcion(request: Request, call_next):
     return RedirectResponse("/suscripcion?error=Tu+suscripcion+esta+suspendida", status_code=303)
 
 
+# ------------------------------------------------------------------ HEAD
+# FastAPI NO anade HEAD a las rutas declaradas con @app.get: responde 405.
+#
+#   Eso rompio el sitemap en Search Console -- "No se ha podido obtener" --
+#   porque Google comprueba un recurso con HEAD antes de descargarlo. El XML
+#   era correcto y se servia bien por GET; el problema era el metodo.
+#
+#   Y no es solo el sitemap: cualquier monitor de disponibilidad configurado
+#   con HEAD, que es lo habitual porque no descarga el cuerpo, habria dado el
+#   sitio por caido.
+#
+# Se resuelve una vez y para todas las rutas, presentes y futuras, en vez de
+# ir anadiendo methods=["GET","HEAD"] ruta por ruta y olvidarse en la
+# siguiente. HEAD debe devolver exactamente las cabeceras de GET y ningun
+# cuerpo, que es justo lo que se hace aqui.
+#
+# Va ANTES del middleware de seguridad para que ese siga siendo el mas
+# externo: en Starlette el ultimo registrado envuelve a los anteriores.
+@app.middleware("http")
+async def permitir_head(request: Request, call_next):
+    if request.method != "HEAD":
+        return await call_next(request)
+
+    request.scope["method"] = "GET"
+    respuesta = await call_next(request)
+
+    # El cuerpo se consume igualmente: si no, queda un generador a medias y
+    # anyio protesta al cerrar el contexto.
+    if hasattr(respuesta, "body_iterator"):
+        async for _ in respuesta.body_iterator:
+            pass
+
+    vacia = Response(status_code=respuesta.status_code)
+    vacia.headers.update({
+        k: v for k, v in respuesta.headers.items()
+        if k.lower() not in ("content-length", "transfer-encoding")
+    })
+    return vacia
+
+
 # ─── Cabeceras de seguridad ──────────────────────────────
 # Va DESPUES de todo lo demas a proposito: en Starlette el ultimo registrado
 # envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
