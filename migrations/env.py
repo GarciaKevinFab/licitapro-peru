@@ -54,7 +54,22 @@ def url_bd() -> str:
     )
 
 
-config.set_main_option("sqlalchemy.url", url_bd())
+# LOS % DE LA URL HAY QUE DUPLICARLOS AQUI
+#
+#   `set_main_option` escribe en un configparser, que trata `%` como sintaxis
+#   de interpolacion. La contrasena de Supabase llega percent-encoded -- %40
+#   por @, %23 por # -- y eso basta para que Alembic ni arranque:
+#
+#     ValueError: invalid interpolation syntax at position 58
+#
+#   El mensaje no menciona la contrasena ni el .env, asi que se parece mas a un
+#   alembic.ini roto que a lo que es. Duplicando los % queda bien guardado, y
+#   `config.get_section()` los devuelve a uno solo al leerlos de vuelta, que es
+#   por donde pasa run_migrations_online().
+#
+#   run_migrations_offline() NO necesita esto: usa url_bd() directamente, sin
+#   configparser de por medio.
+config.set_main_option("sqlalchemy.url", url_bd().replace("%", "%%"))
 target_metadata = None
 
 
