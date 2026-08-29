@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -97,11 +97,24 @@ async def exigir_suscripcion(request: Request, call_next):
 def _csp(nonce: str) -> str:
     return "; ".join([
         "default-src 'self'",
-        "script-src 'self' https://unpkg.com",
+        # cloudflareinsights: Cloudflare inyecta su beacon de analitica DESDE EL
+        # BORDE, sin que la aplicacion lo pida ni lo sepa. Sin esta excepcion la
+        # CSP lo bloquea y la analitica no cuenta nada -- en silencio, salvo un
+        # error en la consola que nadie mira:
+        #
+        #   Loading the script 'https://static.cloudflareinsights.com/beacon.min.js'
+        #   violates the following Content Security Policy directive: "script-src..."
+        #
+        # Se admite el origen exacto, no un comodin. Y si algun dia se desactiva
+        # la insercion automatica en el panel de Cloudflare, esta linea sobra:
+        # quitarla entonces, que una excepcion sin uso es una puerta abierta.
+        "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com",
         f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data:",
-        "connect-src 'self'",
+        # El beacon manda las medidas por fetch a este origen; sin esto carga
+        # el script pero el envio se bloquea, que es la misma nada con mas pasos.
+        "connect-src 'self' https://cloudflareinsights.com",
         "form-action 'self'",
         "frame-ancestors 'none'",
         "base-uri 'self'",
@@ -456,6 +469,62 @@ async def parte_tabla(request: Request, q: str = "", region: str = "",
         "licitaciones": await _licitaciones(usuario["id"], q, region, score_min,
                                             bool(vigentes), bool(banderas)),
     })
+
+
+# ----------------------------------------------------------------- SEO
+# QUE ENTRA AQUI Y QUE NO
+#
+#   Solo las cuatro paginas que un desconocido puede abrir y entender. Todo lo
+#   demas -- panel, licitaciones, empresas, contratos -- exige sesion: si se
+#   listara, Google se pasaria el rastreo chocando contra redirecciones al
+#   login y acabaria por desconfiar del sitemap entero.
+#
+#   `/entrar` y `/recuperar` tampoco: no aportan nada en un resultado de
+#   busqueda y solo diluyen. `/registro` si, porque es donde queremos que
+#   aterrice quien nos busca.
+#
+# POR QUE NO HAY <lastmod>
+#
+#   La tentacion es poner la fecha de hoy. Seria mentira: estas paginas no
+#   cambian a diario. Google compara ese valor con lo que se encuentra al
+#   rastrear, y cuando no cuadra deja de creerse el campo -- en todo el
+#   sitemap, no solo en la URL que mintio. Mejor no declararlo que declararlo
+#   mal. Si algun dia estas paginas pasan a tener fecha real de edicion en la
+#   base, entonces si merece la pena ponerlo.
+_PAGINAS_PUBLICAS = ("/", "/registro", "/privacidad", "/terminos")
+
+# Zonas que exigen sesion. No es seguridad -- eso lo hace el middleware -- sino
+# cortesia con el rastreador: que no gaste presupuesto en 302 hacia el login.
+_ZONAS_PRIVADAS = (
+    "/panel", "/licitacion/", "/empresas", "/contratos", "/propuestas",
+    "/configuracion", "/informes", "/suscripcion", "/pagar", "/admin",
+    "/parts/", "/entrar", "/recuperar", "/salir",
+)
+
+
+def _base_url() -> str:
+    """El origen publico, para las URLs absolutas que exige el protocolo."""
+    return f"https://{os.getenv('LICITAPRO_DOMINIO', 'licitapro.sisac.pe')}"
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    lineas = ["User-agent: *"]
+    lineas += [f"Disallow: {zona}" for zona in _ZONAS_PRIVADAS]
+    lineas += ["", f"Sitemap: {_base_url()}/sitemap.xml", ""]
+    return "\n".join(lineas)
+
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    base = _base_url()
+    urls = "".join(f"<url><loc>{base}{ruta}</loc></url>" for ruta in _PAGINAS_PUBLICAS)
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{urls}</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/salud")
