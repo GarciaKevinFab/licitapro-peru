@@ -50,26 +50,74 @@ sitios.
 El dominio debería estar a nombre del **mismo RUC** con el que abras la cuenta
 de Izipay.
 
-### El orden con Cloudflare importa
+### Cómo se publica: Cloudflare Tunnel
 
-**Primero la nube gris (solo DNS).** Caddy pide su certificado a Let's Encrypt
-entrando desde fuera por el puerto 80; con el tráfico proxeado desde el primer
-momento te metes en un problema del huevo y la gallina, porque el modo correcto
-de Cloudflare exige que el origen ya tenga certificado válido.
+Es el mismo montaje que ya corre en VueloRadar, y es el recomendado.
 
-Cuando `https://tudominio.pe/salud` responda, enciende la nube naranja.
+```
+   visitante → Cloudflare (DNS · TLS · WAF) → túnel saliente → VPS
+```
 
-**Y entonces, en SSL/TLS, elige «Full (strict)».** No «Flexible». Con Flexible,
-Cloudflare habla http con tu servidor, Caddy redirige a https, y se forma un
-bucle de redirecciones; además la aplicación manda HSTS, así que el navegador
-del visitante se queda atrapado.
+El VPS **no abre ningún puerto**. `cloudflared` abre la conexión hacia afuera,
+así que no hay 80/443 en el cortafuegos, no hay IP de origen que alguien pueda
+descubrir y atacar directamente, y no hay certificados que renovar: el TLS
+termina en Cloudflare.
 
-El `Caddyfile` ya trae los rangos de Cloudflare como proxies de confianza. Sin
-eso, la app vería a todos los visitantes con la IP del borde de Cloudflare y el
-freno a la fuerza bruta bloquearía a muchos usuarios de golpe por culpa de uno.
+Y un mismo túnel sirve varios proyectos — si ya tienes uno, aquí solo añades
+otro *hostname* apuntando a este servicio.
 
-Pon `LICITAPRO_DOMINIO=tudominio.pe` en el `.env` y **comprueba que el DNS ya
-apunta a la IP de este servidor** antes de levantar el compose.
+1. Cloudflare → **Zero Trust → Networks → Tunnels → Create a tunnel → Docker**.
+2. Copia el token al `.env`: `CLOUDFLARE_TUNNEL_TOKEN=...`
+3. En *Public Hostnames* del túnel: `licitapro.pe` → `http://web:8200`.
+   `web` es el nombre del servicio dentro de la red de compose; no hace falta
+   publicar ningún puerto.
+4. El CNAME lo crea Cloudflare solo, ya proxeado.
+
+En **SSL/TLS elige «Full (strict)»**, nunca «Flexible». Con Flexible, Cloudflare
+habla http con el origen mientras la app manda HSTS, y el navegador del
+visitante se queda atrapado.
+
+### La alternativa sin Cloudflare
+
+`--profile proxy` levanta Caddy con Let's Encrypt. Ahí sí hace falta que el DNS
+apunte a la IP **antes** de levantar el compose —la validación entra desde
+fuera por el 80— y que los puertos 80 y 443 estén abiertos.
+
+El `Caddyfile` trae los rangos de Cloudflare como proxies de confianza, por si
+lo pones detrás de la nube naranja: sin eso la app vería a todos los visitantes
+con la IP del borde de Cloudflare, y el freno a la fuerza bruta bloquearía a
+muchos usuarios de golpe por culpa de uno solo.
+
+### Nada de caché sobre el HTML
+
+El panel es por sesión. Si Cloudflare guardara `/panel`, un cliente vería las
+licitaciones y los contratos de otro.
+
+Por defecto Cloudflare no cachea HTML, así que **no hace falta ninguna regla**.
+Lo que sí hace falta es **no** crear una de «Cache Everything» sobre este
+dominio. Como segunda barrera, la app manda `Cache-Control: private, no-store`
+en todo lo que no sea `/static`, para no depender de una configuración que vive
+fuera de este repositorio.
+
+(En VueloRadar es al revés y con razón: es un sitio público que vive de que lo
+rastreen. Aquí no hay nada público que cachear salvo la portada.)
+
+### Una trampa que cuesta horas: el `$` en las contraseñas
+
+Docker Compose **interpola** las variables del `.env` que aparecen como
+`${VAR}` — aquí son `POSTGRES_PASSWORD`, `POSTGRES_USER`, `POSTGRES_DB`,
+`LICITAPRO_DOMINIO` y `CLOUDFLARE_TUNNEL_TOKEN`.
+
+Un `$` dentro de la contraseña se come el resto sin avisar: Postgres arranca
+con una contraseña distinta de la que tú crees, y el error no dice por qué.
+Genera contraseñas sin `$` ni `%`:
+
+```bash
+python3 -c "import secrets,string; a=string.ascii_letters+string.digits+'!@#^&*(-_=+)'; print(''.join(secrets.choice(a) for _ in range(40)))"
+```
+
+`LICITAPRO_SECRET_KEY` no sufre esto: `secrets.token_urlsafe` solo produce
+letras, dígitos, `-` y `_`.
 
 Este paso va primero porque Caddy pide el certificado a Let's Encrypt entrando
 desde fuera por el puerto 80. Si el DNS todavía no resuelve, el intento falla

@@ -762,6 +762,28 @@ async def test_el_csv_lo_abre_excel_en_espanol(usuario, cliente):
     assert "attachment" in r.headers.get("content-disposition", "")
 
 
+async def test_el_html_no_se_cachea_nunca(cliente):
+    """Un intermediario que guarde /panel se lo sirve al siguiente visitante.
+
+    Hoy Cloudflare no cachea HTML por defecto, asi que en la practica no
+    ocurre. Pero eso es configuracion que vive FUERA de este repositorio: una
+    regla de "Cache Everything" puesta con buena intencion convierte el panel
+    en una fuga entre clientes. La aplicacion tiene que defenderse sola.
+
+    Hay un segundo motivo, independiente: todas las plantillas llevan un nonce
+    de CSP distinto por peticion. Un cuerpo guardado con el nonce de ayer,
+    servido con la cabecera de hoy, no casa, y la pagina sale sin estilos.
+
+    `/static` queda fuera a proposito: archivos sin nonce y sin datos de nadie.
+    """
+    for ruta in ("/", "/entrar", "/registro", "/privacidad", "/panel"):
+        r = await cliente.get(ruta)
+        assert r.headers.get("cache-control") == "private, no-store", ruta
+
+    estatico = await cliente.get("/static/licitapro.js")
+    assert "cache-control" not in estatico.headers
+
+
 # ─── Paginas legales ─────────────────────────────────────
 
 async def test_las_paginas_legales_son_publicas(cliente):

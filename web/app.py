@@ -124,6 +124,26 @@ async def cabeceras_seguridad(request: Request, call_next):
     respuesta.headers["Permissions-Policy"] = (
         "geolocation=(), microphone=(), camera=(), payment=()")
     respuesta.headers["Content-Security-Policy"] = _csp(nonce)
+
+    # NADA DE HTML SE CACHEA. Los dos motivos son independientes y cada uno
+    # basta por si solo.
+    #
+    #   1. El panel es por sesion. Si un intermediario guarda /panel y se lo
+    #      sirve a otro, un cliente ve las licitaciones, las propuestas y los
+    #      contratos de otro. Hoy no ocurre porque Cloudflare no cachea HTML
+    #      por defecto, pero eso es configuracion ajena a este repositorio: una
+    #      regla de "Cache Everything" puesta con buena intencion convierte el
+    #      producto en una fuga. La aplicacion tiene que defenderse sola.
+    #
+    #   2. TODAS las plantillas llevan un nonce de CSP distinto en cada
+    #      peticion, la portada incluida. Un cuerpo guardado con el nonce de
+    #      ayer, servido junto a la cabecera de hoy, no casa: el navegador
+    #      rechaza cada bloque <style> y la pagina sale sin estilos.
+    #
+    # /static queda fuera: son archivos sin nonce y sin datos de nadie, y ahi
+    # el cache si vale la pena.
+    if not request.url.path.startswith("/static"):
+        respuesta.headers["Cache-Control"] = "private, no-store"
     if os.getenv("LICITAPRO_ENTORNO", "dev") != "dev":
         # Solo fuera de desarrollo: en local no hay TLS, y mandar HSTS desde
         # localhost deja el navegador del desarrollador forzando https contra

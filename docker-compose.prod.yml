@@ -110,9 +110,36 @@ services:
   # Caddy pide y renueva el certificado de Let's Encrypt por su cuenta. Para
   # que funcione, el dominio de LICITAPRO_DOMINIO tiene que apuntar YA a la IP
   # de este servidor: la validacion se hace entrando desde fuera por el 80.
+  # ── Como se llega al panel desde internet: elige UNO ──────────────────
+  #
+  #   --profile tunnel   Cloudflare Tunnel. Es el camino recomendado y el que
+  #                      ya corre en VueloRadar. Sin puertos entrantes, sin
+  #                      certificados que renovar, y la IP del VPS no queda
+  #                      expuesta. Un mismo tunel sirve varios proyectos.
+  #
+  #   --profile proxy    Caddy con Let's Encrypt. Para desplegar sin
+  #                      Cloudflare, o para probar el stack sin tocar la cuenta.
+  #
+  # Van en perfiles distintos porque los dos quieren ser la puerta de entrada:
+  # levantarlos juntos deja a Caddy peleando por el 443 contra un tunel que ya
+  # esta sirviendo el mismo dominio.
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # --no-autoupdate: que la version la decida un despliegue, no el
+    # contenedor a las tres de la manana.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?falta CLOUDFLARE_TUNNEL_TOKEN en .env}
+    depends_on:
+      - web
+    profiles: ["tunnel"]
+
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped
+    profiles: ["proxy"]
     ports:
       - "80:80"
       - "443:443"
