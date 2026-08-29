@@ -28,31 +28,24 @@ deliberado: descubrir que falta después de migrar de servidor sería tarde.
 Pon también `LICITAPRO_ENTORNO=produccion`, que además marca la cookie de
 sesión como `https_only`.
 
-## 2. El dominio, antes de levantar nada
+## 2. El dominio
 
-### Dónde se registra un `.pe`
+Va como **subdominio de `sisac.pe`**, que ya está activo en Cloudflare:
 
-**Cloudflare no vende `.pe`** — su registrador responde «El TLD no es
-compatible». Eso no impide usar Cloudflare: no puede *venderte* el dominio,
-pero sí puede *gestionarle el DNS*. Son dos cosas distintas y se hacen en dos
-sitios.
+    licitapro.sisac.pe
 
-1. Registra en **[punto.pe](https://punto.pe)** o en uno de sus
-   comercializadores (a veces más barato). Tarifa oficial: **S/110 el primer
-   año**, S/200 por dos, S/295 por tres.
-2. Coge `licitapro.pe` **y también `licitapro.com.pe`**. Son S/110 más, y en
-   Perú mucha gente teclea `.com.pe` por costumbre; el segundo se redirige al
-   primero.
-3. En punto.pe, cambia los **servidores de nombres** a los que te dé
-   Cloudflare al añadir el dominio a tu cuenta.
-4. En Cloudflare, crea el registro `A` hacia la IP del VPS.
+No hace falta comprar nada. Y para Izipay es mejor que un dominio recién
+registrado: verifican la web desde fuera y piden que corresponda al titular de
+la cuenta — un subdominio de la web de la propia empresa lo cumple solo.
 
-El dominio debería estar a nombre del **mismo RUC** con el que abras la cuenta
-de Izipay.
+Si más adelante quieres `licitapro.pe` a secas (mejor para decirlo por
+teléfono), se registra en [punto.pe](https://punto.pe) por S/110 al año —
+Cloudflare no vende `.pe`, solo gestiona su DNS — y se redirige aquí. No corre
+prisa y no cambia nada de lo de abajo.
 
-### Cómo se publica: Cloudflare Tunnel
+## 3. Publicar: Cloudflare Tunnel
 
-Es el mismo montaje que ya corre en VueloRadar, y es el recomendado.
+El mismo montaje que ya corre en VueloRadar.
 
 ```
    visitante → Cloudflare (DNS · TLS · WAF) → túnel saliente → VPS
@@ -60,49 +53,94 @@ Es el mismo montaje que ya corre en VueloRadar, y es el recomendado.
 
 El VPS **no abre ningún puerto**. `cloudflared` abre la conexión hacia afuera,
 así que no hay 80/443 en el cortafuegos, no hay IP de origen que alguien pueda
-descubrir y atacar directamente, y no hay certificados que renovar: el TLS
-termina en Cloudflare.
+descubrir y atacar, y no hay certificados que renovar: el TLS termina en
+Cloudflare.
 
-Y un mismo túnel sirve varios proyectos — si ya tienes uno, aquí solo añades
-otro *hostname* apuntando a este servicio.
+Un mismo túnel sirve varios proyectos. Si el de VueloRadar ya está montado,
+aquí solo se añade otro *hostname*.
 
-1. Cloudflare → **Zero Trust → Networks → Tunnels → Create a tunnel → Docker**.
+1. Cloudflare → **Zero Trust → Networks → Tunnels**. Reutiliza el túnel
+   existente o crea uno nuevo (*Create a tunnel → Docker*).
 2. Copia el token al `.env`: `CLOUDFLARE_TUNNEL_TOKEN=...`
-3. En *Public Hostnames* del túnel: `licitapro.pe` → `http://web:8200`.
-   `web` es el nombre del servicio dentro de la red de compose; no hace falta
-   publicar ningún puerto.
+3. En *Public Hostnames*: `licitapro.sisac.pe` → `http://web:8200`.
+   `web` es el nombre del servicio en la red de compose; **no hay que publicar
+   ningún puerto**.
 4. El CNAME lo crea Cloudflare solo, ya proxeado.
 
 En **SSL/TLS elige «Full (strict)»**, nunca «Flexible». Con Flexible, Cloudflare
 habla http con el origen mientras la app manda HSTS, y el navegador del
 visitante se queda atrapado.
 
-### La alternativa sin Cloudflare
+### Sin Cloudflare: `--profile proxy`
 
-`--profile proxy` levanta Caddy con Let's Encrypt. Ahí sí hace falta que el DNS
-apunte a la IP **antes** de levantar el compose —la validación entra desde
-fuera por el 80— y que los puertos 80 y 443 estén abiertos.
+Levanta Caddy con Let's Encrypt. Ahí sí hace falta que el DNS apunte a la IP
+**antes** de levantar el compose —la validación entra desde fuera por el 80— y
+que los puertos 80 y 443 estén abiertos. Comprueba la propagación primero:
+
+```bash
+dig +short licitapro.sisac.pe
+```
 
 El `Caddyfile` trae los rangos de Cloudflare como proxies de confianza, por si
 lo pones detrás de la nube naranja: sin eso la app vería a todos los visitantes
 con la IP del borde de Cloudflare, y el freno a la fuerza bruta bloquearía a
 muchos usuarios de golpe por culpa de uno solo.
 
-### Nada de caché sobre el HTML
+## 4. Levantar
+
+```bash
+docker compose -f docker-compose.prod.yml --profile tunnel up -d --build
+```
+
+Ocho servicios: `postgres`, `redis`, `migraciones` (corre `alembic upgrade head`
+y termina), `web`, los bots `radar`, `prep` y `win`, y `tunnel`. La web espera a
+que las migraciones terminen bien; si fallan, no arranca sobre un esquema a
+medias.
+
+Comprobar, en este orden:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile tunnel ps
+```
+
+```bash
+curl -fsS http://127.0.0.1:8200/salud
+```
+
+```bash
+curl -fsSI https://licitapro.sisac.pe/salud | head -1
+```
+
+Si el segundo responde y el tercero no, el problema está en el túnel o en el
+hostname del panel de Cloudflare:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile tunnel logs tunnel | tail -30
+```
+
+## 5. Qué asoma a internet
+
+Con el túnel, **nada**. Ni un puerto abierto. `web` publica en `127.0.0.1:8200`
+para poder depurar desde el propio servidor, y eso no se alcanza desde fuera.
+
+Cierra todo salvo SSH en el cortafuegos del proveedor. Si dejas el 5432
+abierto, tarde o temprano alguien prueba `postgres/postgres` contra él.
+
+## 6. Nada de caché sobre el HTML
 
 El panel es por sesión. Si Cloudflare guardara `/panel`, un cliente vería las
 licitaciones y los contratos de otro.
 
 Por defecto Cloudflare no cachea HTML, así que **no hace falta ninguna regla**.
-Lo que sí hace falta es **no** crear una de «Cache Everything» sobre este
-dominio. Como segunda barrera, la app manda `Cache-Control: private, no-store`
+Lo que hace falta es **no** crear una de «Cache Everything» sobre este
+hostname. Como segunda barrera, la app manda `Cache-Control: private, no-store`
 en todo lo que no sea `/static`, para no depender de una configuración que vive
 fuera de este repositorio.
 
-(En VueloRadar es al revés y con razón: es un sitio público que vive de que lo
+(En VueloRadar es al revés, y con razón: es un sitio público que vive de que lo
 rastreen. Aquí no hay nada público que cachear salvo la portada.)
 
-### Una trampa que cuesta horas: el `$` en las contraseñas
+## 7. Una trampa que cuesta horas: el `$` en las contraseñas
 
 Docker Compose **interpola** las variables del `.env` que aparecen como
 `${VAR}` — aquí son `POSTGRES_PASSWORD`, `POSTGRES_USER`, `POSTGRES_DB`,
@@ -119,67 +157,7 @@ python3 -c "import secrets,string; a=string.ascii_letters+string.digits+'!@#^&*(
 `LICITAPRO_SECRET_KEY` no sufre esto: `secrets.token_urlsafe` solo produce
 letras, dígitos, `-` y `_`.
 
-Este paso va primero porque Caddy pide el certificado a Let's Encrypt entrando
-desde fuera por el puerto 80. Si el DNS todavía no resuelve, el intento falla
-—y Let's Encrypt limita cuántas veces puedes reintentar por semana.
-
-Comprueba que ya propagó antes de seguir:
-
-```bash
-dig +short tudominio.pe
-```
-
-Con el `.env` sin `LICITAPRO_DOMINIO`, Caddy sirve en el puerto 80 **sin TLS**.
-Sirve para verificar que el despliegue arranca; no para producción.
-
-## 3. Levantar
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-Levanta siete servicios: `postgres`, `redis`, `migraciones` (corre
-`alembic upgrade head` y termina), `web`, los bots `radar`, `prep` y `win`, y
-`proxy`. La web espera a que las migraciones terminen bien; si fallan, no
-arranca sobre un esquema a medias.
-
-Comprobar, en este orden:
-
-```bash
-docker compose -f docker-compose.prod.yml ps
-```
-
-```bash
-curl -fsS http://127.0.0.1:8200/salud
-```
-
-```bash
-curl -fsSI https://tudominio.pe/salud | head -1
-```
-
-Si el segundo responde y el tercero no, el problema es el certificado. Los
-motivos, por frecuencia: el DNS aún no apunta aquí, el puerto 80 está cerrado
-en el cortafuegos del proveedor, u otro proceso lo tiene ocupado.
-
-```bash
-docker compose -f docker-compose.prod.yml logs proxy | tail -30
-```
-
-## 4. Qué asoma a internet y qué no
-
-Solo `proxy`, en los puertos 80 y 443. Todo lo demás vive en la red interna de
-compose: `postgres` no publica puerto y `web` solo en `127.0.0.1:8200`, que
-desde fuera del servidor no se alcanza.
-
-Cierra el resto en el cortafuegos del proveedor. Si dejas el 5432 abierto,
-tarde o temprano alguien prueba `postgres/postgres` contra él.
-
-Sin TLS la cookie de sesión viaja en claro y cualquiera en la red puede
-robarla. No es opcional. Y hay un motivo más inmediato: **Izipay revisa la web
-desde fuera antes de habilitarte los cobros**, y pide que esté "terminada y
-activa". Con http a secas o un certificado autofirmado, esa revisión no pasa.
-
-## 4. Activar cobros con Izipay
+## 8. Activar cobros con Izipay
 
 Mientras `IZIPAY_MODO=simulado`, el flujo de suscripción funciona completo pero
 no cobra nada. Para cobrar de verdad:
@@ -188,7 +166,7 @@ no cobra nada. Para cobrar de verdad:
    `IZIPAY_API_KEY` y la clave de firma del webhook (`IZIPAY_HMAC_KEY`).
 2. Pon `IZIPAY_MODO=sandbox` y prueba de punta a punta.
 3. Registra la URL del webhook en su panel:
-   `https://TU-DOMINIO/webhooks/izipay`
+   `https://licitapro.sisac.pe/webhooks/izipay`
 4. Cuando funcione en sandbox, cambia a `IZIPAY_MODO=produccion`.
 
 Si faltan `MERCHANT_CODE` o `API_KEY`, el sistema **vuelve solo a simulado** en
@@ -209,7 +187,7 @@ ante cualquier cuerpo:
 Reserva medio día para ajustar esos tres puntos contra su documentación real.
 Están aislados en un solo archivo justamente para eso.
 
-## 5. Renovaciones automáticas
+## 9. Renovaciones automáticas
 
 Las suscripciones vencidas con tarjeta guardada se renuevan con un cron diario:
 
@@ -222,7 +200,7 @@ vencimiento y la suspensión hay 7 días de gracia en los que el cliente sigue
 teniendo acceso: una tarjeta rebota por mil motivos, y cortarle el servicio a
 alguien que sí quiere pagar es la forma más cara de perderlo.
 
-## 6. Respaldos
+## 10. Respaldos
 
 Sin esto, un disco perdido son todos tus clientes perdidos.
 
@@ -233,7 +211,7 @@ Sin esto, un disco perdido son todos tus clientes perdidos.
 **Prueba la restauración al menos una vez.** Un respaldo que nunca se restauró
 no es un respaldo, es una suposición.
 
-## 7. Comprobaciones de salud
+## 11. Comprobaciones de salud
 
 ```bash
 docker compose -f docker-compose.prod.yml run --rm web python tools/auditar_sql.py
@@ -244,7 +222,7 @@ El primero valida cada consulta SQL del proyecto contra el esquema real; el
 segundo comprueba que ninguna cuenta ve datos de otra. Ambos devuelven código
 distinto de cero si algo va mal, así que sirven en CI.
 
-## 8. Antes de abrir al público
+## 12. Antes de abrir al público
 
 - [ ] `LICITAPRO_SECRET_KEY` generada y guardada fuera del servidor
 - [ ] `LICITAPRO_ENTORNO=produccion`
