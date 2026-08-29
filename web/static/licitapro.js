@@ -31,3 +31,40 @@
     }
   });
 })();
+
+
+/* ---------------------------------------------------------------- entradas
+   Las tarjetas aparecen escalonadas al entrar en pantalla.
+
+   El estado oculto se pone DESDE AQUI y no desde el CSS: si este script no
+   llega a ejecutarse, no hay animacion y se ve todo. Al reves -- esconder en
+   CSS y revelar en JS -- un fallo del script dejaria al usuario mirando un
+   panel vacio donde deberia estar su licitacion.
+
+   Solo se anima lo que esta por debajo del pliegue. Animar lo que ya se ve al
+   cargar retrasa la lectura de lo primero, que es justo lo que la persona
+   venia a mirar. */
+(() => {
+  "use strict";
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (!("IntersectionObserver" in window)) return;
+
+  const tarjetas = [...document.querySelectorAll(".tarjeta")]
+    .filter((el) => el.getBoundingClientRect().top > innerHeight * 0.9);
+  if (!tarjetas.length) return;
+
+  tarjetas.forEach((el, i) => {
+    el.classList.add("rv-app");
+    el.style.transitionDelay = Math.min(i, 4) * 45 + "ms";
+  });
+
+  const obs = new IntersectionObserver((entradas) => {
+    for (const e of entradas) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add("in");
+      obs.unobserve(e.target);
+    }
+  }, { threshold: 0.08, rootMargin: "0px 0px -4% 0px" });
+
+  tarjetas.forEach((el) => obs.observe(el));
+})();

@@ -1,0 +1,137 @@
+<!-- ============================================================
+     DISTINTIVO "HECHO POR" — Star Insights IT by SISAC
+     ============================================================
+     Autocontenido: no necesita archivos, fuentes ni JavaScript. El logotipo
+     va incrustado como data URI, asi que se pega en cualquier sitio y anda.
+
+     COMO SE USA
+       1. Pega este bloque entero justo antes de </body>.
+       2. Listo. No hay nada mas que configurar.
+
+     QUE SE PUEDE CAMBIAR
+       --sb-lado      izquierda/derecha: cambia `right` por `left` mas abajo.
+       --sb-opacidad  cuanto se atenua en reposo (0.62 por defecto).
+       El texto de <em> y <b>, si el sitio es de otro cliente.
+
+     POR QUE ESTA ASI
+       · Clases con prefijo `sb-`: no colisionan con el CSS del sitio.
+       · Variables propias en `.sb-badge`: no depende del sistema de diseno
+         del sitio anfitrion, asi que se ve igual en cualquiera.
+       · Por defecto sigue al SISTEMA (`prefers-color-scheme`), que es lo
+         correcto en un sitio que tambien se adapta. Si el sitio tiene un tema
+         FIJO, hay que forzarlo o vas a ver una pastilla oscura sobre una
+         pagina clara cuando el visitante tenga el sistema en oscuro:
+             <a class="sb-badge sb-claro"  ...>   sitio siempre claro
+             <a class="sb-badge sb-oscuro" ...>   sitio siempre oscuro
+       · Atenuado en reposo y opaco al pasar el cursor: es un credito, no
+         contenido. Presente para quien lo busca, invisible para quien no.
+       · El punto verde es un acento de marca, NO un indicador de estado. No
+         pongas texto que insinue "en linea": seria afirmar algo que nadie
+         esta midiendo.
+       · Es un <a> entero, no un texto con un enlace adentro: en una pastilla
+         flotante el area de clic tiene que ser toda la pieza.
+       · `z-index: 29` a proposito, no 9999: si el sitio tiene un boton
+         flotante propio, el credito debe quedar POR DEBAJO. Un crédito nunca
+         puede taparle la conversion al cliente.
+     ============================================================ -->
+<a class="sb-badge {{ badge_tema | default('') }}" href="https://sisac.pe/" target="_blank" rel="noopener external"
+   aria-label="Sitio desarrollado por Star Insights IT by SISAC">
+  <img class="sb-logo" alt="" width="42" height="24"
+       src="data:image/png;base64,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">
+  <span class="sb-txt">
+    <em>Hecho por</em>
+    <b>Star Insights IT by SISAC</b>
+  </span>
+  <u class="sb-dot" aria-hidden="true"></u>
+</a>
+
+<style nonce="{{ request.state.csp_nonce }}">
+.sb-badge{
+  /* Tema claro por defecto. */
+  --sb-fondo:#ffffff;
+  --sb-borde:#e3e0da;
+  --sb-tinta:#14161a;
+  --sb-tinta-2:#4a4f57;
+  --sb-tinta-3:#8b9099;
+  --sb-acento:#0054d4;
+  --sb-punto:#0a6b45;
+  --sb-sombra:0 1px 2px rgba(20,22,26,.05), 0 4px 12px rgba(20,22,26,.05);
+  --sb-opacidad:.62;
+
+  position:fixed; z-index:29;
+  right:1rem;                      /* cambia a `left:1rem` si preferis */
+  bottom:calc(1rem + env(safe-area-inset-bottom));
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.35rem .6rem;
+  border:1px solid var(--sb-borde); border-radius:.7rem;
+  background:var(--sb-fondo);
+  box-shadow:var(--sb-sombra);
+  text-decoration:none;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  opacity:var(--sb-opacidad);
+  transition:opacity .2s ease, transform .2s ease, border-color .2s ease;
+}
+.sb-badge:hover{opacity:1; transform:translateY(-1px); border-color:var(--sb-acento)}
+
+.sb-logo{height:1.25rem; width:auto; display:block; flex-shrink:0}
+.sb-txt{display:block; line-height:1}
+.sb-badge em{display:block; font-style:normal; font-size:.5rem; line-height:1.2;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--sb-tinta-3)}
+.sb-badge b{display:block; font-size:.75rem; font-weight:600; line-height:1.25;
+  margin-top:.05rem; letter-spacing:-.005em; color:var(--sb-tinta-2);
+  white-space:nowrap}
+.sb-badge:hover b{color:var(--sb-tinta)}
+.sb-dot{width:.5rem; height:.5rem; margin-left:.2rem; border-radius:50%;
+  background:var(--sb-punto); flex-shrink:0; text-decoration:none}
+
+/* Paleta oscura: por preferencia del sistema, salvo que el sitio la bloquee
+   con `.sb-claro`. */
+@media (prefers-color-scheme:dark){
+  .sb-badge:not(.sb-claro){
+    --sb-fondo:#14171d; --sb-borde:#232830;
+    --sb-tinta:#f0f1f3; --sb-tinta-2:#a4abb6; --sb-tinta-3:#6b727e;
+    --sb-acento:#5b9bff; --sb-punto:#3ddc97;
+    --sb-sombra:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+  }
+}
+/* Forzada a mano, para sitios con tema fijo. */
+.sb-badge.sb-oscuro{
+  --sb-fondo:#14171d; --sb-borde:#232830;
+  --sb-tinta:#f0f1f3; --sb-tinta-2:#a4abb6; --sb-tinta-3:#6b727e;
+  --sb-acento:#5b9bff; --sb-punto:#3ddc97;
+  --sb-sombra:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+}
+
+/* En pantallas angostas se achica: sobre 375 px de ancho, una pastilla de
+   220 px se come la pantalla y tapa el contenido del cliente. */
+@media (max-width:30rem){
+  .sb-badge{padding:.3rem .45rem; gap:.4rem; border-radius:.6rem}
+  .sb-badge b{font-size:.6875rem}
+  .sb-logo{height:1.05rem}
+  .sb-dot{display:none}
+}
+
+/* Respeta a quien pidio menos movimiento. */
+@media (prefers-reduced-motion:reduce){
+  .sb-badge{transition:none}
+  .sb-badge:hover{transform:none}
+}
+
+/* --- LICITAPRO: el panel deja forzar el tema con data-theme en <html> ---
+   El badge ya sigue a prefers-color-scheme, pero eso no basta aqui: quien
+   tenga el sistema en oscuro y elija tema claro en el panel veria una pastilla
+   oscura sobre pagina clara. Es el mismo fallo que el badge advierte para
+   sitios de tema fijo, solo que provocado por la preferencia del usuario. */
+:root[data-theme="dark"] .sb-badge{
+  --sb-fondo:#14171d; --sb-borde:#232830;
+  --sb-tinta:#f0f1f3; --sb-tinta-2:#a4abb6; --sb-tinta-3:#6b727e;
+  --sb-acento:#5b9bff; --sb-punto:#3ddc97;
+  --sb-sombra:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+}
+:root[data-theme="light"] .sb-badge{
+  --sb-fondo:#ffffff; --sb-borde:#e3e0da;
+  --sb-tinta:#14161a; --sb-tinta-2:#4a4f57; --sb-tinta-3:#8b9099;
+  --sb-acento:#0054d4; --sb-punto:#0a6b45;
+  --sb-sombra:0 1px 2px rgba(20,22,26,.05), 0 4px 12px rgba(20,22,26,.05);
+}
+</style>

@@ -192,6 +192,25 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .en-linea{display:inline}
 .fila-check{display:flex;align-items:center;gap:6px;font-size:13px}
 .col-15{display:flex;flex-direction:column;gap:15px}
+/* ---------- ENTRADA DE LAS TARJETAS ----------
+   AL REVES QUE EN LA PORTADA, Y A PROPOSITO.
+
+   Aqui el estado oculto lo pone el JAVASCRIPT, no el CSS. En la portada el
+   CSS esconde y el JS revela, que es aceptable en una pagina de venta; en el
+   panel no lo es: si el script falla, alguien se queda mirando una pantalla
+   vacia en la que deberia estar su licitacion. Poniendolo desde JS, sin JS no
+   hay animacion y se ve todo, que es el fallo correcto.
+
+   Y es un desplazamiento de 10px, no de 26 como en la portada. Esto se abre
+   cuarenta veces al dia: lo que la primera vez parece elegante, a la cuarenta
+   es una espera. */
+.rv-app{opacity:0;transform:translate3d(0,10px,0);
+  transition:opacity .45s cubic-bezier(.22,1,.36,1),transform .45s cubic-bezier(.22,1,.36,1)}
+.rv-app.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .rv-app,.rv-app.in{opacity:1;transform:none;transition:none}
+}
+
 {% block estilos %}{% endblock %}
 </style>
 </head>
@@ -216,5 +235,6 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 </footer>
 <script src="{{ estatico('licitapro.js') }}" defer></script>
 {% block scripts %}{% endblock %}
+{% include '_badge.html' %}
 </body>
 </html>
