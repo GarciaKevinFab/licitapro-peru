@@ -408,6 +408,26 @@ async def scrape_ocds_oece(
         log.error(f"OCDS OECE fallo: {e}", exc_info=True)
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle_error)
+
+    # NO PUDE ENTRAR NO ES LO MISMO QUE NO HAY NADA
+    #
+    #   Devolver [] tras un fallo hace que el orquestador lo cuente como cero y
+    #   que el reporte diario escriba "Sin nuevas": indistinguible de un dia
+    #   tranquilo. Asi es como esta fuente -- la UNICA con convocatorias
+    #   vigentes -- estuvo doce corridas caida sin que el reporte lo dijera. El
+    #   403 quedaba anotado en el log de scraping, que no mira nadie.
+    #
+    #   Relanzar hace que el orquestador la marque con -1 y salga "Error", que
+    #   es lo que de verdad paso.
+    #
+    #   Solo si NO se parseo ni un release: si hubo algunos y luego fallo una
+    #   pagina, se devuelve lo conseguido. Media pasada buena vale mas que una
+    #   excepcion, y el fallo parcial ya queda en el log.
+    if errores and encontradas == 0:
+        raise RuntimeError(
+            f"OCDS OECE inalcanzable, ningun release obtenido: {detalle_error}"
+        )
+
     log.info(
         f"OCDS OECE: {len(vistos)} procesos revisados, {encontradas} parseados, "
         f"{len(nuevas)} nuevas"

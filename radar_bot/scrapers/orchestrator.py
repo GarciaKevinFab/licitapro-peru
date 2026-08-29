@@ -1155,6 +1155,7 @@ def format_scraping_report(results: dict) -> str:
     lines = [f"<b>Reporte de Scraping</b> -- {results['timestamp'][:16]}\n"]
 
     fuente_labels = {
+        "ocds_oece": "OCDS OECE (principal)",
         "seace_3.0": "SEACE 3.0",
         "gore_portals": "GOREs Regionales",
         "peru_compras": "Peru Compras",
