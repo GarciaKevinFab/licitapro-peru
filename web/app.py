@@ -4,19 +4,23 @@ Deliberadamente sobrio: esto se abre todos los dias para trabajar, no para
 impresionar. El tratamiento cinematografico vive en la landing; aqui manda la
 densidad de informacion y la velocidad.
 """
+import logging
 import os
 import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from shared.db import connection, licitaciones_para_usuario
 from shared.config import DEPARTAMENTOS
 from shared.seguridad import clave_sesion
+
+log = logging.getLogger("web.app")
 
 BASE = Path(__file__).parent
 app = FastAPI(title="LicitaPro Panel")
@@ -599,7 +603,48 @@ async def sitemap():
 
 @app.get("/salud")
 async def salud():
-    return {"estado": "ok"}
+    """Estado real del servicio, para un vigilante externo.
+
+    ANTES DEVOLVIA {"estado": "ok"} SIEMPRE, Y ESO NO VIGILA NADA
+
+      Un 200 fijo solo dice que el proceso de Python sigue vivo. Con la base
+      caida -- que es como esta aplicacion se muere de verdad, porque el dato
+      esta en Supabase y no aqui -- respondia "ok" igualmente. Un monitor
+      conectado a eso habria dado luz verde durante toda la caida.
+
+      Ahora toca la base. Si no responde, esto devuelve 503 y el vigilante lo
+      ve. Es la diferencia entre comprobar que hay alguien y comprobar que
+      alguien puede trabajar.
+
+    EL ATRASO DE OECE VA COMO DATO, NO COMO ESTADO
+
+      Se informa de cuantas horas hace que no entra una cosecha, pero NO se
+      responde 503 por ello: el aviso del puente ya lo manda radar_bot por
+      Telegram, con el diagnostico entero. Duplicarlo aqui daria dos alertas
+      por la misma averia, y dos alertas por lo mismo acaban siendo cero.
+    """
+    detalle: dict = {"estado": "ok", "base": "ok", "oece_horas": None}
+
+    try:
+        async with connection() as conn:
+            await conn.fetchval("SELECT 1")
+    except Exception as e:
+        log.error("Salud: la base no responde: %s", e)
+        # Sin base no hay servicio. 503 y no 500: es indisponibilidad
+        # temporal, y es lo que un monitor entiende como "vuelve a mirar".
+        return JSONResponse(
+            {"estado": "sin_base", "base": "error"}, status_code=503)
+
+    # En su propio try: que falle la consulta de frescura no puede convertir un
+    # servicio sano en una caida. Es informacion, no un latido.
+    try:
+        from shared import vigilancia
+        horas = await vigilancia.horas_sin_cosecha()
+        detalle["oece_horas"] = round(horas, 1) if horas is not None else None
+    except Exception as e:
+        log.warning("Salud: no se pudo medir la frescura de OECE: %s", e)
+
+    return detalle
 
 
 # Ejecutar: uvicorn web.app:app --reload --port 8200

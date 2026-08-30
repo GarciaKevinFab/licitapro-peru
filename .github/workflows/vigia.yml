@@ -1,0 +1,152 @@
+# Vigilante EXTERNO del sitio en produccion.
+#
+# POR QUE NO PUEDE VIVIR EN EL VPS
+#
+#   radar_bot ya vigila que entren licitaciones y avisa por Telegram. Pero
+#   corre DENTRO del mismo servidor que vigila: si el VPS se apaga, se cae
+#   Docker o el tunel deja de enrutar, el vigilante se va con el. Nadie se
+#   entera, que es exactamente lo que pasaba hasta ahora.
+#
+#   Esto corre en la infraestructura de GitHub. No comparte servidor, ni red,
+#   ni electricidad con lo que mira. Es la unica forma de que una caida total
+#   produzca un aviso.
+#
+#   Reparto de responsabilidades, para no avisar dos veces de lo mismo:
+#     - Este vigia   -> "el sitio no responde".
+#     - radar_bot    -> "el puente dejo de traer datos" (con el diagnostico).
+#   `/salud` publica las horas de atraso de OECE, pero aqui solo se adjuntan
+#   como contexto: no disparan nada.
+#
+# POR QUE UNA INCIDENCIA Y NO SOLO UN MENSAJE
+#
+#   Comprobando cada 15 minutos, una caida de fin de semana son ~200 mensajes
+#   identicos de Telegram. La incidencia abierta hace de memoria: si ya hay una
+#   abierta, se calla. Se avisa al caer y se avisa al volver, que son los dos
+#   momentos que importan.
+#
+# ANTES DE QUE ESTO SIRVA, DOS COSAS
+#
+#   1. Los cron de GitHub solo corren desde la rama POR DEFECTO. Mientras esto
+#      viva en una rama de trabajo, no se ejecuta ni una vez.
+#   2. Para el aviso por Telegram hacen falta dos secretos del repositorio
+#      (Settings -> Secrets and variables -> Actions):
+#        RADAR_BOT_TOKEN     el mismo token del bot
+#        TELEGRAM_ADMIN_ID   tu chat id
+#      Sin ellos la incidencia se abre igual; solo se pierde el aviso al movil.
+#
+#   Y un aviso de GitHub: desactiva los cron de los repositorios sin actividad
+#   durante 60 dias. Si el proyecto se queda quieto, este vigia se apaga solo.
+
+name: Vigia
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# Solo lo que hace falta para abrir y cerrar la incidencia.
+permissions:
+  issues: write
+
+concurrency:
+  group: vigia
+  cancel-in-progress: false
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      URL: ${{ vars.LICITAPRO_URL || 'https://licitapro.sisac.pe' }}
+      ETIQUETA: vigia-caida
+      BOT: ${{ secrets.RADAR_BOT_TOKEN }}
+      ADMIN: ${{ secrets.TELEGRAM_ADMIN_ID }}
+
+    steps:
+      - name: Preguntar por /salud
+        id: sondeo
+        run: |
+          # Sin `set -e`: un fallo de curl ES el resultado que buscamos, no un
+          # error del job. Se captura y se decide despues.
+          CUERPO=$(curl -sS -m 25 -w '\n%{http_code}' "$URL/salud" 2>/dev/null || echo -e '\n000')
+          CODIGO=$(printf '%s' "$CUERPO" | tail -n1)
+          JSON=$(printf '%s' "$CUERPO" | sed '$d')
+          echo "codigo=$CODIGO" >> "$GITHUB_OUTPUT"
+          echo "Codigo: $CODIGO"
+          echo "Cuerpo: $JSON"
+          HORAS=$(printf '%s' "$JSON" | jq -r '.oece_horas // "desconocido"' 2>/dev/null || echo desconocido)
+          # jq contra una entrada vacia sale con 0 y sin escribir nada: sin
+          # esto el informe diria "Horas desde la ultima cosecha:" y nada mas.
+          [ -z "$HORAS" ] && HORAS=desconocido
+          echo "horas=$HORAS" >> "$GITHUB_OUTPUT"
+
+      - name: Abrir o cerrar la incidencia, y avisar
+        env:
+          CODIGO: ${{ steps.sondeo.outputs.codigo }}
+          HORAS: ${{ steps.sondeo.outputs.horas }}
+        run: |
+          set -euo pipefail
+
+          # Sin los secretos puestos no se avisa, pero tampoco se rompe: la
+          # incidencia de GitHub se abre igual, que es la parte que no se
+          # puede perder.
+          avisar() {
+            if [ -n "${BOT:-}" ] && [ -n "${ADMIN:-}" ]; then
+              curl -sS -m 20 -o /dev/null "https://api.telegram.org/bot${BOT}/sendMessage" --data-urlencode "chat_id=${ADMIN}" --data-urlencode "text=$1" || true
+            else
+              echo "Sin RADAR_BOT_TOKEN/TELEGRAM_ADMIN_ID: no se avisa por Telegram."
+            fi
+          }
+
+          # La etiqueta puede no existir todavia. Crearla es idempotente.
+          gh label create "$ETIQUETA" --color B60205 --description "Caida detectada por el vigia automatico" 2>/dev/null || true
+
+          ABIERTA=$(gh issue list --label "$ETIQUETA" --state open --limit 1 --json number --jq '.[0].number // ""')
+
+          if [ "$CODIGO" = "200" ]; then
+            echo "El sitio responde."
+            if [ -n "$ABIERTA" ]; then
+              gh issue comment "$ABIERTA" --body "Recuperado. \`/salud\` vuelve a responder 200."
+              gh issue close "$ABIERTA"
+              avisar "✅ LicitaPro volvio. El sitio responde otra vez (incidencia #$ABIERTA cerrada)."
+            fi
+            exit 0
+          fi
+
+          # 000 es curl sin poder ni conectar: DNS, tunel caido o servidor
+          # apagado. 503 es la aplicacion viva pero sin base. Se distinguen
+          # porque llevan a sitios distintos.
+          if [ "$CODIGO" = "000" ]; then
+            QUE="no responde en absoluto (sin conexion: DNS, tunel o servidor caido)"
+          elif [ "$CODIGO" = "503" ]; then
+            QUE="responde pero no alcanza la base de datos (Supabase o el pooler)"
+          else
+            QUE="responde con codigo $CODIGO"
+          fi
+
+          echo "CAIDA: $QUE"
+
+          if [ -n "$ABIERTA" ]; then
+            echo "Ya hay incidencia abierta (#$ABIERTA). No se repite el aviso."
+            exit 0
+          fi
+
+          CUERPO=$(printf '%s\n' \
+            "El vigia automatico no pudo confirmar que el sitio este sano." \
+            "" \
+            "- URL comprobada: ${URL}/salud" \
+            "- Resultado: ${QUE}" \
+            "- Horas desde la ultima cosecha de OECE: ${HORAS}" \
+            "" \
+            "Que mirar en el VPS, en este orden:" \
+            "1. \`docker compose -f docker-compose.prod.yml ps\`" \
+            "2. \`systemctl is-active cloudflared\` (o los logs del servicio tunnel)" \
+            "3. \`docker compose -f docker-compose.prod.yml logs web | tail -50\`" \
+            "" \
+            "Esta incidencia se cierra sola en cuanto \`/salud\` vuelva a responder 200.")
+
+          # `gh issue create` devuelve por su salida la URL de la incidencia.
+          NUEVA=$(gh issue create --label "$ETIQUETA" --title "LicitaPro caido: $QUE" --body "$CUERPO")
+          echo "Incidencia abierta: $NUEVA"
+
+          avisar "🛑 LicitaPro no responde: ${QUE}. Incidencia: ${NUEVA} - se avisara tambien cuando vuelva."

@@ -282,6 +282,8 @@ Un respaldo que nunca se restauró no es un respaldo, es una suposición.
 
 ## 11. Comprobaciones de salud
 
+### Auditorías del código
+
 ```bash
 docker compose -f docker-compose.prod.yml run --rm web python tools/auditar_sql.py
 docker compose -f docker-compose.prod.yml run --rm web python tools/datos_dev.py --verificar-aislamiento
@@ -290,6 +292,46 @@ docker compose -f docker-compose.prod.yml run --rm web python tools/datos_dev.py
 El primero valida cada consulta SQL del proyecto contra el esquema real; el
 segundo comprueba que ninguna cuenta ve datos de otra. Ambos devuelven código
 distinto de cero si algo va mal, así que sirven en CI.
+
+### `/salud`
+
+```bash
+curl -s https://licitapro.sisac.pe/salud
+```
+
+Devuelve **200** solo si además alcanza la base; **503** si la aplicación vive
+pero Supabase no responde. Antes devolvía `{"estado":"ok"}` pasara lo que
+pasara, así que un monitor conectado a eso daba luz verde durante toda una
+caída. También informa de `oece_horas`: cuántas horas hace que no entra una
+cosecha.
+
+### Los dos vigilantes, y por qué hacen falta los dos
+
+| Vigilante | Dónde corre | De qué avisa |
+|---|---|---|
+| `radar_bot` (`shared/vigilancia.py`) | En el VPS | El puente dejó de traer datos, o la fuente se secó |
+| `.github/workflows/vigia.yml` | En GitHub | El sitio no responde |
+
+Ninguno puede vigilar su propia máquina. El de dentro conoce el detalle —
+consulta `scraping_log` y manda el diagnóstico por Telegram — pero se apaga con
+el servidor. El de fuera solo pregunta por `/salud` cada 15 minutos, y por eso
+es el único que sobrevive a una caída total.
+
+Para que el de fuera funcione hacen falta dos cosas:
+
+1. Que el workflow esté en la **rama por defecto**. Los `cron` de GitHub no
+   corren desde ramas de trabajo.
+2. Dos secretos en *Settings → Secrets and variables → Actions*:
+   `RADAR_BOT_TOKEN` y `TELEGRAM_ADMIN_ID`. Sin ellos se abre igual la
+   incidencia en GitHub; solo se pierde el aviso al móvil.
+
+Al caer abre una incidencia con la etiqueta `vigia-caida` y la cierra sola
+cuando el sitio vuelve. La incidencia hace de memoria: mientras haya una
+abierta no se repite el aviso, así que una caída de fin de semana no son
+doscientos mensajes iguales.
+
+> GitHub desactiva los `cron` de los repositorios sin actividad durante 60
+> días. Si el proyecto se queda quieto, este vigía se apaga solo.
 
 ## 12. Antes de abrir al público
 
@@ -300,6 +342,7 @@ distinto de cero si algo va mal, así que sirven en CI.
 - [ ] `TELEGRAM_BOT_USERNAME` con el bot real
 - [ ] Respaldos programados en el cron del host **y una restauración probada**
 - [ ] `RESPALDO_REMOTO` apuntando fuera del servidor
+- [ ] Secretos del vigía (`RADAR_BOT_TOKEN`, `TELEGRAM_ADMIN_ID`) en GitHub
 - [ ] Webhook de Izipay registrado y con `IZIPAY_HMAC_KEY`
 - [ ] Términos de servicio y política de privacidad publicados
       (Ley 29733: guardas RUC, DNI y firmas de terceros)
