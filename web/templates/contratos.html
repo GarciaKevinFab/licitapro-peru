@@ -24,6 +24,59 @@ table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mo
 .sesion button{padding:5px 11px;font-size:12px}
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
 .tabla-caja{overflow-x:auto}
+
+/* ---------- MOVIMIENTO EN LA TABLA ----------
+   NADA DE 3D AQUI, Y ES DELIBERADO.
+
+     Las tarjetas del panel se inclinan un grado porque son objetos sueltos.
+     Una tabla no: girarla rompe la alineacion de las columnas, que es
+     justamente lo que la hace legible. Lo unico que aporta movimiento aqui es
+     senalar en que fila esta el ojo.
+
+   Al pasar por encima: fondo mas claro y un filo de acento a la izquierda. El
+   filo va como box-shadow interior del primer td, no como pseudo-elemento del
+   tr, porque los pseudo-elementos sobre filas de tabla se posicionan distinto
+   segun el navegador. */
+table.datos tbody tr{transition:background .18s ease}
+table.datos tbody tr:hover{background:var(--panel-2)}
+table.datos tbody tr td:first-child{
+  box-shadow:inset 0 0 0 0 var(--ac);
+  transition:box-shadow .22s cubic-bezier(.22,1,.36,1);
+}
+table.datos tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 0 var(--ac)}
+
+/* Entrada escalonada, pero SOLO las diez primeras filas.
+   Con cien contratos, escalonar todas significa esperar a que termine la
+   ultima para ver la tabla entera. Las de abajo entran sin retraso: nadie
+   nota que no se escalonaron porque estan fuera de pantalla. */
+@keyframes filaEntra{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
+table.datos tbody tr{animation:filaEntra .38s cubic-bezier(.22,1,.36,1) backwards}
+table.datos tbody tr:nth-child(1){animation-delay:.02s}
+table.datos tbody tr:nth-child(2){animation-delay:.05s}
+table.datos tbody tr:nth-child(3){animation-delay:.08s}
+table.datos tbody tr:nth-child(4){animation-delay:.11s}
+table.datos tbody tr:nth-child(5){animation-delay:.14s}
+table.datos tbody tr:nth-child(6){animation-delay:.17s}
+table.datos tbody tr:nth-child(7){animation-delay:.20s}
+table.datos tbody tr:nth-child(8){animation-delay:.23s}
+table.datos tbody tr:nth-child(9){animation-delay:.26s}
+table.datos tbody tr:nth-child(10){animation-delay:.29s}
+
+/* El boton de la fila aparece al acercarse, sin ocupar sitio cuando no. */
+table.datos tbody tr .acciones{opacity:.55;transition:opacity .2s ease}
+table.datos tbody tr:hover .acciones{opacity:1}
+
+@media (prefers-reduced-motion:reduce){
+  table.datos tbody tr{animation:none}
+  table.datos tbody tr td:first-child,
+  table.datos tbody tr:hover td:first-child{transition:none}
+  table.datos tbody tr .acciones{opacity:1}
+}
+
+/* Lo que te deben se lee antes que nada: es la columna por la que se abre
+   esta pantalla. Cifra un punto mayor y en color de aviso cuando hay saldo. */
+table.datos td.cobrar{font-weight:600}
+table.datos td.cobrar.hay{color:var(--warn)}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
@@ -52,7 +105,7 @@ table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mo
             <td><span class="pill {% if c.estado == 'pagado' %}ok{% elif c.estado == 'cancelado' %}neutro{% else %}pend{% endif %}">{{ c.estado }}</span>
               {% if c.plazos_urgentes %}<span class="pill urg">{{ c.plazos_urgentes }} plazo</span>{% endif %}</td>
             <td class="num">{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}—{% endif %}</td>
-            <td class="num">{% if c.por_cobrar %}S/ {{ '{:,.0f}'.format(c.por_cobrar) }}{% else %}—{% endif %}</td>
+            <td class="num cobrar{% if c.por_cobrar %} hay{% endif %}">{% if c.por_cobrar %}S/ {{ '{:,.0f}'.format(c.por_cobrar) }}{% else %}—{% endif %}</td>
             <td class="num">{{ c.fecha_entrega_final.strftime('%d/%m/%y') if c.fecha_entrega_final else '—' }}</td>
             <td><a class="btn sec" href="/contratos/{{ c.id }}">Abrir</a></td>
           </tr>
