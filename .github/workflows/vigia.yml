@@ -101,25 +101,42 @@ jobs:
           # Sin los secretos puestos no se avisa, pero tampoco se rompe: la
           # incidencia de GitHub se abre igual, que es la parte que no se
           # puede perder.
+          # LOS SECRETOS SE LIMPIAN ANTES DE USARLOS.
+          #
+          #   Pegar un valor en la caja de GitHub arrastra con facilidad un
+          #   salto de linea o un espacio final. Metido en la URL, curl lo
+          #   rechaza entero:
+          #
+          #     curl: (3) URL rejected: Malformed input to a URL function
+          #
+          #   Ni el token ni el chat_id llevan espacios nunca, asi que
+          #   quitarlos no puede romper un valor bueno y arregla uno pegado
+          #   con prisa.
+          BOT="$(printf %s "${BOT:-}" | tr -d "[:space:]")"
+          ADMIN="$(printf %s "${ADMIN:-}" | tr -d "[:space:]")"
+
           avisar() {
-            if [ -z "${BOT:-}" ] || [ -z "${ADMIN:-}" ]; then
+            if [ -z "$BOT" ] || [ -z "$ADMIN" ]; then
               echo "Sin RADAR_BOT_TOKEN/TELEGRAM_ADMIN_ID: no se avisa por Telegram."
               return 0
             fi
-            # SE COMPRUEBA QUE TELEGRAM LO ACEPTE.
-            #
-            #   Antes esto era `curl ... || true` con la respuesta a la basura:
-            #   con el token caducado o el chat_id equivocado, el aviso no
-            #   salia y el vigia no lo mencionaba. Una alarma que falla en
-            #   silencio es peor que no tenerla, porque ademas da por cubierto
-            #   el riesgo. El cuerpo de la respuesta es JSON de la API y no
-            #   lleva el token: se puede imprimir.
+            # La forma del token se comprueba SIN imprimirlo: si alguien pego
+            # de mas -- la linea entera del .env, por ejemplo -- el aviso dice
+            # que revisar en vez de dejar un fallo de URL sin explicar.
+            if ! printf %s "$BOT" | grep -qE "^[0-9]+:[A-Za-z0-9_-]+$"; then
+              echo "::warning::RADAR_BOT_TOKEN no tiene forma de token de Telegram (se espera 123456:AA...). Revisa el secreto; no se imprime su valor."
+            fi
+            if ! printf %s "$ADMIN" | grep -qE "^-?[0-9]+$"; then
+              echo "::warning::TELEGRAM_ADMIN_ID no es numerico. Revisa el secreto."
+            fi
+            # Se comprueba que Telegram lo acepte: antes era `|| true` con la
+            # respuesta a la basura, o sea una alarma que fallaba en silencio.
             local codigo
-            codigo="$(curl -sS -m 20 -o /tmp/tg.out -w "%{http_code}" "https://api.telegram.org/bot${BOT}/sendMessage" --data-urlencode "chat_id=${ADMIN}" --data-urlencode "text=$1" || echo 000)"
+            codigo="$(curl -sS -m 20 -o /tmp/tg.out -w "%{http_code}" "https://api.telegram.org/bot${BOT}/sendMessage" --data-urlencode "chat_id=${ADMIN}" --data-urlencode "text=$1" 2>/tmp/tg.err || true)"
             if [ "$codigo" = "200" ]; then
               echo "Telegram: entregado."
             else
-              echo "::warning::Telegram NO acepto el aviso (codigo $codigo): $(head -c 200 /tmp/tg.out)"
+              echo "::warning::Telegram NO acepto el aviso (codigo ${codigo:-sin respuesta}): $(head -c 150 /tmp/tg.out) $(head -c 150 /tmp/tg.err)"
             fi
           }
 
