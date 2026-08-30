@@ -58,12 +58,41 @@ DIAS_CONSERVAR="${2:-14}"
 
 cd "$(dirname "$0")/.."
 
-# El cron arranca sin el entorno de la sesion. Sin esto, DATABASE_URL llega
-# vacia y el volcado se hace contra nada -- que es exactamente el modo de fallo
-# que ya nos mordio con la tarea programada del puente.
-if [[ -f .env ]]; then
-  set -a; . ./.env; set +a
-fi
+# ─── Leer el .env, NO ejecutarlo ─────────────────────────────────────────────
+#
+#   El cron arranca sin el entorno de la sesion. Sin leer el .env, DATABASE_URL
+#   llega vacia y el volcado se hace contra nada -- el mismo modo de fallo que
+#   ya nos mordio con la tarea programada del puente.
+#
+#   Pero `. ./.env` no lee el archivo: lo EJECUTA. Un valor con espacios --una
+#   contrasena de aplicacion, por ejemplo-- se parte, y bash intenta correr el
+#   segundo trozo como si fuera un comando:
+#
+#     ./.env: line 179: M: command not found
+#
+#   Paso en el VPS, con SMTP_PASSWORD. docker-compose lee ese mismo archivo sin
+#   quejarse porque su formato NO es shell, asi que el .env nunca tuvo por que
+#   ser codigo valido. Ese es justo el malentendido.
+#
+#   Y hay algo peor que el fallo: ejecutar el archivo de configuracion
+#   significa que cualquier cosa escrita ahi corre como root cada madrugada.
+#
+#   Se extraen solo las cinco variables que hacen falta, literales.
+leer_env() {
+  local v
+  [[ -f .env ]] || return 0
+  v="$(sed -n "s/^$1=//p" .env | head -1)"
+  # Las comillas envolventes son del formato, no del valor.
+  v="${v%\"}"; v="${v#\"}"
+  v="${v%'}"; v="${v#'}"
+  printf '%s' "$v"
+}
+
+: "${DATABASE_URL:=$(leer_env DATABASE_URL)}"
+: "${RADAR_BOT_TOKEN:=$(leer_env RADAR_BOT_TOKEN)}"
+: "${TELEGRAM_ADMIN_ID:=$(leer_env TELEGRAM_ADMIN_ID)}"
+: "${RESPALDO_REMOTO:=$(leer_env RESPALDO_REMOTO)}"
+: "${IMAGEN_PG:=$(leer_env IMAGEN_PG)}"
 
 # ─── Aviso de fallo ──────────────────────────────────────────────────────────
 # Un respaldo que falla en silencio es peor que no tener respaldo: da por
@@ -93,7 +122,7 @@ URL_VOLCADO="${DATABASE_URL/:6543/:5432}"
 # pg_dump se niega a volcar un servidor MAS NUEVO que el. Se usa una imagen por
 # encima de la version de Supabase a proposito: al reves falla, y falla con un
 # mensaje que no dice que el problema es la version.
-IMAGEN_PG="${IMAGEN_PG:-postgres:17-alpine}"
+IMAGEN_PG="${IMAGEN_PG:-postgres:17-alpine}"   # Supabase corre 17.6
 
 SELLO="$(date +%Y%m%d-%H%M%S)"
 DUMP="$DESTINO/licitapro-$SELLO.sql.gz"
