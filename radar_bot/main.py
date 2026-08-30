@@ -122,7 +122,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🔍 <b>LicitaRadar</b> — Bot de detección de licitaciones\n\n"
-        "Escaneo 12 fuentes a nivel nacional cada hora.\n"
+        "Escaneo la contratacion publica del Estado cada hora.\n"
         "Te notifico solo las que te convienen.\n\n"
         "Comandos principales:\n"
         "/hoy — Licitaciones nuevas del día\n"
@@ -307,14 +307,21 @@ async def _vigilar_fuente(app: Application):
 
 async def scheduled_scrape(app: Application):
     """Ejecuta TODOS los scrapers cada hora y envía alertas."""
-    log.info("Iniciando scraping programado de 12 fuentes...")
+    log.info("Iniciando scraping programado...")
     try:
         results = await run_all_scrapers()
         
         # El parte tecnico va al administrador; las alertas van a los CLIENTES.
         # Antes las dos cosas iban a ADMIN_ID, asi que los suscriptores pagaban
         # por unos avisos que nunca salian de la cuenta del dueno.
-        if ADMIN_ID and results["total_nuevas"] > 0:
+        # SE ENVIA TAMBIEN CUANDO NO HAY NOVEDADES PERO SI AVERIAS
+        #
+        #   La condicion era solo `total_nuevas > 0`. Con ella, el dia que
+        #   TODAS las fuentes se caen -- que da exactamente cero nuevas -- era
+        #   el unico dia sin parte. El silencio significaba las dos cosas
+        #   opuestas: "no hubo convocatorias" y "no funciona nada".
+        hay_averias = bool(results.get("diagnosticos"))
+        if ADMIN_ID and (results["total_nuevas"] > 0 or hay_averias):
             try:
                 await app.bot.send_message(
                     ADMIN_ID, format_scraping_report(results), parse_mode="HTML")

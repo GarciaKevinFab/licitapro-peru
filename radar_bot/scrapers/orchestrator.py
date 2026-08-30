@@ -17,6 +17,7 @@ Fuentes implementadas (verificadas):
 11. Datos Abiertos     -- datosabiertos.gob.pe CKAN API + XLSX resources
 """
 import re
+import html
 import logging
 import asyncio
 import hashlib
@@ -24,7 +25,8 @@ from datetime import datetime, date
 import httpx
 from bs4 import BeautifulSoup
 from shared.db import (
-    upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+    upsert_licitacion, log_scraping_start, log_scraping_end, get_config,
+    connection,
 )
 
 log = logging.getLogger("radar.orchestrator")
@@ -190,7 +192,216 @@ def _apply_filters(entidad, objeto, monto, depto, filters) -> bool:
     return True
 
 
+# ==================== Sonda de fuentes ====================
+
+def _corto(url: str) -> str:
+    """Host y ultimo tramo de la URL. Los partes se leen en un movil."""
+    sin_esquema = re.sub(r"^https?://", "", url).rstrip("/")
+    partes = sin_esquema.split("/")
+    if len(partes) <= 2:
+        return "/".join(partes)
+    return f"{partes[0]}/.../{partes[-1]}"
+
+
+class Sonda:
+    """Deja constancia de que paso con cada URL de una fuente.
+
+    POR QUE EXISTE
+
+      Los scrapers de HTML compartian esta linea:
+
+          resp = await client.get(url)
+          if resp.status_code != 200:
+              continue
+
+      Con ella, un 404 y un dia sin convocatorias acaban exactamente igual:
+      `0 encontradas, 0 errores`, status 'done'. Comprobado contra produccion:
+      cinco fuentes llevaban 21 pasadas seguidas anotando eso mismo mientras
+      sus URLs devolvian 404 y 500, y el parte diario las listaba como "Sin
+      nuevas" -- que es la frase que se usa para una fuente SANA en domingo.
+
+      La sonda no arregla ninguna fuente. Hace que se note cual esta rota, que
+      es lo que faltaba para poder decidir cual merece la pena arreglar.
+
+    LAS DOS AVERIAS QUE SEPARA, Y POR QUE NO SE PUEDEN MEZCLAR
+
+      CAIDA        Ninguna URL respondio 200. La pagina ya no existe, redirige
+                   en bucle, o el host no acepta la conexion. Se arregla
+                   cambiando la URL.
+      SIN EXTRAER  Las paginas responden y no sale ni una fila. El sitio se
+                   rediseno y los selectores apuntan a algo que ya no esta. Se
+                   arregla mirando el HTML, no la URL.
+
+      Mandan a sitios distintos, asi que se nombran distinto. Un aviso con el
+      diagnostico equivocado hace perder la tarde igual que no tener aviso.
+    """
+
+    def __init__(self, fuente: str):
+        self.fuente = fuente
+        self.vivas = 0
+        self.fallos: list[str] = []
+
+    @property
+    def errores(self) -> int:
+        """URLs que no sirvieron. Suma a los errores que ya cuenta el scraper."""
+        return len(self.fallos)
+
+    async def get(self, client, url: str):
+        """Pide la URL. Devuelve la respuesta, o None si no sirve.
+
+        DEVUELVE None EN VEZ DE LANZAR, A PROPOSITO
+
+          Una fuente con tres URLs de las que dos han muerto tiene que seguir
+          leyendo la tercera. Quien llama conserva su `continue`; lo unico que
+          cambia es que ahora queda escrito por que.
+        """
+        try:
+            resp = await client.get(url)
+        except Exception as e:
+            self.fallos.append(f"{_corto(url)}: {type(e).__name__}")
+            return None
+        if resp.status_code != 200:
+            self.fallos.append(f"{_corto(url)}: HTTP {resp.status_code}")
+            return None
+        self.vivas += 1
+        return resp
+
+    def diagnostico(self, encontradas: int) -> str | None:
+        """Que contar en `scraping_log.error_detalle`. None si la pasada fue normal.
+
+        Se escribe en la tabla y no solo en el log del contenedor porque el log
+        se pierde con el reinicio y nadie lo abre. `scraping_log` ya es la
+        fuente de verdad que consulta el vigilante: anadir un segundo sitio
+        donde mirar es la forma de que no se mire ninguno.
+        """
+        if self.vivas == 0 and self.fallos:
+            return "CAIDA -- " + "; ".join(self.fallos[:4])
+        if self.vivas and encontradas == 0:
+            aviso = (f"SIN EXTRAER -- {self.vivas} URL(s) respondieron 200 y no "
+                     f"salio ni una fila: revisar los selectores")
+            if self.fallos:
+                aviso += " | ademas " + "; ".join(self.fallos[:3])
+            return aviso
+        if self.fallos:
+            return "PARCIAL -- " + "; ".join(self.fallos[:4])
+        return None
+
+
 # ==================== ORQUESTADOR PRINCIPAL ====================
+
+# FUENTES APAGADAS, Y POR QUE. El codigo se queda; la linea en `scrapers` no.
+#
+#   COMPROBADO CONTRA PRODUCCION (30/08/2026, 21 pasadas seguidas)
+#
+#     essalud, sbs, peru_compras, transparencia_mef y municipalidades anotaron
+#     `0 encontradas, 0 errores` en TODAS. No es que no hubiera convocatorias:
+#     sus URLs devuelven 404 y 500. El `continue` mudo que tenian las hacia
+#     indistinguibles de una fuente sana en domingo, y el parte diario las
+#     listaba como "Sin nuevas" durante semanas.
+#
+#   LO DECISIVO NO ES QUE ESTEN ROTAS, ES QUE NO APORTAN NADA
+#
+#     Las mismas entidades ya entran por `ocds_oece`, que es la API de SEACE:
+#
+#       Municipalidades  388 licitaciones (91 abiertas)
+#       Gobiernos Reg.   153 (27)
+#       EsSalud           13 (4)
+#       Poder Judicial     4 (1)
+#       SBS                1 (0)
+#
+#     Arreglarles la URL seria trabajo para volver a traer por HTML, sin monto
+#     y sin plazo, lo que ya llega estructurado. Apagarlas ahorra 21 peticiones
+#     por hora y deja de ensuciar el parte.
+#
+#   NO SE BORRA EL CODIGO A PROPOSITO
+#
+#     Si alguna publica algo que SEACE no recoja -- compras menores, que es
+#     justo el caso de gore_portals -- se reengancha anadiendo su linea a
+#     `scrapers`. Borrarlas perderia el trabajo hecho y, sobre todo, la razon
+#     por la que se apagaron, que es lo que hace que alguien las reescriba
+#     dentro de un ano.
+FUENTES_APAGADAS = {
+    "seace_3.0": "reCAPTCHA v3, y es la web del mismo SEACE que ya se lee por "
+                 "API en ocds_oece",
+    "peru_compras": "perucompras.gob.pe se mudo a gob.pe; sus procesos ya "
+                    "entran por ocds_oece",
+    "poder_judicial": "sus dos URLs mueren (redireccion en bucle y conexion "
+                      "rechazada); ya entra por ocds_oece",
+    "essalud": "sus URLs dan 404 y 500; ya entra por ocds_oece",
+    "sbs": "la pagina responde pero no publica ninguna tabla; ya entra por "
+           "ocds_oece",
+    "transparencia_mef": "la consulta amigable no publica convocatorias; ya "
+                         "entran por ocds_oece",
+    "municipalidades": "dos de tres portales dan 404 y el tercero redirige a "
+                       "gob.pe; ya entran por ocds_oece",
+}
+
+# FUENTES QUE SOLO FUNCIONAN DESDE UNA CONEXION PERUANA.
+#
+#   `gore_portals` NO esta rota y NO es redundante: el portal de cotizaciones
+#   de Madre de Dios publica compras menores a 8 UIT, que no llegan a SEACE y
+#   por tanto no las trae `ocds_oece`. Comprobado desde una linea peruana:
+#   responde 200 y el scraper extrae 25 convocatorias vigentes.
+#
+#   Desde el VPS no se alcanza. Es el mismo bloqueo por origen que ya obligo a
+#   montar el puente para OECE, y por eso la cosecha se hace alli
+#   (tools/traer_oece.py) en vez de aqui.
+#
+#   NO SE DEJA TAMBIEN EN LA PASADA DEL SERVIDOR, aunque no costaria nada:
+#   anotaria "CAIDA" cada hora sobre una fuente que SI se esta cosechando. Un
+#   aviso que salta cuando todo va bien deja de leerse, y entonces tampoco se
+#   lee el dia que la averia es de verdad.
+FUENTES_DEL_PUENTE = {
+    "gore_portals": "solo responde a conexiones peruanas",
+    # ocds_oece SI se sigue intentando desde el servidor, por si algun dia
+    # cambia el enrutado. Esta aqui por lo otro que implica la lista: su fallo
+    # desde el VPS es ESPERADO y no se reporta como novedad. Ver _diagnosticos.
+    "ocds_oece": "OECE devuelve 403 al VPS; cosecha el puente peruano",
+}
+
+
+async def _diagnosticos(fuentes) -> dict:
+    """El ultimo `error_detalle` de cada fuente de esta pasada, si lo hay.
+
+    POR QUE SE LEE DE LA BASE EN VEZ DE DEVOLVERLO CADA SCRAPER
+
+      Los `_run_*` devuelven una lista de licitaciones nuevas y nada mas.
+      Cambiar esa firma obligaria a tocar las once. La pasada ACABA de escribir
+      su fila en `scraping_log`, que ya es la fuente de verdad que consulta el
+      vigilante: leer de alli no inventa un segundo sitio donde mirar.
+
+    POR QUE NO SE FILTRA POR HORA
+
+      `fin` se escribe con `NOW()` de PostgreSQL, que en esta base va en UTC.
+      Compararlo contra un `datetime.now()` de Python es el desfase de cinco
+      horas que ya mordio a este proyecto una vez. La ultima fila de cada
+      fuente es la de esta pasada porque se acaba de escribir, y eso no
+      necesita reloj.
+
+    POR QUE SE CALLAN LAS FUENTES DEL PUENTE
+
+      `ocds_oece` deja un fallo en CADA pasada del servidor: OECE le devuelve
+      403 por ir por una IP de fuera de Peru. Es una condicion conocida,
+      permanente y ya resuelta -- la cosecha la hace el puente --, asi que
+      reportarla cada hora seria un aviso que salta siempre. Y un aviso que
+      salta siempre no se lee el dia que dice algo nuevo, que es exactamente
+      la averia que esta funcion existe para evitar.
+
+      Que esa fuente este viva lo vigila `shared/vigilancia.py`, y lo vigila
+      mejor: mide horas desde la ultima cosecha que DE VERDAD leyo algo, en
+      vez de quejarse de cada intento fallido del servidor.
+    """
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT DISTINCT ON (fuente) fuente, error_detalle
+                 FROM scraping_log
+                WHERE fin IS NOT NULL
+                ORDER BY fuente, id DESC""")
+    return {f["fuente"]: f["error_detalle"] for f in filas
+            if f["error_detalle"] and f["fuente"] in fuentes
+            and f["fuente"] not in FUENTES_DEL_PUENTE}
+
+
 
 async def run_all_scrapers(user_id: int = 0) -> dict:
     """Ejecuta todos los scrapers disponibles. Si uno falla, los otros siguen."""
@@ -201,17 +412,14 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         "errores": [],
     }
 
+    # POR QUE ESTA LISTA TIENE TRES FUENTES Y NO ONCE
+    #
+    #   Ver FUENTES_APAGADAS y FUENTES_DEL_PUENTE, arriba. Resumido: siete
+    #   fuentes estaban muertas Y eran redundantes, y una funciona pero no
+    #   desde este servidor.
     scrapers = [
         # Fuente principal: unica que entrega convocatorias vigentes.
         ("ocds_oece", _run_ocds_oece),
-        ("seace_3.0", _run_seace),
-        ("gore_portals", _run_gore_portals),
-        ("peru_compras", _run_peru_compras),
-        ("poder_judicial", _run_poder_judicial),
-        ("essalud", _run_essalud),
-        ("sbs", _run_sbs),
-        ("transparencia_mef", _run_transparencia_mef),
-        ("municipalidades", _run_municipalidades),
         # ocds_conosce y conosce_contratos quedaron FUERA de las alertas: son
         # volcados XLSX con retraso y producian 0 convocatorias vigentes (291
         # filas, ninguna postulable). Sus datos con monto se migraron a
@@ -245,6 +453,14 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         results["scoreadas"] = 0
         log.error(f"[FAIL] scoring: {e}")
 
+    # Que fuente se quejo, en cristiano. Sin esto el diagnostico se queda
+    # escrito en una tabla que solo se mira cuando ya hay un cliente enfadado.
+    try:
+        results["diagnosticos"] = await _diagnosticos(results["por_fuente"])
+    except Exception as e:
+        results["diagnosticos"] = {}
+        log.error(f"No se pudieron leer los diagnosticos: {e}")
+
     log.info(
         f"Scraping completo: {results['total_nuevas']} nuevas, "
         f"{results.get('scoreadas', 0)} scoreadas, "
@@ -272,18 +488,24 @@ GORE_COTIZACIONES_PORTALS = {
 }
 
 # Generic GORE portals (HTML scraping, lower reliability)
+#
+#   Cusco salio de esta lista: https://www.regioncusco.gob.pe/contrataciones/
+#   devuelve 404 desde hace meses. Con la sonda ya no era un fallo invisible,
+#   pero seguia siendo un aviso cada cuatro horas sobre algo que no se va a
+#   arreglar solo. Un aviso que sale siempre no se lee nunca.
+#
+#   Junin responde 200 y no publica tabla: no aporta, pero tampoco miente. Se
+#   deja por si vuelven a publicar ahi.
 GORE_GENERIC_PORTALS = {
     "Junín": [
         "https://www.regionjunin.gob.pe/pagina/id/contrataciones_y_adquisiciones/",
-    ],
-    "Cusco": [
-        "https://www.regioncusco.gob.pe/contrataciones/",
     ],
 }
 
 
 async def _scrape_gore_cotizaciones_app(
-    client: httpx.AsyncClient, region: str, portal_info: dict, filters: dict
+    client: httpx.AsyncClient, region: str, portal_info: dict, filters: dict,
+    sonda: "Sonda",
 ) -> tuple[int, int, list[dict]]:
     """Scrape a GORE cotizaciones web app (like regionmadrededios.gob.pe/cotizaciones).
 
@@ -299,9 +521,9 @@ async def _scrape_gore_cotizaciones_app(
     nuevas = []
 
     try:
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            return 0, 1, []
+        resp = await sonda.get(client, url)
+        if resp is None:
+            return 0, 0, []
 
         soup = BeautifulSoup(resp.text, "lxml")
 
@@ -389,7 +611,8 @@ async def _scrape_gore_cotizaciones_app(
 
 
 async def _scrape_gore_generic(
-    client: httpx.AsyncClient, region: str, url: str, filters: dict
+    client: httpx.AsyncClient, region: str, url: str, filters: dict,
+    sonda: "Sonda",
 ) -> tuple[int, int, list[dict]]:
     """Scrape a generic GORE contrataciones page (WordPress/static HTML).
 
@@ -402,9 +625,9 @@ async def _scrape_gore_generic(
     entidad = f"Gobierno Regional de {region}"
 
     try:
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            return 0, 1, []
+        resp = await sonda.get(client, url)
+        if resp is None:
+            return 0, 0, []
 
         soup = BeautifulSoup(resp.text, "lxml")
 
@@ -525,6 +748,7 @@ async def _scrape_gore_generic(
 async def _run_gore_portals(user_id):
     """Portales de Gobiernos Regionales -- cotizaciones y contrataciones."""
     log_id = await log_scraping_start("gore_portals")
+    sonda = Sonda("gore_portals")
     filters = await _get_filters(user_id)
     nuevas = []
     encontradas = 0
@@ -540,7 +764,7 @@ async def _run_gore_portals(user_id):
                     continue
 
                 enc, err, new = await _scrape_gore_cotizaciones_app(
-                    client, region, portal_info, filters
+                    client, region, portal_info, filters, sonda
                 )
                 encontradas += enc
                 errores += err
@@ -555,7 +779,7 @@ async def _run_gore_portals(user_id):
                 for url in urls:
                     try:
                         enc, err, new = await _scrape_gore_generic(
-                            client, region, url, filters
+                            client, region, url, filters, sonda
                         )
                         encontradas += enc
                         errores += err
@@ -571,7 +795,11 @@ async def _run_gore_portals(user_id):
         errores += 1
         log.warning(f"GORE portals: {e}")
 
-    await log_scraping_end(log_id, encontradas, len(nuevas), errores)
+    detalle = sonda.diagnostico(encontradas)
+    if detalle:
+        log.warning("gore_portals: %s", detalle)
+    await log_scraping_end(log_id, encontradas, len(nuevas),
+                           errores + sonda.errores, detalle)
     return nuevas
 
 
@@ -1169,15 +1397,33 @@ def format_scraping_report(results: dict) -> str:
         "datos_abiertos": "Datos Abiertos",
     }
 
+    # "Sin nuevas" SE RESERVA PARA LAS FUENTES SANAS
+    #
+    #   Antes lo decia tambien una fuente cuya URL llevaba semanas dando 404,
+    #   porque las dos cosas acababan en `count == 0`. Esa frase es justo la
+    #   que hace que nadie mire: suena a domingo tranquilo. Cuando la sonda
+    #   dejo dicho que la fuente esta caida, se dice eso y se pega el motivo.
+    diagnosticos = results.get("diagnosticos") or {}
+
     for fuente, count in results["por_fuente"].items():
         label = fuente_labels.get(fuente, fuente)
+        detalle = diagnosticos.get(fuente)
         if count == -1:
             status = "Error"
+        elif detalle and detalle.startswith("CAIDA"):
+            status = "CAIDA"
+        elif detalle and detalle.startswith("SIN EXTRAER"):
+            status = "responde pero no extrae nada"
         elif count == 0:
             status = "Sin nuevas"
         else:
             status = f"{count} nuevas"
         lines.append(f"  {label}: {status}")
+        if detalle:
+            # El detalle trae URLs, y una URL con & rompe el parse_mode HTML
+            # de Telegram: el mensaje no llega y el fallo se ve como silencio,
+            # que es la averia que este parte existe para evitar.
+            lines.append(f"      <i>{html.escape(detalle[:160])}</i>")
 
     lines.append(f"\n<b>Total nuevas: {results['total_nuevas']}</b>")
 
