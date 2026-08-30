@@ -411,7 +411,7 @@ los datos y los escribe en la **misma** base de Supabase que usa el servidor.
 En la máquina peruana, con el repositorio clonado y el `.env` copiado:
 
 ```powershell
-.	ools\instalar_puente.ps1
+.\tools\instalar_puente.ps1
 ```
 
 Crea el entorno, instala las cuatro dependencias de `requirements-puente.txt`,
