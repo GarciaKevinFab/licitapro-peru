@@ -1,4 +1,12 @@
-"""Trae convocatorias de OECE desde ESTA maquina y las guarda en produccion.
+"""Trae convocatorias peruanas desde ESTA maquina y las guarda en produccion.
+
+EL ARCHIVO SE SIGUE LLAMANDO traer_oece AUNQUE YA TRAIGA DOS FUENTES
+
+  La tarea del Programador de Windows apunta a esta ruta exacta
+  (tools/instalar_puente.ps1). Renombrarlo dejaria la tarea instalada
+  apuntando a un archivo que no existe, y eso se descubre cuando el panel
+  lleva dias sin datos. El nombre miente un poco; una tarea rota miente
+  entera.
 
 POR QUE EXISTE ESTO
 
@@ -10,6 +18,17 @@ POR QUE EXISTE ESTO
   Escribe en la MISMA base de Supabase que usa el servidor, asi que las
   convocatorias aparecen en el panel de los clientes igual que si las hubiera
   traido el bot.
+
+Y LO MISMO PASA CON LAS COMPRAS MENORES DE MADRE DE DIOS
+
+  El portal de cotizaciones del GORE de Madre de Dios tampoco responde al VPS,
+  y ahi esta el unico dato de todo el sistema que SEACE no publica: las
+  compras por debajo de 8 UIT. Comprobado el 30/08/2026 desde esta maquina:
+  responde 200 y salen 25 convocatorias vigentes; desde el servidor, dos
+  errores por pasada durante 21 pasadas seguidas.
+
+  Por eso viaja en el mismo puente. No es un anadido oportunista: es
+  exactamente el mismo bloqueo por origen y la misma solucion.
 
 ES UN PUENTE, NO UNA SOLUCION
 
@@ -82,7 +101,26 @@ async def _principal() -> int:
         return 2
 
     nuevas = await scrape_ocds_oece(max_paginas=40, dias_atras=7)
-    logging.info("Guardadas %d licitaciones nuevas.", len(nuevas))
+    logging.info("OECE: guardadas %d licitaciones nuevas.", len(nuevas))
+
+    # SI GORE FALLA, LA TAREA NO SE PONE EN ROJO. A PROPOSITO.
+    #
+    #   OECE es el producto: si no entra, el panel de todos los clientes se
+    #   queda con lo viejo y la tarea TIENE que verse en rojo. Madre de Dios es
+    #   una fuente secundaria; ponerla al mismo nivel haria que el rojo saltara
+    #   por averias de distinta gravedad, y un indicador que significa dos
+    #   cosas distintas acaba sin significar ninguna.
+    #
+    #   El fallo no se pierde: el propio scraper lo deja en `scraping_log` con
+    #   el motivo (ver la Sonda del orquestador) y sale en el parte al
+    #   administrador.
+    try:
+        from radar_bot.scrapers.orchestrator import _run_gore_portals
+        gore = await _run_gore_portals(0)
+        logging.info("GORE cotizaciones: guardadas %d nuevas.", len(gore))
+    except Exception as exc:  # noqa: BLE001
+        logging.error("GORE cotizaciones fallo (OECE si entro): %s", exc)
+
     return 0
 
 

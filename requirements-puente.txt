@@ -13,11 +13,24 @@
 #   Microsoft Visual C++ 14.0. La 0.31 trae binarios de 3.11 a 3.14. Se subio
 #   tambien en requirements.txt para que servidor y puente no divergan.
 #
-#   Estas cuatro estan fijadas a las mismas versiones que corre el servidor,
-#   para que el puente y el bot ejecuten el MISMO codigo con las mismas
-#   librerias. Si divergen, un fallo que solo pasa en uno de los dos cuesta el
-#   triple de encontrar.
+#   Estas estan fijadas a las mismas versiones que corre el servidor, para que
+#   el puente y el bot ejecuten el MISMO codigo con las mismas librerias. Si
+#   divergen, un fallo que solo pasa en uno de los dos cuesta el triple de
+#   encontrar.
+#
+# POR QUE AHORA TAMBIEN HAY BeautifulSoup Y lxml
+#
+#   El puente dejo de traer solo JSON: tambien cosecha el portal de
+#   cotizaciones de Madre de Dios, que es HTML y que tampoco responde al VPS.
+#   Sin estas dos, `tools/traer_oece.py` revienta al importar -- y reventaria
+#   despues de haber guardado OECE, que es la parte critica, con lo cual el
+#   fallo pareceria peor de lo que es.
+#
+#   Quien ya tenga el puente instalado necesita volver a correr:
+#     .venv-tarea\Scripts\pip.exe install -r requirements-puente.txt
 asyncpg==0.31.0
 httpx==0.28.1
 python-dotenv==1.0.1
 tenacity==9.0.0
+beautifulsoup4==4.12.3
+lxml==5.3.0
