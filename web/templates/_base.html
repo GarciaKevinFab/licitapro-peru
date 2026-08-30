@@ -212,15 +212,34 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 }
 
 
+/* ---------- TABLAS DE DATOS ----------
+   Estaba definido IGUAL en nueve plantillas. Ocho copias literalmente
+   identicas y una (suscripcion) a la que le faltaba `vertical-align:top`, casi
+   seguro por olvido al copiar.
+
+   El coste de eso no era el kilobyte: era que cambiar el aspecto de las tablas
+   obligaba a tocar nueve archivos y acertar en los nueve. La de suscripcion
+   demuestra que eso ya habia fallado una vez sin que nadie lo notara.
+
+   dashboard.html NO hereda de esta plantilla y ademas su .tabla-caja lleva
+   fondo y borde propios, asi que conserva la suya. */
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.tabla-caja{overflow-x:auto}
+
 /* ---------- MOVIMIENTO EN LAS TABLAS ----------
    Vive AQUI y no en cada plantilla porque diez de ellas dibujan `table.datos`.
    Estas reglas son puramente aditivas: no redefinen nada de lo que cada
    plantilla ya declara, solo anaden estado al pasar por encima y entrada. Por
    eso se pueden centralizar sin riesgo de cambiar como se ve nada.
 
-   (La definicion base de table.datos SI sigue duplicada en esas diez
-   plantillas. Unificarla es otra tarea, y esa si puede cambiar el aspecto de
-   varias pantallas a la vez, asi que no se mezcla con esto.)
+   (La definicion base tambien vive ya aqui arriba: se unifico despues, mirando
+   pantalla por pantalla, porque esa si podia cambiar como se ven varias.)
 
    NADA DE 3D AQUI, Y ES DELIBERADO. Las tarjetas se inclinan un grado porque
    son objetos sueltos; una tabla no puede, porque girarla rompe la alineacion
