@@ -3,6 +3,7 @@ import os
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 import aiosmtplib
 
 from shared.config import format_monto, format_fecha
@@ -43,6 +44,21 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
     msg["Subject"] = asunto
     msg["From"] = EMAIL_FROM
     msg["To"] = destinatario
+    # DATE Y MESSAGE-ID: SIN ELLAS EL CORREO ACABA EN SPAM
+    #
+    #   Son obligatorias segun el RFC 5322 y casi todos los filtros penalizan
+    #   su ausencia -- SpamAssassin tiene reglas especificas para las dos. Un
+    #   mensaje sin Message-ID ademas rompe el hilo en el cliente: cada
+    #   respuesta abre una conversacion nueva.
+    #
+    #   El servidor las acepta igual y devuelve 250, asi que el sintoma no es
+    #   un error: es que el correo "se envia" y no aparece. Que es peor,
+    #   porque no hay nada que mirar.
+    #
+    #   El dominio del Message-ID sale del remitente: uno inventado que no
+    #   coincida con el From tambien puntua mal.
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=EMAIL_FROM.split("@")[-1] if "@" in EMAIL_FROM else None)
     msg.attach(MIMEText(html_body, "html"))
 
     try:
