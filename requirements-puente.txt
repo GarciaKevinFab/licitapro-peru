@@ -8,11 +8,16 @@
 #   compila en Python 3.13 -- lo necesita Alembic, que aqui no corre -- y
 #   reportlab, lxml y python-docx tardan y no se usan.
 #
+#   asyncpg 0.31.0 y no 0.30.0 por una razon concreta: la 0.30 no publica
+#   binario para Python 3.14, asi que pip intenta COMPILARLA y muere pidiendo
+#   Microsoft Visual C++ 14.0. La 0.31 trae binarios de 3.11 a 3.14. Se subio
+#   tambien en requirements.txt para que servidor y puente no divergan.
+#
 #   Estas cuatro estan fijadas a las mismas versiones que corre el servidor,
 #   para que el puente y el bot ejecuten el MISMO codigo con las mismas
 #   librerias. Si divergen, un fallo que solo pasa en uno de los dos cuesta el
 #   triple de encontrar.
-asyncpg==0.30.0
+asyncpg==0.31.0
 httpx==0.28.1
 python-dotenv==1.0.1
 tenacity==9.0.0

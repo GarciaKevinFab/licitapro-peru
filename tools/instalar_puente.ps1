@@ -51,15 +51,54 @@ if ((Get-Content $Env -Raw) -match '(?m)^OECE_PROXY_URL=.+') {
 # --- 2. Python ----------------------------------------------------------------
 $python = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $python) { throw "No hay python en el PATH. Instalalo desde python.org marcando 'Add python.exe to PATH'." }
-Write-Host "Python del sistema: $python"
+$version = (& $python -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
+Write-Host "Python del sistema: $python  (version $version)"
+
+# $ErrorActionPreference NO alcanza a los programas externos: PowerShell no
+# lanza excepcion porque pip termine en error, solo por errores de cmdlets. Sin
+# comprobar $LASTEXITCODE a mano, el script seguia adelante con el entorno a
+# medias y llegaba a registrar la tarea. Paso de verdad: pip murio pidiendo un
+# compilador de C++ y aun asi se imprimio "Tarea registrada" y "Listo".
+#
+# Una tarea que apunta a un entorno incompleto no avisa de nada: corre cada 4
+# horas con pythonw -- sin ventana --, revienta al importar y no deja ni
+# registro, porque el fallo ocurre antes de que se configure el log.
+function Comprobar([string]$que) {
+    if ($LASTEXITCODE -ne 0) {
+        throw "$que fallo (codigo $LASTEXITCODE). NO se registra la tarea: mejor sin puente que con uno que falla en silencio cada 4 horas."
+    }
+}
 
 if (-not (Test-Path $Py)) {
     Write-Host "Creando el entorno en $Venv ..."
     & $python -m venv $Venv
+    Comprobar "La creacion del entorno"
 }
 Write-Host "Instalando dependencias ..."
 & $Py -m pip install --quiet --upgrade pip
-& $Py -m pip install --quiet -r (Join-Path $Raiz 'requirements-puente.txt')
+Comprobar "La actualizacion de pip"
+
+# --only-binary=:all: prohibe compilar desde codigo fuente.
+#
+#   Sin esto, una dependencia sin binario para tu version de Python se intenta
+#   compilar y el fallo llega envuelto en 267 lineas de salida de setuptools,
+#   con el motivo real -- "Microsoft Visual C++ 14.0 or greater is required" --
+#   enterrado al final. Con esto, pip dice en una linea que no hay binario, que
+#   es un problema distinto y con otra solucion.
+& $Py -m pip install --quiet --only-binary=:all: -r (Join-Path $Raiz 'requirements-puente.txt')
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Warning "No hay binarios para Python $version. Las dependencias se publican con retraso para cada version nueva de Python."
+    Write-Warning "Lo mas rapido: instalar Python 3.13 desde python.org, borrar la carpeta .venv-tarea y volver a correr este script."
+    throw "La instalacion de dependencias fallo. NO se registra la tarea."
+}
+
+# La prueba que de verdad decide: que el codigo del puente IMPORTE. Una lista de
+# dependencias puede instalarse entera y aun asi faltar algo que el codigo usa.
+Write-Host "Comprobando que el puente pueda importar ..."
+& $Py -c "import sys; sys.path.insert(0, r'$Raiz'); import radar_bot.scrapers.ocds_oece; import tools.traer_oece"
+Comprobar "La comprobacion de imports del puente"
+Write-Host "  imports correctos."
 
 # --- 3. La tarea programada ----------------------------------------------------
 #
