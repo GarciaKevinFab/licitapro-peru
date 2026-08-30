@@ -14,6 +14,10 @@
    Se apaga con una meta y no con JS porque script-src tampoco admite en linea. #}
 <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 <title>Panel · LicitaPro Perú</title>
+{# Esta plantilla NO hereda de _base.html, asi que el favicon que va alli no
+   llega aqui. El panel es la pagina que el cliente deja abierta en una pestana
+   todo el dia: es justo donde mas se nota que no haya icono. #}
+<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
