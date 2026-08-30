@@ -238,14 +238,47 @@ alguien que sí quiere pagar es la forma más cara de perderlo.
 
 ## 10. Respaldos
 
-Sin esto, un disco perdido son todos tus clientes perdidos.
+Sin esto, un disco perdido son todos tus clientes perdidos. Y Supabase en su
+plan gratuito **no da restauración a demanda**: la copia tiene que ser tuya.
 
-```cron
-0 3 * * * docker compose -f /ruta/docker-compose.prod.yml exec -T postgres pg_dump -U licitapro licitapro | gzip > /respaldos/licitapro-$(date +\%F).sql.gz
+Usa `tools/respaldar.sh`, que vuelca la base y además se lleva el volumen con
+los logos, las firmas y los sellos escaneados de los clientes.
+
+```bash
+crontab -e
 ```
 
-**Prueba la restauración al menos una vez.** Un respaldo que nunca se restauró
-no es un respaldo, es una suposición.
+```cron
+0 3 * * * /ruta/al/proyecto/tools/respaldar.sh /respaldos >> /var/log/licitapro-respaldo.log 2>&1
+```
+
+Dos cosas que este script hace y que un `pg_dump` a mano no:
+
+- **Vuelca contra `DATABASE_URL`, no contra un contenedor.** En producción no
+  hay servicio `postgres`: la base es Supabase. Cualquier receta con
+  `docker compose exec -T postgres pg_dump` falla en la primera pasada.
+- **Cambia el puerto 6543 por el 5432.** `DATABASE_URL` apunta al pooler en
+  modo *transacción*, y `pg_dump` no funciona ahí: necesita una sesión con su
+  snapshot. El mismo host en el 5432 es el pooler en modo *sesión*, que sí lo
+  aguanta.
+
+Comprueba además que el volcado no esté vacío y que traiga la tabla
+`licitaciones`, y avisa por Telegram si algo falla. Un respaldo que falla en
+silencio es peor que no tener respaldo: da por cubierto un riesgo que sigue
+abierto.
+
+**Sácalo del servidor.** Una copia en el mismo disco que la base protege contra
+un borrado, no contra perder el disco. Con `RESPALDO_REMOTO` puesto (un destino
+de `rclone`, por ejemplo `r2:licitapro`) sube sola; sin ella, el script avisa en
+cada pasada.
+
+**Prueba la restauración al menos una vez:**
+
+```bash
+gunzip -c licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL_EN_5432"
+```
+
+Un respaldo que nunca se restauró no es un respaldo, es una suposición.
 
 ## 11. Comprobaciones de salud
 
@@ -265,7 +298,8 @@ distinto de cero si algo va mal, así que sirven en CI.
 - [ ] `POSTGRES_PASSWORD` cambiada (la de desarrollo era `licitapro2026`)
 - [ ] TLS delante del puerto 8200
 - [ ] `TELEGRAM_BOT_USERNAME` con el bot real
-- [ ] Respaldos programados **y una restauración probada**
+- [ ] Respaldos programados en el cron del host **y una restauración probada**
+- [ ] `RESPALDO_REMOTO` apuntando fuera del servidor
 - [ ] Webhook de Izipay registrado y con `IZIPAY_HMAC_KEY`
 - [ ] Términos de servicio y política de privacidad publicados
       (Ley 29733: guardas RUC, DNI y firmas de terceros)
