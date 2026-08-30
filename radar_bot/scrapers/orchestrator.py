@@ -373,6 +373,22 @@ FUENTES_APAGADAS = {
                          "entran por ocds_oece",
     "municipalidades": "dos de tres portales dan 404 y el tercero redirige a "
                        "gob.pe; ya entran por ocds_oece",
+    # Esta NO se apaga por redundante, sino por inservible, y la diferencia
+    # importa si alguien la retoma:
+    #
+    #   Guardaba 17 filas que NINGUN cliente podia ver -- fichas del catalogo
+    #   sin fecha de cierre, que el panel descarta -- mientras el parte
+    #   anunciaba "17 nuevas". Eso ya se corrigio: ahora no guarda nada y dice
+    #   por que. Pero lo que queda es una fuente que descarga "PAC 2015
+    #   INICIAL.xlsx" y no encuentra ni columna de entidad.
+    #
+    #   MERECERIA LA PENA REACTIVARLA si se resuelve el descubrimiento de
+    #   datasets: el Plan Anual de Contrataciones dice lo que cada entidad
+    #   PIENSA comprar este ano, que es adelantarse a la convocatoria. Hoy el
+    #   descubrimiento aterriza en ficheros de hace once anos, asi que es
+    #   trabajo de producto, no una URL que cambiar.
+    "datos_abiertos": "descarga PAC de 2015 y no extrae ni una convocatoria; "
+                      "las 17 filas que guardaba eran fichas de catalogo",
 }
 
 # FUENTES QUE SOLO FUNCIONAN DESDE UNA CONEXION PERUANA.
@@ -451,11 +467,22 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         "errores": [],
     }
 
-    # POR QUE ESTA LISTA TIENE TRES FUENTES Y NO ONCE
+    # POR QUE ESTA LISTA TIENE UNA FUENTE Y NO ONCE
     #
     #   Ver FUENTES_APAGADAS y FUENTES_DEL_PUENTE, arriba. Resumido: siete
-    #   fuentes estaban muertas Y eran redundantes, y una funciona pero no
-    #   desde este servidor.
+    #   estaban muertas Y eran redundantes, una guardaba fichas de catalogo
+    #   que nadie podia ver, y la que aporta el dato que SEACE no publica
+    #   (gore_portals) no responde a este servidor y viaja por el puente.
+    #
+    #   Queda ocds_oece, que es la API de SEACE y trae el 98% de todo. Que la
+    #   lista sea corta no es un empobrecimiento: antes eran once nombres de
+    #   los que diez aportaban cero, y el parte los listaba a todos como si
+    #   trabajaran.
+    #
+    #   La pasada NO sobra aunque la lista sea corta: despues del scrapeo
+    #   puntua lo recien capturado, y sin eso las licitaciones del puente se
+    #   quedarian con `score_viabilidad` en NULL y el panel las mandaria al
+    #   final de la lista.
     scrapers = [
         # Fuente principal: unica que entrega convocatorias vigentes.
         ("ocds_oece", _run_ocds_oece),
@@ -465,7 +492,6 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         # historico_precios, que es donde si valen: alimentan el estimador de
         # precios de prep_bot. Las funciones siguen definidas para reengancharlas
         # a esa tabla cuando toque.
-        ("datos_abiertos", _run_datos_abiertos),
     ]
 
     for nombre, func in scrapers:

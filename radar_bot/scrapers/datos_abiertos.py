@@ -451,6 +451,15 @@ async def _download_and_parse_xlsx(
 
 
 def _build_catalog_entry(dataset: dict) -> list[dict]:
+    # YA NO SE LLAMA, Y NO DEBE VOLVER A LLAMARSE PARA ALERTAS.
+    #
+    #   Lo que devuelve es la ficha de un dataset del catalogo, no una
+    #   convocatoria: sin monto, sin fecha de cierre y con la entidad vacia.
+    #   Insertarlo en `licitaciones` llenaba la tabla de filas invisibles y
+    #   hacia que el parte anunciara novedades que ningun cliente podia ver.
+    #
+    #   Se conserva porque la transformacion en si es correcta y valdria para
+    #   un catalogo de FUENTES; lo que estaba mal era el destino.
     """Construye entries de catalogo desde un dataset metadata (sin descargar XLSX).
 
     Util para datasets que solo tienen metadata y no recursos descargables.
@@ -502,6 +511,11 @@ async def scrape_datos_abiertos(user_id: int = 0) -> list[dict]:
     encontradas = 0
     errores = 0
     error_detalle = None
+    # Se inicializa aqui y no donde se usa: el diagnostico del final lo lee
+    # pase lo que pase, y si la pasada revienta antes de llegar al buscador
+    # una variable sin definir convertiria un fallo de red en un NameError,
+    # que apunta al sitio equivocado.
+    catalogo = 0
 
     try:
         async with httpx.AsyncClient(
@@ -538,33 +552,36 @@ async def scrape_datos_abiertos(user_id: int = 0) -> list[dict]:
                         errores += 1
                         log.error(f"DATOS_ABIERTOS resource error ({url}): {e}")
 
-            # --- 3. HTML Search: datasets como entries de catalogo ---
+            # --- 3. Buscador HTML: SOLO para saber si el portal responde ---
+            #
+            # UN DATASET DEL CATALOGO NO ES UNA CONVOCATORIA, Y SE ESTABA
+            # GUARDANDO COMO SI LO FUERA
+            #
+            #   Este bloque cogia cada resultado del buscador -- que son
+            #   FICHAS DE CATALOGO: "Ordenes de compra del GORE Ancash",
+            #   "Lista de ordenes del PSI" -- y las insertaba en
+            #   `licitaciones`. Comprobado en produccion: 17 filas asi, con
+            #   `entidad` vacia, sin monto, sin fecha de cierre y con el
+            #   departamento mal (una del Gobierno Regional del CALLAO quedo
+            #   etiquetada como Ica).
+            #
+            #   Ninguna se ve: el panel filtra por `fecha_cierre > NOW()` y
+            #   sin fecha eso es falso. Asi que la fuente aportaba CERO
+            #   licitaciones visibles mientras el parte diario anunciaba "17
+            #   nuevas", que se lee como una fuente sana. Es el mismo engano
+            #   que el "Sin nuevas" de las fuentes caidas, al reves.
+            #
+            #   Y era una bomba de relojeria: el dia que alguien relajara ese
+            #   filtro, los clientes verian "Lista de ordenes del PSI" como
+            #   una licitacion a la que presentarse.
+            #
+            #   Se sigue consultando el buscador porque sirve para saber si el
+            #   portal esta vivo, pero lo que devuelve ya no se guarda.
             try:
                 search_results = await _scrape_html_search(client)
-                log.info(f"DATOS_ABIERTOS: {len(search_results)} from HTML search")
-
-                keywords = config.get("keywords", [])
-                regiones = config.get("regiones", [])
-
-                for sr in search_results:
-                    entries = _build_catalog_entry(sr)
-                    for entry in entries:
-                        # Filtrar
-                        if regiones and entry["departamento"] and entry["departamento"] not in regiones:
-                            continue
-                        if keywords and not _match_keywords(
-                            f"{entry['objeto']} {entry['entidad']}", keywords
-                        ):
-                            continue
-
-                        encontradas += 1
-                        try:
-                            is_new = await upsert_licitacion(entry)
-                            if is_new:
-                                nuevas.append(entry)
-                        except Exception as e:
-                            errores += 1
-
+                catalogo = len(search_results)
+                log.info(f"DATOS_ABIERTOS: {catalogo} fichas de catalogo "
+                         f"(no se guardan: no son convocatorias)")
             except Exception as e:
                 errores += 1
                 log.error(f"DATOS_ABIERTOS HTML search error: {e}")
@@ -573,6 +590,14 @@ async def scrape_datos_abiertos(user_id: int = 0) -> list[dict]:
         errores += 1
         error_detalle = str(e)[:200]
         log.error(f"DATOS_ABIERTOS scraping failed: {e}")
+
+    # Sin esto la fuente volveria a mentir por omision: 0 encontradas y 0
+    # errores es indistinguible de "hoy no habia convocatorias".
+    if not error_detalle and encontradas == 0:
+        error_detalle = (
+            f"SIN EXTRAER -- ninguna convocatoria de los recursos XLSX. El "
+            f"buscador devolvio {catalogo} fichas de catalogo, que no son "
+            f"convocatorias y no se guardan.")
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, error_detalle)
     log.info(
