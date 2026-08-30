@@ -396,6 +396,64 @@ doscientos mensajes iguales.
 > GitHub desactiva los `cron` de los repositorios sin actividad durante 60
 > días. Si el proyecto se queda quieto, este vigía se apaga solo.
 
+## 11.bis El puente de OECE: montar la máquina peruana
+
+OECE responde **403 a todo el tráfico del VPS** —sale por una IP de datacenter
+fuera de Perú— y **200 desde una conexión peruana**. Se intentó una pasarela
+por Cloudflare Worker y no sirvió: Smart Placement nunca movió el Worker a
+Lima, y la cabecera `X-Colo` lo demostró en vez de dejarlo en suposición.
+
+Mientras eso no se arregle de raíz, una máquina en Perú hace de puente: pide
+los datos y los escribe en la **misma** base de Supabase que usa el servidor.
+
+### Instalarlo
+
+En la máquina peruana, con el repositorio clonado y el `.env` copiado:
+
+```powershell
+.	ools\instalar_puente.ps1
+```
+
+Crea el entorno, instala las cuatro dependencias de `requirements-puente.txt`,
+programa la tarea cada 4 horas y lanza una pasada de prueba. Correrlo dos veces
+no rompe nada.
+
+### Las tres trampas que el script cubre
+
+**`LogonType` importa más de lo que parece.** La primera versión de la tarea
+quedó como `Interactive`: solo corre con la sesión abierta. En una máquina que
+se deja encendida como servidor eso falla en silencio —puede estar encendida y
+bloqueada, o reiniciarse y quedar en la pantalla de inicio de sesión— y el
+puente no corre durante días. El script la registra como **S4U**, que se
+ejecuta haya sesión o no y **sin guardar contraseña**. S4U no alcanza recursos
+de red que pidan credenciales, pero salir por HTTPS sí, que es todo lo que hace
+esto.
+
+**Sin `.env` no falla: escribe en la base equivocada.** `load_dotenv()` sin
+ruta busca desde el directorio actual, y el Programador de tareas arranca en
+`C:\Windows\System32`. Sin `DATABASE_URL`, el scraper cae al Postgres local de
+las variables `POSTGRES_*`. La tarea correría «bien», guardaría las
+licitaciones en una base de desarrollo, y el panel de los clientes seguiría
+vacío sin una línea en rojo. El script se niega a continuar si falta.
+
+**Si la máquina se suspende, no corre.** El script lo detecta y avisa, pero no
+cambia la configuración de energía por su cuenta: eso lo decide el dueño de la
+máquina. *Configuración → Sistema → Inicio/apagado → Suspensión → Nunca.*
+
+### Dos puentes son mejor que uno
+
+No hace falta apagar el de la máquina anterior. Las licitaciones se deduplican
+por `ocid` y se refresca la fila en vez de insertar, así que dos puentes
+solapados no duplican nada: solo se cubren entre ellos si uno se apaga. Sale
+gratis.
+
+### Y si aun así se para, se sabe
+
+`radar_bot` avisa por Telegram cuando pasan más de 6 horas sin una sola
+cosecha (§11). Esa es la red que hace tolerable depender de una PC de casa: no
+evita que se apague, pero convierte «nadie trae datos desde el viernes» en un
+mensaje esa misma mañana.
+
 ## 12. Antes de abrir al público
 
 - [ ] `LICITAPRO_SECRET_KEY` generada y guardada fuera del servidor

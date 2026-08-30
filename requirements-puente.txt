@@ -1,0 +1,18 @@
+# Lo minimo para correr tools/traer_oece.py en una maquina peruana.
+#
+# POR QUE NO SE USA requirements.txt
+#
+#   El puente no levanta la web, ni los bots, ni genera documentos: solo pide
+#   JSON a OECE y escribe en Supabase. Instalar las 26 dependencias del
+#   proyecto en una PC de casa trae dos problemas gratis: psycopg2-binary no
+#   compila en Python 3.13 -- lo necesita Alembic, que aqui no corre -- y
+#   reportlab, lxml y python-docx tardan y no se usan.
+#
+#   Estas cuatro estan fijadas a las mismas versiones que corre el servidor,
+#   para que el puente y el bot ejecuten el MISMO codigo con las mismas
+#   librerias. Si divergen, un fallo que solo pasa en uno de los dos cuesta el
+#   triple de encontrar.
+asyncpg==0.30.0
+httpx==0.28.1
+python-dotenv==1.0.1
+tenacity==9.0.0
