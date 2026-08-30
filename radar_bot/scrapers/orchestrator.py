@@ -25,8 +25,8 @@ from datetime import datetime, date
 import httpx
 from bs4 import BeautifulSoup
 from shared.db import (
-    upsert_licitacion, log_scraping_start, log_scraping_end, get_config,
-    connection,
+    upsert_licitacion, refrescar_licitacion, log_scraping_start,
+    log_scraping_end, get_config, connection,
 )
 
 log = logging.getLogger("radar.orchestrator")
@@ -79,6 +79,41 @@ DEPTOS = {
     "TAMBOPATA": "Madre de Dios", "PUERTO MALDONADO": "Madre de Dios",
     "HUANCAYO": "Junín", "SATIPO": "Junín",
 }
+
+
+# "INI:28/08/2026FIN:31/08/2026 12:00". La hora solo suele venir en el FIN, y
+# a veces no viene: por eso va en un grupo opcional.
+_RE_COTIZACION = r"{}:\s*(\d{{2}}/\d{{2}}/\d{{4}}(?:\s+\d{{1,2}}:\d{{2}})?)"
+
+
+def _fechas_cotizacion(texto: str) -> tuple:
+    """(publicacion, cierre) de la celda de fechas de un portal de cotizaciones.
+
+    LA HORA DE CIERRE IMPORTA, Y SE ESTABA TIRANDO
+
+      El portal publica "FIN:31/08/2026 12:00" y la expresion anterior solo
+      capturaba la fecha, asi que la fila se guardaba con las 00:00. El panel
+      filtra con `fecha_cierre > NOW()`, de modo que la convocatoria
+      DESAPARECIA a medianoche del dia en que aun quedaban doce horas para
+      presentarse.
+
+      En una compra menor con tres dias de plazo eso es perder un tercio del
+      plazo, y justo el tercio que vale: el ultimo dia es cuando quien la ve
+      corre a presentarse. Comprobado sobre las 25 de Madre de Dios: tres
+      cerraban ese mismo dia a las 18:00 y ya estaban invisibles por la
+      manana.
+
+    Devuelve None en la posicion que no venga, en vez de inventar una fecha.
+    Una fecha inventada es peor que ninguna: el panel la trataria como buena.
+    """
+    fechas = []
+    for etiqueta in ("INI", "FIN"):
+        hallazgo = re.search(_RE_COTIZACION.format(etiqueta), texto or "")
+        # Se normalizan los espacios antes de parsear: entre la fecha y la hora
+        # puede venir mas de uno, y strptime no perdona eso.
+        fechas.append(_parse_fecha(" ".join(hallazgo.group(1).split()))
+                      if hallazgo else None)
+    return fechas[0], fechas[1]
 
 
 def _detectar_depto(texto: str) -> str | None:
@@ -563,17 +598,7 @@ async def _scrape_gore_cotizaciones_app(
             encontradas += 1
             objeto = f"[{tipo_bien}] {concepto}"
 
-            # Parse dates: "INI: 27/03/2026 FIN: 28/03/2026 15:00"
-            fecha_cierre = None
-            fecha_pub = None
-
-            ini_match = re.search(r"INI:\s*(\d{2}/\d{2}/\d{4})", fecha_raw)
-            if ini_match:
-                fecha_pub = _parse_fecha(ini_match.group(1))
-
-            fin_match = re.search(r"FIN:\s*(\d{2}/\d{2}/\d{4})", fecha_raw)
-            if fin_match:
-                fecha_cierre = _parse_fecha(fin_match.group(1))
+            fecha_pub, fecha_cierre = _fechas_cotizacion(fecha_raw)
 
             # Get the detail link
             link = row.find("a", href=True)
@@ -603,7 +628,14 @@ async def _scrape_gore_cotizaciones_app(
                 "url": href or url,
                 "estado": "convocado",
             }
-            is_new = await upsert_licitacion(licit)
+            # SE REFRESCA, NO SOLO SE INSERTA
+            #
+            #   `upsert_licitacion` al reencontrar una fila solo toca `estado`:
+            #   la fecha de cierre guardada la primera vez se queda para
+            #   siempre. En un portal de cotizaciones los plazos se prorrogan,
+            #   y ademas cualquier correccion nuestra del parseo -- como la
+            #   hora de arriba -- no llegaria nunca a las filas ya guardadas.
+            is_new = await refrescar_licitacion(licit)
             if is_new:
                 nuevas.append(licit)
 

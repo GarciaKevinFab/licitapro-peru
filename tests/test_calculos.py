@@ -5,7 +5,7 @@ Devuelven una fecha plausible, una bandera de mas o un numero con un digito
 cambiado, y nadie se entera hasta que un cliente reclama fuera de plazo o un
 aviso llega al telefono de un desconocido. Por eso van cubiertas al detalle.
 """
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -14,6 +14,7 @@ from shared.plazos_pago import (
     _pascua, dias_de_mora, en_prorroga, es_habil, fecha_limite_pago,
     feriados_de, plazo_legal,
 )
+from radar_bot.scrapers.orchestrator import _fechas_cotizacion
 from shared.whatsapp import _limpiar_parametro, es_baja, normalizar_numero
 
 
@@ -214,3 +215,51 @@ def test_parametro_de_plantilla_sin_saltos_de_linea():
     limpio = _limpiar_parametro("Municipalidad\n\tServicio  de   limpieza")
     assert "\n" not in limpio and "\t" not in limpio
     assert "  " not in limpio
+
+
+# ─── Fechas de los portales de cotizacion ────────────────
+#
+#   El caso de manual del docstring de arriba: la hora de cierre se tiraba y
+#   la fila se guardaba con las 00:00. No fallaba nada -- se guardaba una
+#   fecha perfectamente plausible --, pero el panel filtra con
+#   `fecha_cierre > NOW()` y la convocatoria desaparecia a medianoche del dia
+#   en que aun quedaban horas para presentarse.
+#
+#   Comprobado sobre las 25 de Madre de Dios: tres cerraban ese mismo dia a
+#   las 18:00 y por la manana ya no se veian.
+
+@pytest.mark.parametrize("celda, cierre", [
+    # El formato real del portal: pegado y con la hora solo en el FIN.
+    ("INI:28/08/2026FIN:31/08/2026 12:00", datetime(2026, 8, 31, 12, 0)),
+    ("INI:29/08/2026FIN:02/09/2026 16:00", datetime(2026, 9, 2, 16, 0)),
+    # Con espacios alrededor de los dos puntos, que tambien se ha visto.
+    ("INI: 27/03/2026 FIN: 28/03/2026 15:00", datetime(2026, 3, 28, 15, 0)),
+    # Hora de un solo digito.
+    ("INI:28/08/2026FIN:31/08/2026 9:00", datetime(2026, 8, 31, 9, 0)),
+    # Sin hora: se guarda la fecha a secas, como antes. No se inventa una.
+    ("INI:28/08/2026FIN:31/08/2026", datetime(2026, 8, 31, 0, 0)),
+])
+def test_la_hora_de_cierre_no_se_pierde(celda, cierre):
+    assert _fechas_cotizacion(celda)[1] == cierre
+
+
+def test_la_fecha_de_inicio_no_se_come_la_hora_del_cierre():
+    """Con "INI:... FIN:... 15:00", la hora es del FIN y solo del FIN.
+
+    Si el patron del INI fuera codicioso se llevaria la hora del FIN, y la
+    fecha de publicacion saldria plausible y mal -- que es la familia de fallo
+    que cubre este archivo.
+    """
+    pub, cierre = _fechas_cotizacion("INI: 27/03/2026 FIN: 28/03/2026 15:00")
+    assert pub == datetime(2026, 3, 27, 0, 0)
+    assert cierre == datetime(2026, 3, 28, 15, 0)
+
+
+@pytest.mark.parametrize("celda", ["", None, "sin fechas", "FIN:32/13/2026"])
+def test_una_celda_sin_fechas_devuelve_nada_y_no_revienta(celda):
+    """None, no una fecha de relleno.
+
+    Una fecha inventada seria peor que ninguna: el panel la trataria como
+    buena y mostraria un plazo que no existe.
+    """
+    assert _fechas_cotizacion(celda) == (None, None)
