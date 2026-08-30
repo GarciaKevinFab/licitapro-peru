@@ -38,6 +38,23 @@ main{max-width:900px}
 .metas div b{font-family:"JetBrains Mono",monospace;font-weight:600;font-variant-numeric:tabular-nums}
 tr.hecho td{opacity:.5}
 tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
+
+/* ---------- EL ESTADO GANA AL PASAR POR ENCIMA ----------
+   _base.html pinta un filo de acento en el primer td al pasar el raton, y esa
+   regla es mas especifica que `tr.vencido td:first-child`. Resultado: la marca
+   roja de un plazo vencido se volvia verde justo al senalarla -- la senal
+   desaparecia en el momento de mirarla.
+
+   Estas dos reglas devuelven la prioridad al ESTADO, que es informacion, por
+   encima del hover, que es solo orientacion. */
+table.datos tbody tr.vencido:hover td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
+table.datos tbody tr.hecho:hover td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+/* Lo hecho tambien se marca, en verde y apagado: sin filo, una fila completada
+   y una normal se distinguian solo por la opacidad, que se pierde de un
+   vistazo en una tabla larga. */
+table.datos tbody tr.hecho td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+tr.hecho td{transition:opacity .25s ease}
+tr.hecho:hover td{opacity:.8}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
