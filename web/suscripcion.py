@@ -129,6 +129,28 @@ async def retorno(request: Request, numero_orden: str = Form(...),
         status_code=303)
 
 
+@router.get("/webhooks/izipay")
+async def comprobacion_webhook():
+    """Responde al validador de Izipay, que comprueba la URL antes de aceptarla.
+
+    POR QUE HACE FALTA UNA RUTA GET AQUI
+
+      La regla de notificacion se llama literalmente [CHECKURL]: antes de
+      guardarla, Izipay pide la direccion y exige que conteste. Como el webhook
+      solo admitia POST -- que es lo correcto para el aviso real --, el
+      validador recibia 405 y rechazaba la URL con "dominio desconocido o
+      inaccesible", que apunta a un problema de DNS y no lo era.
+
+    ESTO NO ABRE NADA
+
+      Devuelve una constante. No lee la peticion, no toca la base y no cambia
+      ningun estado. El cobro sigue entrando SOLO por POST y con firma HMAC
+      verificada; un aviso sin firmar se rechaza con 401 pase lo que pase.
+      Aceptar GET aqui equivaldria a dejar que cualquiera confirmase pagos.
+    """
+    return JSONResponse({"ok": True, "servicio": "webhook izipay"})
+
+
 @router.post("/webhooks/izipay")
 async def webhook(request: Request):
     """Confirmacion servidor-a-servidor de Izipay.

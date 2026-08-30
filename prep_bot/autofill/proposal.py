@@ -1,12 +1,23 @@
-"""Proposal — Genera propuesta técnica con IA (Claude API)."""
+"""Genera la propuesta tecnica en DOCX.
+
+QUE PASABA ANTES: NO SE GENERABA NUNCA
+
+  Este modulo no tenia importadores. Y `zip_builder` incluye
+  `propuesta_tecnica_{id}.docx` "si existe", asi que el expediente se armaba
+  sin ella y sin decir nada. En un concurso publico o una licitacion publica la
+  propuesta tecnica es el documento que puntua: un expediente sin ella no es un
+  expediente con una carpeta de menos, es una oferta que no compite.
+
+  Ahora la crea la ruta que el usuario ya pulsaba ("Generar documentos"), en el
+  mismo sitio donde `zip_builder` la busca.
+"""
 import os
-import json
 import logging
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import anthropic
 
+from shared import ia
 from shared.db import connection, get_empresa
 from shared.config import ANTHROPIC_KEY, format_monto
 from shared.knowledge_base import obtener_datos_empresa_completos
@@ -14,6 +25,43 @@ from shared.knowledge_base import obtener_datos_empresa_completos
 log = logging.getLogger("prep.autofill.proposal")
 
 TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+
+# Estable entre llamadas, asi que es lo que se cachea. Lo que cambia -- la
+# licitacion y la empresa -- viaja en el mensaje.
+SISTEMA = """Redactas propuestas tecnicas para contratacion publica peruana, \
+bajo la Ley 32069 y su reglamento.
+
+Como escribes:
+- Concreto y verificable. El comite califica contra los terminos de referencia,
+  no contra adjetivos: "cuadrilla de 4 operarios con supervisor a tiempo
+  completo" puntua, "amplia experiencia y compromiso con la calidad" no.
+- Solo con lo que la empresa acredita. No inventes certificaciones, obras,
+  equipos ni personal: una propuesta que promete lo que no se puede sustentar
+  se cae en la verificacion posterior y arrastra sancion del RNP.
+- Si falta un dato, escribe la seccion con lo que hay y no rellenes el hueco
+  con generalidades.
+- Espanol de Peru, sin relleno corporativo."""
+
+ESQUEMA = {
+    "type": "object",
+    "properties": {
+        "secciones": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string"},
+                    "contenido": {"type": "array", "items": {"type": "string"}},
+                    "lista": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["titulo", "contenido", "lista"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["secciones"],
+    "additionalProperties": False,
+}
 
 
 async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
@@ -88,7 +136,7 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
             table.rows[0].cells[i].text = h
         for m in datos["equipo"][:8]:
             row = table.add_row()
-            row.cells[0].text = m.get("nombre", "")
+            row.cells[0].text = m.get("nombre_completo", "")
             row.cells[1].text = m.get("especialidad", "")
             row.cells[2].text = m.get("titulo_profesional", "")
             row.cells[3].text = f"{m.get('anos_experiencia', 0)} años"
@@ -106,14 +154,14 @@ async def _generar_con_ia(licitacion: dict, empresa, datos: dict) -> dict:
     equipo_text = ""
     if datos.get("equipo"):
         equipo_text = "\n".join(
-            f"- {m['nombre']}: {m.get('titulo_profesional', '')} ({m.get('anos_experiencia', 0)} años)"
+            f"- {m['nombre_completo']}: {m.get('titulo_profesional', '')} ({m.get('anos_experiencia', 0)} anos)"
             for m in datos["equipo"][:5]
         )
 
     exp_text = ""
     if datos.get("experiencia"):
         exp_text = "\n".join(
-            f"- {e['objeto'][:80]} ({e.get('entidad_contratante', '')}): S/{e.get('monto', 0):,.0f}"
+            f"- {e['objeto_contrato'][:80]} ({e.get('entidad_contratante', '')}): S/{e.get('monto') or 0:,.0f}"
             for e in datos["experiencia"][:5]
         )
 
@@ -134,35 +182,20 @@ EQUIPO DISPONIBLE:
 EXPERIENCIA:
 {exp_text or 'No registrada'}
 
-Genera un JSON con este formato:
-{{
-    "secciones": [
-        {{"titulo": "1. RESUMEN EJECUTIVO", "contenido": ["párrafo1", "párrafo2"]}},
-        {{"titulo": "2. OBJETIVOS", "contenido": ["párrafo"], "lista": ["obj1", "obj2"]}},
-        {{"titulo": "3. ALCANCE DEL SERVICIO", "contenido": ["párrafo"]}},
-        {{"titulo": "4. METODOLOGIA", "contenido": ["párrafo"]}},
-        {{"titulo": "5. PLAN DE TRABAJO", "contenido": ["párrafo"], "lista": ["fase1", "fase2"]}},
-        {{"titulo": "6. EXPERIENCIA SIMILAR", "contenido": ["párrafo"]}},
-        {{"titulo": "7. VALOR AGREGADO", "contenido": ["párrafo"], "lista": ["ventaja1", "ventaja2"]}}
-    ]
-}}
+Escribe siete secciones, en este orden y con estos titulos exactos:
+1. RESUMEN EJECUTIVO, 2. OBJETIVOS, 3. ALCANCE DEL SERVICIO, 4. METODOLOGIA,
+5. PLAN DE TRABAJO, 6. EXPERIENCIA SIMILAR, 7. VALOR AGREGADO.
 
-La propuesta debe ser profesional, específica al objeto de contratación, y destacar las fortalezas de la empresa. Máximo 3-4 párrafos por sección."""
+Maximo tres o cuatro parrafos por seccion."""
 
     try:
-        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_KEY)
-        response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.content[0].text
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
+        contenido, _uso = await ia.pedir_json(SISTEMA, prompt, ESQUEMA)
+        return contenido
     except Exception as e:
-        log.error(f"Error generando con IA: {e}")
+        # Se cae a la plantilla: no lleva IA, pero produce un documento
+        # presentable. Quedarse sin propuesta tecnica es peor -- en un concurso
+        # publico o una licitacion publica es el documento que puntua.
+        log.error("La propuesta tecnica con IA fallo: %s", e, exc_info=True)
 
     return _generar_plantilla(licitacion, empresa, datos)
 

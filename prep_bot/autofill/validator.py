@@ -87,10 +87,18 @@ async def validar_propuesta(propuesta_id: int) -> dict:
     if not prop.get("precio_ofertado") and not prop.get("monto_referencial"):
         warnings.append("Sin precio ofertado definido")
 
+    # Se cuentan aparte los obligatorios. `campos_ok` sobre `len(VALIDACIONES)`
+    # mezcla los cinco que bloquean con los dos bancarios que no, y la ficha
+    # acababa diciendo "datos obligatorios completos (5 de 7)": una frase que se
+    # desmiente a si misma y deja al usuario buscando dos campos que no le hacen
+    # falta para presentarse.
+    requeridos = [v for v in VALIDACIONES if v["requerido"]]
     return {
         "completa": len(faltantes) == 0,
         "campos_ok": campos_ok,
         "campos_total": len(VALIDACIONES),
+        "requeridos_ok": len(requeridos) - len(faltantes),
+        "requeridos_total": len(requeridos),
         "faltantes": faltantes,
         "warnings": warnings,
         "preguntas_pendientes": pendientes,

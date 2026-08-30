@@ -4,6 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block titulo %}LicitaPro Perú{% endblock %}</title>
+{# Un solo SVG sirve de favicon en claro y en oscuro, y escala a cualquier
+   tamano. No hacen falta los seis PNG de siempre. #}
+<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
+{# ---------- TARJETA AL COMPARTIR (Open Graph) ----------
+   En Peru el enlace se comparte por WhatsApp, y sin estas etiquetas WhatsApp
+   no pinta nada: ni titulo, ni imagen. Un enlace pelado en un grupo parece
+   spam, y ese es el primer contacto que tiene la mayoria con el producto.
+
+   La imagen va por URL ABSOLUTA y en PNG a proposito: los servidores de
+   WhatsApp y Facebook leen esto desde fuera -- una ruta relativa no resuelve --
+   y ninguno de los dos renderiza SVG en la vista previa, asi que el favicon
+   no sirve aqui. #}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LicitaPro Perú">
+<meta property="og:locale" content="es_PE">
+<meta property="og:url" content="{{ absoluto(request.url.path) }}">
+<meta property="og:title" content="{{ og_titulo | default('LicitaPro Perú — del aviso de la licitación hasta que te pagan') }}">
+<meta property="og:description" content="{{ og_bajada | default('Te avisamos por Telegram de las licitaciones que encajan con tu empresa, preparamos el expediente con los anexos llenos y perseguimos el pago de la entidad. Los demás se paran en el aviso.') }}">
+<meta property="og:image" content="{{ absoluto(estatico('og.png')) }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="LicitaPro Perú: encontrar la licitación es la parte fácil; nosotros llegamos hasta el cobro.">
+<meta name="twitter:card" content="summary_large_image">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -47,16 +72,60 @@ body{margin:0;background:var(--bg);color:var(--ink);
 a{color:var(--ac)}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
 
-header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;
-  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.02em;
-  display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none}
-.brand .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
-nav.menu{display:flex;align-items:center;gap:18px;font-size:13.5px}
-nav.menu a{color:var(--ink-2);text-decoration:none}
-nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
-.sesion{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-3)}
-main{max-width:1400px;margin:0 auto;padding:20px 22px 60px}
+/* ---------- CABECERA DE LA APLICACION ----------
+   QUE ESTABA MAL: los tres bloques (marca, menu de siete enlaces, sesion) se
+   tocaban sin separacion, la pagina activa se distinguia solo por un cambio de
+   color que se pierde de un vistazo, y la sesion era un amasijo de texto
+   suelto, insignias y un boton. Parecia una barra de depuracion.
+
+   QUE SE HACE AHORA: pegajosa con desenfoque -- el contenido pasa por debajo
+   en vez de empujarla --, tres zonas con separadores reales, y la pagina
+   activa marcada con una barra bajo el texto ADEMAS del color. Fiarlo todo al
+   color falla con quien no distingue verdes, que es mas gente de la que
+   parece. */
+header{
+  position:sticky;top:0;z-index:40;
+  background:color-mix(in srgb, var(--panel) 82%, transparent);
+  backdrop-filter:blur(16px) saturate(150%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);
+  border-bottom:1px solid var(--line);
+  padding:0 22px;
+  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+}
+.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.022em;
+  display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;
+  padding-block:13px;margin-right:4px}
+.brand .ico{width:19px;height:19px;color:var(--ac);flex:none}
+.brand .pe{color:var(--ink-3);font-weight:400}
+
+nav.menu{display:flex;align-items:center;gap:2px;font-size:13.5px;flex:1;flex-wrap:wrap}
+nav.menu a{
+  color:var(--ink-2);text-decoration:none;position:relative;
+  padding:15px 11px;transition:color .2s ease;
+}
+nav.menu a:hover{color:var(--ink)}
+nav.menu a.activo{color:var(--ac);font-weight:500}
+/* La barra inferior es la senal principal; el color, la secundaria. */
+nav.menu a.activo::after{
+  content:"";position:absolute;left:11px;right:11px;bottom:-1px;height:2px;
+  background:var(--ac);border-radius:2px 2px 0 0;
+}
+
+.sesion{display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--ink-3);
+  padding-block:10px;padding-left:20px;border-left:1px solid var(--line)}
+/* Inicial en un circulo: ancla la mirada y ocupa mucho menos que el correo
+   entero, que en pantallas medianas partia la barra en dos lineas. */
+.sesion .yo{
+  width:27px;height:27px;border-radius:50%;flex:none;
+  background:var(--ac-soft);color:var(--ac);
+  display:flex;align-items:center;justify-content:center;
+  font-family:Sora,sans-serif;font-weight:600;font-size:12px;text-transform:uppercase;
+}
+.sesion .quien{max-width:17ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:900px){ .sesion .quien{display:none} }
+.sesion button.sec{padding:6px 12px;font-size:12.5px}
+
+main{max-width:1400px;margin:0 auto;padding:26px 22px 72px}
 
 button,.btn{background:var(--ac);color:var(--btn-txt);border:none;border-radius:4px;
   padding:8px 16px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;
@@ -76,7 +145,17 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .mensaje{border-radius:5px;padding:11px 15px;margin-bottom:16px;font-size:13.5px}
 .mensaje.ok{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
 .mensaje.mal{background:var(--urg-soft);color:var(--urg);border:1px solid var(--urg)}
-.mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)}
+/* La tipografia se repite aqui porque `.aviso` son DOS cosas con el mismo
+   nombre: la insignia del menu (mono, mayusculas, 10px) y el color de este
+   cuadro de mensaje. Las dos reglas pesan igual -- una clase cada una -- asi
+   que decide el orden del archivo, y la insignia va despues. Sin esto, un
+   `class="mensaje aviso"` salia en MAYUSCULAS a 10px y el aviso del validador
+   se leia como un grito.
+   El arreglo de fondo es renombrar la insignia; esta definida en diez
+   plantillas y usada en dos sitios de _nav.html. */
+.mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);
+  font-size:13.5px;text-transform:none;letter-spacing:normal;
+  font-family:inherit;padding:11px 15px;border-radius:5px}
 
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
@@ -87,10 +166,26 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .tarjeta h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0 0 4px;
   letter-spacing:-.01em}
 .tarjeta .sub{font-size:12.5px;color:var(--ink-3);margin:0 0 18px;max-width:66ch}
-.pie-app{max-width:1400px;margin:0 auto;padding:22px;font-size:12px;
-  color:var(--ink-3);display:flex;gap:8px}
-.pie-app a{color:var(--ink-3);text-decoration:none;border-bottom:1px solid var(--line)}
-.pie-app a:hover{color:var(--ac)}
+/* ---------- PIE ----------
+   Antes eran dos enlaces sueltos separados por un punto, pegados al borde y
+   sin nada que los separase del contenido: se leia como algo a medio hacer.
+   Ahora hay una linea de separacion, aire por encima, y las dos zonas
+   (quienes somos / que puedes leer) a lados opuestos. */
+.pie-app{
+  max-width:1400px;margin:40px auto 0;padding:20px 22px 30px;
+  border-top:1px solid var(--line-soft);
+  font-size:12.5px;color:var(--ink-3);
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;
+}
+.pie-app .marca-pie{display:flex;align-items:center;gap:7px}
+.pie-app .marca-pie .ico{width:14px;height:14px;color:var(--ink-3);flex:none}
+.pie-app .enlaces{display:flex;gap:20px;flex-wrap:wrap}
+/* Subrayado que aparece al pasar por encima en vez de estar siempre puesto:
+   dos enlaces permanentemente subrayados en un pie ensucian mas de lo que
+   ayudan, y siguen siendo obviamente enlaces por posicion y color. */
+.pie-app a{color:var(--ink-3);text-decoration:none;border-bottom:1px solid transparent;
+  transition:color .2s ease,border-color .2s ease}
+.pie-app a:hover{color:var(--ac);border-bottom-color:var(--ac)}
 
 /* ---------- utilidades ----------
    Existen para que la politica de seguridad pueda prohibir el estilo en linea.
@@ -119,15 +214,126 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .en-linea{display:inline}
 .fila-check{display:flex;align-items:center;gap:6px;font-size:13px}
 .col-15{display:flex;flex-direction:column;gap:15px}
+/* ---------- ENTRADA DE LAS TARJETAS ----------
+   AL REVES QUE EN LA PORTADA, Y A PROPOSITO.
+
+   Aqui el estado oculto lo pone el JAVASCRIPT, no el CSS. En la portada el
+   CSS esconde y el JS revela, que es aceptable en una pagina de venta; en el
+   panel no lo es: si el script falla, alguien se queda mirando una pantalla
+   vacia en la que deberia estar su licitacion. Poniendolo desde JS, sin JS no
+   hay animacion y se ve todo, que es el fallo correcto.
+
+   Y es un desplazamiento de 10px, no de 26 como en la portada. Esto se abre
+   cuarenta veces al dia: lo que la primera vez parece elegante, a la cuarenta
+   es una espera. */
+.rv-app{opacity:0;transform:translate3d(0,10px,0);
+  transition:opacity .45s cubic-bezier(.22,1,.36,1),transform .45s cubic-bezier(.22,1,.36,1)}
+.rv-app.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .rv-app,.rv-app.in{opacity:1;transform:none;transition:none}
+}
+
+
+/* ---------- TABLAS DE DATOS ----------
+   Estaba definido IGUAL en nueve plantillas. Ocho copias literalmente
+   identicas y una (suscripcion) a la que le faltaba `vertical-align:top`, casi
+   seguro por olvido al copiar.
+
+   El coste de eso no era el kilobyte: era que cambiar el aspecto de las tablas
+   obligaba a tocar nueve archivos y acertar en los nueve. La de suscripcion
+   demuestra que eso ya habia fallado una vez sin que nadie lo notara.
+
+   dashboard.html NO hereda de esta plantilla y ademas su .tabla-caja lleva
+   fondo y borde propios, asi que conserva la suya. */
+table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
+table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
+table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.datos tr:last-child td{border-bottom:none}
+table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.tabla-caja{overflow-x:auto}
+
+/* ---------- MOVIMIENTO EN LAS TABLAS ----------
+   Vive AQUI y no en cada plantilla porque diez de ellas dibujan `table.datos`.
+   Estas reglas son puramente aditivas: no redefinen nada de lo que cada
+   plantilla ya declara, solo anaden estado al pasar por encima y entrada. Por
+   eso se pueden centralizar sin riesgo de cambiar como se ve nada.
+
+   (La definicion base tambien vive ya aqui arriba: se unifico despues, mirando
+   pantalla por pantalla, porque esa si podia cambiar como se ven varias.)
+
+   NADA DE 3D AQUI, Y ES DELIBERADO. Las tarjetas se inclinan un grado porque
+   son objetos sueltos; una tabla no puede, porque girarla rompe la alineacion
+   de las columnas, que es justo lo que la hace legible. Lo unico que aporta
+   movimiento en una tabla es senalar en que fila esta el ojo. */
+table.datos tbody tr{transition:background .18s ease}
+table.datos tbody tr:hover{background:var(--panel-2)}
+/* El filo de acento va como box-shadow interior del primer td y no como
+   pseudo-elemento del tr: los pseudo-elementos sobre filas de tabla se
+   posicionan distinto segun el navegador. */
+table.datos tbody tr td:first-child{
+  box-shadow:inset 0 0 0 0 var(--ac);
+  transition:box-shadow .22s cubic-bezier(.22,1,.36,1);
+}
+table.datos tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 0 var(--ac)}
+
+/* Entrada escalonada, SOLO en las diez primeras filas. Con cien registros,
+   escalonar todas obliga a esperar a la ultima para ver la tabla entera; las
+   de abajo entran sin retraso y nadie lo nota, porque estan fuera de pantalla. */
+@keyframes filaEntra{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
+table.datos tbody tr{animation:filaEntra .38s cubic-bezier(.22,1,.36,1) backwards}
+table.datos tbody tr:nth-child(1){animation-delay:.02s}
+table.datos tbody tr:nth-child(2){animation-delay:.05s}
+table.datos tbody tr:nth-child(3){animation-delay:.08s}
+table.datos tbody tr:nth-child(4){animation-delay:.11s}
+table.datos tbody tr:nth-child(5){animation-delay:.14s}
+table.datos tbody tr:nth-child(6){animation-delay:.17s}
+table.datos tbody tr:nth-child(7){animation-delay:.20s}
+table.datos tbody tr:nth-child(8){animation-delay:.23s}
+table.datos tbody tr:nth-child(9){animation-delay:.26s}
+table.datos tbody tr:nth-child(10){animation-delay:.29s}
+
+/* Los botones de la fila se atenuan hasta que te acercas: en una tabla con
+   diez filas, diez botones a plena intensidad compiten con el dato. */
+table.datos tbody tr .acciones{opacity:.55;transition:opacity .2s ease}
+table.datos tbody tr:hover .acciones{opacity:1}
+
+/* Lo que te deben se lee antes que nada (contratos). */
+table.datos td.cobrar{font-weight:600}
+table.datos td.cobrar.hay{color:var(--warn)}
+
+@media (prefers-reduced-motion:reduce){
+  table.datos tbody tr{animation:none}
+  table.datos tbody tr td:first-child,
+  table.datos tbody tr:hover td:first-child{transition:none}
+  table.datos tbody tr .acciones{opacity:1}
+}
+
 {% block estilos %}{% endblock %}
 </style>
 </head>
 <body>
 {% block cuerpo %}{% endblock %}
 <footer class="pie-app">
-  <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>
+  <span class="marca-pie">
+    <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+    © 2026 LicitaPro Perú
+  </span>
+  <span class="enlaces">
+    <a href="/terminos">Términos</a>
+    <a href="/privacidad">Privacidad</a>
+    <a href="/">Inicio</a>
+  </span>
 </footer>
-<script src="/static/licitapro.js" defer></script>
+<script src="{{ estatico('licitapro.js') }}" defer></script>
 {% block scripts %}{% endblock %}
+{% include '_badge.html' %}
 </body>
 </html>

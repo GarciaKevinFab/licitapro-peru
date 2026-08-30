@@ -1,15 +1,22 @@
 {% extends "_base.html" %}
 {% block titulo %}Suscripción · LicitaPro{% endblock %}
 {% block estilos %}
+/* ---------- EXCEPCION AL VALOR COMUN ----------
+   _base.html alinea las celdas ARRIBA, que es lo correcto en las tablas donde
+   una celda envuelve a varias lineas (entidad + objeto): asi la fila no se
+   descuadra.
+
+   Esta tabla no es de esas. Es el historial de pagos: fecha, orden, monto,
+   comision y estado, todas de una sola linea. Y la ultima lleva una insignia
+   con relleno propio, mas alta que el texto plano. Alineando arriba, las
+   cifras quedan flotando por encima del centro de la insignia.
+
+   Se corrige aqui y no cambiando el valor comun: ocho tablas lo necesitan
+   arriba y solo esta lo necesita al medio. Una base con excepciones anotadas
+   es mejor que una base que no sirve para nadie. */
+table.datos td{vertical-align:middle}
 .plan li.sin{color:var(--ink-3)}
 
-table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
-table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
-table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft)}
-table.datos tr:last-child td{border-bottom:none}
-table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
-  font-variant-numeric:tabular-nums}
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
   text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}

@@ -1,0 +1,100 @@
+# Pruebas automaticas en cada push y cada pull request.
+#
+# POR QUE HACE FALTA
+#
+#   El repositorio tenia 97 pruebas y dos auditorias (`auditar_sql.py` y la
+#   comprobacion de aislamiento) que solo corrian si alguien se acordaba de
+#   lanzarlas a mano. Una suite que depende de la memoria de una persona
+#   protege exactamente hasta el dia que esa persona tiene prisa.
+#
+# POR QUE SE LEVANTA POSTGRES DE VERDAD
+#
+#   Las pruebas que importan aqui son las de aislamiento entre inquilinos, y
+#   esas no se pueden simular: comprueban que una consulta con un WHERE mal
+#   puesto devuelve datos de otro cliente. Contra un doble de la base, el WHERE
+#   mal puesto pasaria.
+#
+#   Sin base, `conftest.py` las SALTA con un motivo visible en vez de fallar.
+#   Eso esta bien en un portatil y es inaceptable aqui: un CI verde que en
+#   realidad omitio las pruebas de aislamiento es peor que no tener CI, porque
+#   da una confianza que no corresponde. Por eso hay un paso que comprueba que
+#   no se salto ninguna.
+
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: licitapro
+          POSTGRES_USER: licitapro
+          POSTGRES_PASSWORD: clave_de_integracion_no_es_un_secreto
+          TZ: America/Lima
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U licitapro"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: licitapro
+      POSTGRES_USER: licitapro
+      POSTGRES_PASSWORD: clave_de_integracion_no_es_un_secreto
+      # Base efimera de un runner: esta clave no cifra nada que sobreviva al
+      # job. La de produccion vive en un gestor de secretos, nunca aqui.
+      LICITAPRO_SECRET_KEY: clave_solo_para_integracion_continua
+      LICITAPRO_ENTORNO: dev
+      # Vacia a proposito: ninguna prueba debe llamar a la API de pago. Si una
+      # lo intentara, aqui fallaria en vez de gastar dinero en silencio.
+      ANTHROPIC_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Aplicar migraciones
+        run: alembic upgrade head
+
+      - name: Auditar el SQL contra el esquema real
+        # Valida cada consulta del proyecto contra las tablas que existen. Coge
+        # las columnas inventadas, que es un fallo que no se ve hasta que un
+        # usuario pisa esa ruta en produccion.
+        run: python tools/auditar_sql.py
+
+      - name: Pruebas
+        run: pytest -q -p no:warnings
+
+      - name: Comprobar que no se salto ninguna prueba
+        # Una prueba saltada no es una prueba pasada. Sin esto, un fallo de
+        # conexion a Postgres dejaria el CI en verde con el aislamiento entre
+        # inquilinos sin comprobar.
+        run: |
+          if pytest -p no:warnings -rs 2>&1 | grep -q "^SKIPPED"; then
+            echo "Hubo pruebas saltadas. Revisa la conexion a PostgreSQL."
+            pytest -p no:warnings -rs 2>&1 | grep "^SKIPPED"
+            exit 1
+          fi
+
+      - name: Comprobar el aislamiento entre inquilinos
+        run: python tools/datos_dev.py --verificar-aislamiento

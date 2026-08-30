@@ -4,25 +4,15 @@
 #
 #   cp .env.example .env  &&  editar .env
 #   docker compose -f docker-compose.prod.yml up -d --build
+#
+# LA BASE ES SUPABASE, y viene entera en DATABASE_URL. Por eso aqui NO hay
+# servicio postgres: en produccion el dato vive fuera del servidor, con sus
+# copias gestionadas, y no en un volumen que se va con el VPS.
+#
+# El Postgres local sigue estando en docker-compose.yml, que es el de
+# desarrollo. Alli si conviene: cada uno con su base, sin tocar la de nadie.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER:?falta POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
-      TZ: America/Lima
-    volumes:
-      - datos_postgres:/var/lib/postgresql/data
-    # Sin puertos publicados: solo se llega desde la red interna de compose.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -33,52 +23,108 @@ services:
     build: .
     command: alembic upgrade head
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: "no"
 
   web:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     restart: unless-stopped
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
       LICITAPRO_ENTORNO: produccion
     ports:
       - "127.0.0.1:8200:8200"   # detras de un proxy con TLS, nunca expuesto directo
     depends_on:
-      postgres:
-        condition: service_healthy
       migraciones:
         condition: service_completed_successfully
     volumes:
       - datos_expedientes:/app/data
 
   radar:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m radar_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
 
   prep:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m prep_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -86,13 +132,36 @@ services:
       - datos_expedientes:/app/data
 
   win:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m win_bot.main
+    # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
+    # Los bots no sirven HTTP: heredarlo los deja `unhealthy` para siempre, y
+    # un indicador que esta siempre en rojo es peor que no tenerlo, porque
+    # ensena a no mirarlo -- y entonces no sirve el dia que tiene razon.
+    healthcheck:
+      disable: true
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -104,7 +173,59 @@ services:
       # generador se limita a saltarse la que no encuentra.
       - datos_expedientes:/app/data
 
+  # ── Como se llega al panel desde internet: elige UNO ──────────────────
+  #
+  #   --profile tunnel   Cloudflare Tunnel. Es el camino recomendado y el que
+  #                      ya corre en VueloRadar. Sin puertos entrantes, sin
+  #                      certificados que renovar, y la IP del VPS no queda
+  #                      expuesta. Un mismo tunel sirve varios proyectos.
+  #
+  #   --profile proxy    Caddy con Let's Encrypt. Para desplegar sin
+  #                      Cloudflare, o para probar el stack sin tocar la cuenta.
+  #
+  # Van en perfiles distintos porque los dos quieren ser la puerta de entrada:
+  # levantarlos juntos deja a Caddy peleando por el 443 contra un tunel que ya
+  # esta sirviendo el mismo dominio.
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # --no-autoupdate: que la version la decida un despliegue, no el
+    # contenedor a las tres de la manana.
+    command: tunnel --no-autoupdate run
+    environment:
+      # Sin `:?` a proposito. Compose interpola TODOS los servicios aunque el
+      # perfil no este activo, asi que exigirla aqui impedia arrancar el stack
+      # normal a quien -- como este VPS -- corre cloudflared en el host y por
+      # tanto nunca define esta variable. Si el perfil se usa vacia, cloudflared
+      # protesta al arrancar, que es donde corresponde.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - web
+    profiles: ["tunnel"]
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["proxy"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      LICITAPRO_DOMINIO: ${LICITAPRO_DOMINIO:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Los certificados van en un volumen: sin el, cada reinicio pediria uno
+      # nuevo y Let's Encrypt limita cuantos se emiten por semana. Ese limite
+      # se agota rapido y deja el sitio sin TLS hasta que pase la ventana.
+      - caddy_datos:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
-  datos_postgres:
   datos_redis:
   datos_expedientes:
+  caddy_datos:
+  caddy_config:

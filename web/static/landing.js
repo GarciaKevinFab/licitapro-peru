@@ -1,102 +1,178 @@
 /* Animaciones de la portada.
-   Vive en un archivo aparte y no dentro del HTML para que la politica de
-   seguridad pueda prohibir el script embebido: mientras script-src admita
-   'unsafe-inline', un XSS puede ejecutar lo que quiera y la CSP no sirve
-   de nada frente a eso. */
+
+   VIVE EN UN ARCHIVO APARTE, NO EN EL HTML
+
+     Mientras script-src admitiera 'unsafe-inline', un XSS podria ejecutar lo
+     que quisiera y la politica de seguridad no serviria de nada frente a eso.
+     Sacar este bloque a /static es lo que permitio cerrarla.
+
+   PRINCIPIO: el navegador anima, nosotros solo cambiamos clases.
+
+     Todo lo que se mueve esta descrito en CSS con transiciones. Aqui solo se
+     anaden y quitan clases y se escriben dos o tres propiedades. Asi el
+     compositor hace el trabajo y el hilo principal queda libre, que es la
+     diferencia entre 60fps y un scroll a tirones en el movil de gama media
+     desde el que se va a abrir esto.
+*/
 (() => {
   "use strict";
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---------- nav ---------- */
+  const menosMovimiento = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ------------------------------------------------------------------ nav
+     Fondo translucido solo cuando ya se ha bajado: arriba del todo la barra
+     debe desaparecer sobre el hero. */
   const nav = document.getElementById("nav");
-  const onScrollNav = () => nav.classList.toggle("stuck", scrollY > 40);
-  addEventListener("scroll", onScrollNav, {passive:true});
-  onScrollNav();
-
-  /* ---------- reveals ---------- */
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      e.target.classList.add("in");
-      io.unobserve(e.target);
-    }
-  }, {threshold:0.16, rootMargin:"0px 0px -8% 0px"});
-  document.querySelectorAll(".rv").forEach(el => io.observe(el));
-
-  /* ---------- counters ---------- */
-  const easeOut = t => 1 - Math.pow(1 - t, 3);
-  const runCount = (el) => {
-    const to = +el.dataset.to, suffix = el.dataset.suffix || "";
-    if (reduce) { el.textContent = to.toLocaleString("es-PE") + suffix; return; }
-    const dur = 1700, t0 = performance.now();
-    const tick = (now) => {
-      const p = Math.min(1, (now - t0) / dur);
-      el.textContent = Math.round(to * easeOut(p)).toLocaleString("es-PE") + suffix;
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  };
-  const ioCount = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      runCount(e.target);
-      ioCount.unobserve(e.target);
-    }
-  }, {threshold:0.6});
-  document.querySelectorAll("[data-to]").forEach(el => ioCount.observe(el));
-
-  /* ---------- score dial + bars ---------- */
-  const ioScore = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      const R = 84, C = 2 * Math.PI * R, score = 71;
-      const ring = document.getElementById("ring");
-      if (ring) ring.style.strokeDashoffset = String(C * (1 - score / 100));
-      const val = document.getElementById("dialval");
-      if (val) {
-        if (reduce) val.textContent = score;
-        else {
-          const t0 = performance.now();
-          const tick = (now) => {
-            const p = Math.min(1, (now - t0) / 1600);
-            val.textContent = Math.round(score * easeOut(p));
-            if (p < 1) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        }
-      }
-      document.querySelectorAll(".bar-fill").forEach((b, i) => {
-        setTimeout(() => { b.style.width = b.dataset.pct + "%"; }, reduce ? 0 : i * 110);
-      });
-      ioScore.unobserve(e.target);
-    }
-  }, {threshold:0.35});
-  const dial = document.querySelector(".dial");
-  if (dial) ioScore.observe(dial);
-
-  /* ---------- 3D tilt on bot cards ---------- */
-  if (!reduce && matchMedia("(hover: hover)").matches) {
-    document.querySelectorAll(".bot").forEach(card => {
-      card.addEventListener("pointermove", (ev) => {
-        const r = card.getBoundingClientRect();
-        const px = (ev.clientX - r.left) / r.width;
-        const py = (ev.clientY - r.top) / r.height;
-        card.style.setProperty("--mx", (px * 100) + "%");
-        card.style.setProperty("--my", (py * 100) + "%");
-        card.style.transform =
-          `rotateY(${(px - .5) * 11}deg) rotateX(${(.5 - py) * 11}deg) translateZ(22px)`;
-      });
-      card.addEventListener("pointerleave", () => { card.style.transform = ""; });
-    });
+  if (nav) {
+    const pintarNav = () => nav.classList.toggle("stuck", scrollY > 40);
+    addEventListener("scroll", pintarNav, { passive: true });
+    pintarNav();
   }
 
-  /* =========================================================
-     Territorio 3D - nube de puntos del Peru, proyeccion propia.
-     Sin librerias: silueta en lat/lon, relleno por point-in-polygon,
-     rotacion y zoom atados al scroll.
-     ========================================================= */
+  /* ------------------------------------------------- titular del hero
+     Ya NO se toca desde aqui. Antes se le ponia una clase con
+     requestAnimationFrame, y rAF no corre en pestanas en segundo plano: quien
+     abriera el enlace con ctrl+clic se encontraba el titular invisible, porque
+     las lineas se quedaban desplazadas dentro de su mascara.
+     Ahora es una animacion CSS con fill-mode forwards. Que el texto principal
+     de la pagina dependa de un script para verse es un error, no una opcion. */
+
+  /* RED DE SEGURIDAD PARA TODO LO DEMAS
+     Si algo de aqui abajo lanza -- un navegador sin IntersectionObserver, una
+     extension que rompe el DOM, un fallo mio --, lo peor que puede pasar es
+     que se pierdan las animaciones. Lo que NO puede pasar es que la pagina se
+     quede en blanco porque medio contenido esta a opacity 0 esperando una
+     clase que nunca llega. */
+  const revelarTodo = () => {
+    document.querySelectorAll(".rv").forEach((el) => el.classList.add("in"));
+    document.querySelectorAll(".cifra").forEach((c) => {
+      c.classList.add("viva");
+      const n = c.querySelector(".n");
+      if (n) n.textContent = Number(c.dataset.hasta || 0).toLocaleString("es-PE") + (c.dataset.sufijo || "");
+    });
+  };
+  /* Se registra ANTES del codigo que podria fallar, que es el unico orden en
+     que sirve de algo. Es idempotente, asi que no importa que un error de
+     carga de una fuente lo dispare tambien. */
+  addEventListener("error", revelarTodo);
+
+  /* ------------------------------------------------------------ revelados
+     Un observador para toda la pagina. `unobserve` tras revelar: lo que ya
+     entro no necesita seguir vigilado, y dejarlo cuesta trabajo en cada
+     scroll para nada. */
+  const revelador = new IntersectionObserver((entradas) => {
+    for (const e of entradas) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add("in");
+      revelador.unobserve(e.target);
+    }
+  }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+
+  document.querySelectorAll(".rv").forEach((el) => {
+    if (menosMovimiento) { el.classList.add("in"); return; }
+    revelador.observe(el);
+  });
+
+  /* ------------------------------------------------------- contador suave
+     Arranca rapido y frena al final (easeOutExpo). Un contador lineal parece
+     una barra de progreso; este parece que "aterriza", que es lo que hace que
+     apetezca mirarlo hasta el final. */
+  const contar = (nodo, hasta, milesSep, sufijo) => {
+    const DURACION = 1600;
+    let t0 = null;
+    const paso = (t) => {
+      if (t0 === null) t0 = t;
+      const p = Math.min((t - t0) / DURACION, 1);
+      const suavizado = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      const valor = Math.round(hasta * suavizado);
+      nodo.textContent = (milesSep ? valor.toLocaleString("es-PE") : String(valor)) + sufijo;
+      if (p < 1) requestAnimationFrame(paso);
+    };
+    requestAnimationFrame(paso);
+  };
+
+  /* ----------------------------------------------------------- las cifras
+     Cada una se enciende y cuenta cuando entra en pantalla. Se hace con un
+     observador y NO leyendo scrollY en cada evento: leer geometria dentro del
+     manejador de scroll obliga al navegador a recalcular el diseno sesenta
+     veces por segundo, que es como se consigue justo lo contrario de fluidez. */
+  const cifras = document.querySelectorAll(".cifra");
+
+  const encender = (cifra) => {
+    cifra.classList.add("viva");
+    const nodo = cifra.querySelector(".n");
+    if (!nodo) return;
+    const hasta = Number(cifra.dataset.hasta || 0);
+    const sufijo = cifra.dataset.sufijo || "";
+    const miles = cifra.dataset.miles === "1";
+    if (menosMovimiento) {
+      nodo.textContent = (miles ? hasta.toLocaleString("es-PE") : String(hasta)) + sufijo;
+    } else {
+      contar(nodo, hasta, miles, sufijo);
+    }
+  };
+
+  if (menosMovimiento) {
+    cifras.forEach(encender);
+  } else {
+    const obsCifras = new IntersectionObserver((entradas) => {
+      for (const e of entradas) {
+        if (!e.isIntersecting) continue;
+        encender(e.target);
+        obsCifras.unobserve(e.target);
+      }
+    }, { threshold: 0.55 });
+    cifras.forEach((c) => obsCifras.observe(c));
+  }
+
+  /* ------------------------------------------------------ dial y barras
+     El anillo se dibuja moviendo stroke-dashoffset, no redibujando el arco:
+     una sola propiedad animable, sin recalcular la geometria del SVG. */
+  const PUNTAJE = 71;
+  const CIRCUNFERENCIA = 527.8;   // 2 * PI * r, con r = 84
+
+  const dial = document.getElementById("ring");
+  const dialval = document.getElementById("dialval");
+  const barras = document.getElementById("bars");
+
+  const dibujarPuntaje = () => {
+    if (dial) dial.style.strokeDashoffset = String(CIRCUNFERENCIA * (1 - PUNTAJE / 100));
+    if (dialval) {
+      if (menosMovimiento) dialval.textContent = String(PUNTAJE);
+      else contar(dialval, PUNTAJE, false, "");
+    }
+    document.querySelectorAll(".bar-fill").forEach((b) => {
+      b.style.width = (b.dataset.pct || 0) + "%";
+    });
+  };
+
+  if (menosMovimiento) {
+    dibujarPuntaje();
+  } else if (barras) {
+    const obsPuntaje = new IntersectionObserver((entradas) => {
+      for (const e of entradas) {
+        if (!e.isIntersecting) continue;
+        dibujarPuntaje();
+        obsPuntaje.disconnect();
+      }
+    }, { threshold: 0.3 });
+    obsPuntaje.observe(barras);
+  }
+
+  /* =====================================================================
+     TERRITORIO 3D — nube de puntos del Peru, proyeccion propia.
+
+     Sin librerias y sin WebGL: la silueta va en lat/lon, se rellena por
+     point-in-polygon y se proyecta a mano con una perspectiva sencilla. Meter
+     three.js aqui serian 600 KB para dibujar dos mil cuadraditos.
+
+     La rotacion y el zoom estan atados al SCROLL, no al reloj: el usuario
+     mueve el territorio, no lo mira moverse. Esa es la diferencia entre un
+     fondo animado y un fondo que responde.
+     ===================================================================== */
   const cv = document.getElementById("territorio");
-  const ctx = cv.getContext("2d", {alpha:true});
+  if (!cv) return;
+  const ctx = cv.getContext("2d", { alpha: true });
 
   // Silueta aproximada del Peru (lon, lat): norte, frontera oriental, sur, costa.
   const BORDE = [
@@ -115,7 +191,7 @@
     [-70.25,-18.01],[-76.36,-13.06],[-78.52,-7.16],[-77.53,-9.53]
   ];
 
-  const inside = (x, y, poly) => {
+  const dentro = (x, y, poly) => {
     let hit = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
       const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
@@ -124,93 +200,144 @@
     return hit;
   };
 
-  // Muestreo determinista: el patron no cambia entre recargas.
-  let seed = 20490765;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  // Muestreo determinista: el patron no cambia entre recargas. Si no, cada
+  // visita veria un Peru distinto y dejaria de leerse como un mapa.
+  let semilla = 20490765;
+  const rnd = () => { semilla = (semilla * 1664525 + 1013904223) % 4294967296; return semilla / 4294967296; };
 
   const LON0 = -81.4, LON1 = -68.6, LAT0 = -18.5, LAT1 = 0.2;
   const LONC = (LON0 + LON1) / 2, LATC = (LAT0 + LAT1) / 2;
-  const pts = [];
-  let guard = 0;
-  while (pts.length < 2300 && guard < 90000) {
-    guard++;
+  const puntos = [];
+  let intentos = 0;
+  while (puntos.length < 2300 && intentos < 90000) {
+    intentos++;
     const lon = LON0 + rnd() * (LON1 - LON0);
     const lat = LAT0 + rnd() * (LAT1 - LAT0);
-    if (!inside(lon, lat, BORDE)) continue;
-    pts.push({x:(lon - LONC) / 6.4, y:-(lat - LATC) / 6.4, t:rnd() * 6.2832, city:false});
+    if (!dentro(lon, lat, BORDE)) continue;
+    puntos.push({ x:(lon - LONC) / 6.4, y:-(lat - LATC) / 6.4, t:rnd() * 6.2832, ciudad:false });
   }
   for (const c of CIUDADES) {
-    pts.push({x:(c[0] - LONC) / 6.4, y:-(c[1] - LATC) / 6.4, t:rnd() * 6.2832, city:true});
+    puntos.push({ x:(c[0] - LONC) / 6.4, y:-(c[1] - LATC) / 6.4, t:rnd() * 6.2832, ciudad:true });
   }
 
   let W = 0, H = 0, dpr = 1;
-  const resize = () => {
-    dpr = Math.min(devicePixelRatio || 1, 2);
+  const medir = () => {
+    dpr = Math.min(devicePixelRatio || 1, 2);   // por encima de 2 no se nota y cuesta el doble
     W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  resize();
-  addEventListener("resize", resize, {passive:true});
+  medir();
+  addEventListener("resize", medir, { passive: true });
 
-  // Progreso 0..1 sobre hero + contadores.
-  const progreso = () => Math.min(1, Math.max(0, scrollY / (innerHeight * 3.2)));
+  /* Paralaje con el raton: el centro se desplaza un poco hacia el lado
+     contrario, y el volumen se lee mejor porque cambia el punto de vista. Solo
+     con puntero fino: en un movil no hay raton y el evento nunca llega. */
+  let mx = 0, my = 0;
+  if (matchMedia("(pointer:fine)").matches && !menosMovimiento) {
+    addEventListener("mousemove", (e) => {
+      mx = (e.clientX / innerWidth - 0.5) * -26;
+      my = (e.clientY / innerHeight - 0.5) * -16;
+    }, { passive: true });
+  }
 
-  const draw = (time) => {
+  const avance = () => Math.min(1, Math.max(0, scrollY / (innerHeight * 3.2)));
+
+  // Se reutiliza entre fotogramas para no generar basura que el recolector
+  // tenga que barrer sesenta veces por segundo.
+  const proyectados = [];
+
+  const dibujar = (tiempo) => {
     ctx.clearRect(0, 0, W, H);
-    const p = progreso();
+    const p = avance();
 
+    // Se desvanece antes de los pasos, donde estorbaria a la lectura.
     const op = Math.max(0, 1 - Math.max(0, p - 0.72) / 0.28) * 0.95;
     cv.style.opacity = String(op);
     if (op <= 0.01) return;
 
-    const ang  = -0.55 + p * 2.5;            // giro atado al scroll
-    const tilt = 0.30 - p * 0.16;
+    const ang  = -0.55 + p * 2.5;
+    const inc  = 0.30 - p * 0.16;
     const zoom = Math.min(W, H) * (0.78 + p * 0.55);
-    const cx = W * (W > 900 ? 0.70 : 0.5);
-    const cy = H * (W > 900 ? 0.52 : 0.44);
+    const cx = W * (W > 900 ? 0.70 : 0.5) + mx;
+    const cy = H * (W > 900 ? 0.52 : 0.44) + my;
     const ca = Math.cos(ang), sa = Math.sin(ang);
-    const ct = Math.cos(tilt), st = Math.sin(tilt);
+    const ci = Math.cos(inc), si = Math.sin(inc);
 
-    for (const pt of pts) {
+    proyectados.length = 0;
+    for (const pt of puntos) {
       // Curvatura suave: el territorio se envuelve levemente sobre si mismo.
       const z0 = Math.cos(pt.x * 1.15) * 0.30 - 0.30;
-      const X = pt.x * ca + z0 * sa;
+      const X  = pt.x * ca + z0 * sa;
       const Zr = -pt.x * sa + z0 * ca;
-      const Y = pt.y * ct - Zr * st;
-      const Z = pt.y * st + Zr * ct;
+      const Y  = pt.y * ci - Zr * si;
+      const Z  = pt.y * si + Zr * ci;
 
       const persp = 2.35 / (2.35 + Z);
       const sx = cx + X * zoom * persp;
       const sy = cy + Y * zoom * persp;
       if (sx < -60 || sx > W + 60 || sy < -60 || sy > H + 60) continue;
 
-      const prof = Math.max(0.15, (persp - 0.66) / 0.72);   // 0 lejos .. 1 cerca
-      if (pt.city) {
-        const pulso = 0.55 + 0.45 * Math.sin(time / 780 + pt.t);
-        const r = (1.9 + pulso * 2.5) * persp;
+      proyectados.push({
+        sx, sy, persp, Z, t: pt.t, ciudad: pt.ciudad,
+        prof: Math.max(0.15, (persp - 0.66) / 0.72)   // 0 lejos .. 1 cerca
+      });
+    }
+
+    /* ORDEN POR PROFUNDIDAD (algoritmo del pintor).
+       Sin esto, un punto lejano dibujado despues tapa a uno cercano y el
+       volumen se deshace: el ojo deja de leer una forma con fondo y frente, y
+       ve confeti. Cuesta ordenar 2300 elementos por fotograma, que es barato
+       comparado con perder el efecto entero. */
+    proyectados.sort((a, b) => b.Z - a.Z);
+
+    /* Red entre capitales cercanas en pantalla: sugiere un sistema vigilando
+       el pais, no una decoracion. Va antes que los puntos para que las lineas
+       queden por debajo de ellos. */
+    const ciudades = proyectados.filter((q) => q.ciudad);
+    const ALCANCE = Math.min(W, H) * 0.26;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < ciudades.length; i++) {
+      for (let j = i + 1; j < ciudades.length; j++) {
+        const a = ciudades[i], b = ciudades[j];
+        const d = Math.hypot(a.sx - b.sx, a.sy - b.sy);
+        if (d > ALCANCE) continue;
+        const alfa = (1 - d / ALCANCE) * 0.16 * Math.min(a.prof, b.prof);
+        ctx.strokeStyle = "rgba(52,224,180," + alfa.toFixed(3) + ")";
         ctx.beginPath();
-        ctx.arc(sx, sy, r, 0, 6.2832);
-        ctx.fillStyle = "rgba(52,224,180," + ((0.45 + pulso * 0.5) * prof).toFixed(3) + ")";
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+      }
+    }
+
+    for (const q of proyectados) {
+      if (q.ciudad) {
+        const pulso = 0.55 + 0.45 * Math.sin(tiempo / 780 + q.t);
+        const r = (1.9 + pulso * 2.5) * q.persp;
+        ctx.beginPath();
+        ctx.arc(q.sx, q.sy, r, 0, 6.2832);
+        ctx.fillStyle = "rgba(52,224,180," + ((0.45 + pulso * 0.5) * q.prof).toFixed(3) + ")";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(sx, sy, r * 3.4, 0, 6.2832);
-        ctx.fillStyle = "rgba(52,224,180," + (0.05 * pulso * prof).toFixed(3) + ")";
+        ctx.arc(q.sx, q.sy, r * 3.4, 0, 6.2832);
+        ctx.fillStyle = "rgba(52,224,180," + (0.05 * pulso * q.prof).toFixed(3) + ")";
         ctx.fill();
       } else {
-        ctx.fillStyle = "rgba(150,205,215," + (0.10 + prof * 0.34).toFixed(3) + ")";
-        ctx.fillRect(sx, sy, 1.5 * persp, 1.5 * persp);
+        ctx.fillStyle = "rgba(150,205,215," + (0.10 + q.prof * 0.34).toFixed(3) + ")";
+        ctx.fillRect(q.sx, q.sy, 1.5 * q.persp, 1.5 * q.persp);
       }
     }
   };
 
-  if (reduce) {
+  if (menosMovimiento) {
+    // Sin bucle continuo: se dibuja quieto y se redibuja solo al desplazarse.
     cv.style.transition = "none";
-    draw(0);
-    addEventListener("scroll", () => draw(0), {passive:true});
+    dibujar(0);
+    addEventListener("scroll", () => dibujar(0), { passive: true });
   } else {
-    const loop = (t) => { draw(t); requestAnimationFrame(loop); };
-    requestAnimationFrame(loop);
+    const bucle = (t) => { dibujar(t); requestAnimationFrame(bucle); };
+    requestAnimationFrame(bucle);
   }
 })();

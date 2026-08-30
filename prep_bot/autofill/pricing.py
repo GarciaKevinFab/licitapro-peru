@@ -128,31 +128,61 @@ async def _buscar_historico(licitacion: dict) -> list[float]:
             return [r["monto_referencial"] for r in rows if r["monto_referencial"]]
 
 
+def _cuartil(ordenados: list[float], fraccion: float) -> float:
+    """Valor por debajo del cual queda `fraccion` de la muestra."""
+    if not ordenados:
+        return 0.0
+    i = min(len(ordenados) - 1, int(len(ordenados) * fraccion))
+    return ordenados[i]
+
+
 async def estimar_precio_mercado(licitacion: dict) -> dict:
-    """Estima el rango de precios para una licitación."""
+    """Rango de precios de licitaciones parecidas, en cuartiles.
+
+    POR QUE CUARTILES Y NO MINIMO Y MAXIMO
+
+      `_buscar_historico` casa por cualquier palabra del objeto de mas de cinco
+      letras. En estos textos eso incluye "servicio", "mejoramiento" o
+      "sistema", que aparecen en media contratacion publica del pais. La
+      muestra que devuelve es util en el centro y basura en los bordes.
+
+      Con minimo y maximo, una supervision de S/ 310 mil mostraba "entre
+      S/ 16,400 y S/ 27,668,918": tres ordenes de magnitud, o sea ningun dato,
+      presentado con la misma confianza que uno bueno. Los cuartiles recortan
+      justamente esos extremos y dejan el tramo donde cae la mitad central de
+      los casos, que es la pregunta que se hace quien va a ofertar.
+
+      Los extremos siguen saliendo por separado, para quien quiera mirarlos
+      sabiendo lo que son.
+    """
     monto_ref = licitacion.get("monto_referencial") or 0
     historico = await _buscar_historico(licitacion)
 
     if not monto_ref and not historico:
         return {"error": "Sin datos para estimar precio"}
 
-    if historico:
+    # Por debajo de cuatro muestras un cuartil no significa nada: se cae a la
+    # horquilla sobre el referencial, que al menos no finge ser un dato.
+    if len(historico) >= 4:
         precios = sorted(historico)
         return {
-            "precio_minimo": round(precios[0], 2),
-            "precio_maximo": round(precios[-1], 2),
-            "precio_mediana": round(precios[len(precios) // 2], 2),
-            "precio_promedio": round(sum(precios) / len(precios), 2),
+            "precio_bajo": round(_cuartil(precios, 0.25), 2),
+            "precio_mediana": round(_cuartil(precios, 0.50), 2),
+            "precio_alto": round(_cuartil(precios, 0.75), 2),
+            "extremo_min": round(precios[0], 2),
+            "extremo_max": round(precios[-1], 2),
             "muestras": len(precios),
             "monto_referencial": monto_ref,
         }
 
     return {
-        "precio_minimo": round(monto_ref * 0.75, 2),
-        "precio_maximo": round(monto_ref, 2),
+        "precio_bajo": round(monto_ref * 0.75, 2),
         "precio_mediana": round(monto_ref * 0.90, 2),
-        "precio_promedio": round(monto_ref * 0.88, 2),
-        "muestras": 0,
+        "precio_alto": round(monto_ref, 2),
+        "extremo_min": None,
+        "extremo_max": None,
+        "muestras": len(historico),
         "monto_referencial": monto_ref,
-        "nota": "Estimado sin datos históricos",
+        "nota": "Horquilla sobre el monto referencial: no hay muestra "
+                "historica suficiente.",
     }

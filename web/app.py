@@ -4,19 +4,23 @@ Deliberadamente sobrio: esto se abre todos los dias para trabajar, no para
 impresionar. El tratamiento cinematografico vive en la landing; aqui manda la
 densidad de informacion y la velocidad.
 """
+import logging
 import os
 import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from shared.db import connection, licitaciones_para_usuario
 from shared.config import DEPARTAMENTOS
 from shared.seguridad import clave_sesion
+
+log = logging.getLogger("web.app")
 
 BASE = Path(__file__).parent
 app = FastAPI(title="LicitaPro Panel")
@@ -71,6 +75,46 @@ async def exigir_suscripcion(request: Request, call_next):
     return RedirectResponse("/suscripcion?error=Tu+suscripcion+esta+suspendida", status_code=303)
 
 
+# ------------------------------------------------------------------ HEAD
+# FastAPI NO anade HEAD a las rutas declaradas con @app.get: responde 405.
+#
+#   Eso rompio el sitemap en Search Console -- "No se ha podido obtener" --
+#   porque Google comprueba un recurso con HEAD antes de descargarlo. El XML
+#   era correcto y se servia bien por GET; el problema era el metodo.
+#
+#   Y no es solo el sitemap: cualquier monitor de disponibilidad configurado
+#   con HEAD, que es lo habitual porque no descarga el cuerpo, habria dado el
+#   sitio por caido.
+#
+# Se resuelve una vez y para todas las rutas, presentes y futuras, en vez de
+# ir anadiendo methods=["GET","HEAD"] ruta por ruta y olvidarse en la
+# siguiente. HEAD debe devolver exactamente las cabeceras de GET y ningun
+# cuerpo, que es justo lo que se hace aqui.
+#
+# Va ANTES del middleware de seguridad para que ese siga siendo el mas
+# externo: en Starlette el ultimo registrado envuelve a los anteriores.
+@app.middleware("http")
+async def permitir_head(request: Request, call_next):
+    if request.method != "HEAD":
+        return await call_next(request)
+
+    request.scope["method"] = "GET"
+    respuesta = await call_next(request)
+
+    # El cuerpo se consume igualmente: si no, queda un generador a medias y
+    # anyio protesta al cerrar el contexto.
+    if hasattr(respuesta, "body_iterator"):
+        async for _ in respuesta.body_iterator:
+            pass
+
+    vacia = Response(status_code=respuesta.status_code)
+    vacia.headers.update({
+        k: v for k, v in respuesta.headers.items()
+        if k.lower() not in ("content-length", "transfer-encoding")
+    })
+    return vacia
+
+
 # ─── Cabeceras de seguridad ──────────────────────────────
 # Va DESPUES de todo lo demas a proposito: en Starlette el ultimo registrado
 # envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
@@ -97,11 +141,24 @@ async def exigir_suscripcion(request: Request, call_next):
 def _csp(nonce: str) -> str:
     return "; ".join([
         "default-src 'self'",
-        "script-src 'self' https://unpkg.com",
+        # cloudflareinsights: Cloudflare inyecta su beacon de analitica DESDE EL
+        # BORDE, sin que la aplicacion lo pida ni lo sepa. Sin esta excepcion la
+        # CSP lo bloquea y la analitica no cuenta nada -- en silencio, salvo un
+        # error en la consola que nadie mira:
+        #
+        #   Loading the script 'https://static.cloudflareinsights.com/beacon.min.js'
+        #   violates the following Content Security Policy directive: "script-src..."
+        #
+        # Se admite el origen exacto, no un comodin. Y si algun dia se desactiva
+        # la insercion automatica en el panel de Cloudflare, esta linea sobra:
+        # quitarla entonces, que una excepcion sin uso es una puerta abierta.
+        "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com",
         f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data:",
-        "connect-src 'self'",
+        # El beacon manda las medidas por fetch a este origen; sin esto carga
+        # el script pero el envio se bloquea, que es la misma nada con mas pasos.
+        "connect-src 'self' https://cloudflareinsights.com",
         "form-action 'self'",
         "frame-ancestors 'none'",
         "base-uri 'self'",
@@ -124,6 +181,26 @@ async def cabeceras_seguridad(request: Request, call_next):
     respuesta.headers["Permissions-Policy"] = (
         "geolocation=(), microphone=(), camera=(), payment=()")
     respuesta.headers["Content-Security-Policy"] = _csp(nonce)
+
+    # NADA DE HTML SE CACHEA. Los dos motivos son independientes y cada uno
+    # basta por si solo.
+    #
+    #   1. El panel es por sesion. Si un intermediario guarda /panel y se lo
+    #      sirve a otro, un cliente ve las licitaciones, las propuestas y los
+    #      contratos de otro. Hoy no ocurre porque Cloudflare no cachea HTML
+    #      por defecto, pero eso es configuracion ajena a este repositorio: una
+    #      regla de "Cache Everything" puesta con buena intencion convierte el
+    #      producto en una fuga. La aplicacion tiene que defenderse sola.
+    #
+    #   2. TODAS las plantillas llevan un nonce de CSP distinto en cada
+    #      peticion, la portada incluida. Un cuerpo guardado con el nonce de
+    #      ayer, servido junto a la cabecera de hoy, no casa: el navegador
+    #      rechaza cada bloque <style> y la pagina sale sin estilos.
+    #
+    # /static queda fuera: son archivos sin nonce y sin datos de nadie, y ahi
+    # el cache si vale la pena.
+    if not request.url.path.startswith("/static"):
+        respuesta.headers["Cache-Control"] = "private, no-store"
     if os.getenv("LICITAPRO_ENTORNO", "dev") != "dev":
         # Solo fuera de desarrollo: en local no hay TLS, y mandar HSTS desde
         # localhost deja el navegador del desarrollador forzando https contra
@@ -152,11 +229,43 @@ from web.propuestas import router as router_propuestas  # noqa: E402
 from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
 from web.webhooks_whatsapp import router as router_wa_webhook
+from web.admin import router as router_admin  # noqa: E402
+from web.informes import router as router_informes  # noqa: E402
 
 # Los scripts salen de aqui y no del HTML. Es lo que permite que la politica
 # de seguridad prohiba el script embebido, y sin eso la CSP no protege contra
 # XSS por mucho que este puesta.
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
+
+
+# ---------------------------------------------------- estaticos con version
+# POR QUE NO BASTA CON SUBIR EL ARCHIVO
+#
+#   Cloudflare cachea /static/* cuatro horas. Tras un despliegue el HTML llega
+#   fresco -- es dinamico -- pero el JS y el CSS siguen siendo los viejos hasta
+#   que caduque la copia del borde. Y un script viejo contra un marcado nuevo
+#   NO da error: simplemente no encuentra las clases que busca y no hace nada.
+#
+#   Eso paso al renombrar `.counter` a `.cifra`: los contadores de la portada
+#   se quedaron en cero durante horas, sin un solo error en consola. El sintoma
+#   -- "los numeros no suben" -- no se parece en nada a la causa, que es lo que
+#   lo hace caro de encontrar.
+#
+#   Poner la marca de tiempo del archivo en la URL convierte cada despliegue en
+#   una direccion distinta: ni el navegador ni el borde tienen nada que reusar,
+#   y el problema deja de existir en vez de esperar a que caduque.
+def estatico(nombre: str) -> str:
+    """URL de un estatico con la marca de tiempo del archivo detras."""
+    try:
+        marca = int((BASE / "static" / nombre).stat().st_mtime)
+    except OSError:
+        # Si el archivo no esta, se devuelve la ruta pelada: que falle de forma
+        # visible al cargarla, y no aqui en silencio.
+        return f"/static/{nombre}"
+    return f"/static/{nombre}?v={marca}"
+
+
+templates.env.globals["estatico"] = estatico
 
 app.include_router(router_auth)
 app.include_router(router_config)
@@ -165,6 +274,8 @@ app.include_router(router_propuestas)
 app.include_router(router_contratos)
 app.include_router(router_suscripcion)
 app.include_router(router_wa_webhook)
+app.include_router(router_admin)
+app.include_router(router_informes)
 
 
 def _dias(fecha) -> int | None:
@@ -434,9 +545,120 @@ async def parte_tabla(request: Request, q: str = "", region: str = "",
     })
 
 
+# ----------------------------------------------------------------- SEO
+# QUE ENTRA AQUI Y QUE NO
+#
+#   Solo las cuatro paginas que un desconocido puede abrir y entender. Todo lo
+#   demas -- panel, licitaciones, empresas, contratos -- exige sesion: si se
+#   listara, Google se pasaria el rastreo chocando contra redirecciones al
+#   login y acabaria por desconfiar del sitemap entero.
+#
+#   `/entrar` y `/recuperar` tampoco: no aportan nada en un resultado de
+#   busqueda y solo diluyen. `/registro` si, porque es donde queremos que
+#   aterrice quien nos busca.
+#
+# POR QUE NO HAY <lastmod>
+#
+#   La tentacion es poner la fecha de hoy. Seria mentira: estas paginas no
+#   cambian a diario. Google compara ese valor con lo que se encuentra al
+#   rastrear, y cuando no cuadra deja de creerse el campo -- en todo el
+#   sitemap, no solo en la URL que mintio. Mejor no declararlo que declararlo
+#   mal. Si algun dia estas paginas pasan a tener fecha real de edicion en la
+#   base, entonces si merece la pena ponerlo.
+_PAGINAS_PUBLICAS = ("/", "/registro", "/privacidad", "/terminos")
+
+# Zonas que exigen sesion. No es seguridad -- eso lo hace el middleware -- sino
+# cortesia con el rastreador: que no gaste presupuesto en 302 hacia el login.
+_ZONAS_PRIVADAS = (
+    "/panel", "/licitacion/", "/empresas", "/contratos", "/propuestas",
+    "/configuracion", "/informes", "/suscripcion", "/pagar", "/admin",
+    "/parts/", "/entrar", "/recuperar", "/salir",
+)
+
+
+def _base_url() -> str:
+    """El origen publico, para las URLs absolutas que exige el protocolo."""
+    return f"https://{os.getenv('LICITAPRO_DOMINIO', 'licitapro.sisac.pe')}"
+
+
+def absoluto(ruta: str) -> str:
+    """Convierte una ruta del sitio en URL absoluta.
+
+    Open Graph NO admite rutas relativas: WhatsApp, Facebook y LinkedIn leen la
+    etiqueta desde sus propios servidores, donde "/static/og.png" no significa
+    nada. Una ruta relativa ahi no da error: simplemente no sale la imagen,
+    que es justo el sintoma que se venia arrastrando.
+    """
+    return f"{_base_url()}{ruta}"
+
+
+templates.env.globals["absoluto"] = absoluto
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    lineas = ["User-agent: *"]
+    lineas += [f"Disallow: {zona}" for zona in _ZONAS_PRIVADAS]
+    lineas += ["", f"Sitemap: {_base_url()}/sitemap.xml", ""]
+    return "\n".join(lineas)
+
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    base = _base_url()
+    urls = "".join(f"<url><loc>{base}{ruta}</loc></url>" for ruta in _PAGINAS_PUBLICAS)
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{urls}</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
 @app.get("/salud")
 async def salud():
-    return {"estado": "ok"}
+    """Estado real del servicio, para un vigilante externo.
+
+    ANTES DEVOLVIA {"estado": "ok"} SIEMPRE, Y ESO NO VIGILA NADA
+
+      Un 200 fijo solo dice que el proceso de Python sigue vivo. Con la base
+      caida -- que es como esta aplicacion se muere de verdad, porque el dato
+      esta en Supabase y no aqui -- respondia "ok" igualmente. Un monitor
+      conectado a eso habria dado luz verde durante toda la caida.
+
+      Ahora toca la base. Si no responde, esto devuelve 503 y el vigilante lo
+      ve. Es la diferencia entre comprobar que hay alguien y comprobar que
+      alguien puede trabajar.
+
+    EL ATRASO DE OECE VA COMO DATO, NO COMO ESTADO
+
+      Se informa de cuantas horas hace que no entra una cosecha, pero NO se
+      responde 503 por ello: el aviso del puente ya lo manda radar_bot por
+      Telegram, con el diagnostico entero. Duplicarlo aqui daria dos alertas
+      por la misma averia, y dos alertas por lo mismo acaban siendo cero.
+    """
+    detalle: dict = {"estado": "ok", "base": "ok", "oece_horas": None}
+
+    try:
+        async with connection() as conn:
+            await conn.fetchval("SELECT 1")
+    except Exception as e:
+        log.error("Salud: la base no responde: %s", e)
+        # Sin base no hay servicio. 503 y no 500: es indisponibilidad
+        # temporal, y es lo que un monitor entiende como "vuelve a mirar".
+        return JSONResponse(
+            {"estado": "sin_base", "base": "error"}, status_code=503)
+
+    # En su propio try: que falle la consulta de frescura no puede convertir un
+    # servicio sano en una caida. Es informacion, no un latido.
+    try:
+        from shared import vigilancia
+        horas = await vigilancia.horas_sin_cosecha()
+        detalle["oece_horas"] = round(horas, 1) if horas is not None else None
+    except Exception as e:
+        log.warning("Salud: no se pudo medir la frescura de OECE: %s", e)
+
+    return detalle
 
 
 # Ejecutar: uvicorn web.app:app --reload --port 8200

@@ -3,6 +3,7 @@ import os
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 import aiosmtplib
 
 from shared.config import format_monto, format_fecha
@@ -20,6 +21,19 @@ EMAIL_FROM = os.getenv("SMTP_USER", "noreply@licitapro.pe")
 EMAIL_DEST = os.getenv("EMAIL_DESTINATARIO")
 
 
+# EL MODO DE TLS DEPENDE DEL PUERTO, Y NO SE PUEDE FIJAR
+#
+#   465 habla TLS desde el primer byte (implicito). 587 empieza en claro y sube
+#   con STARTTLS. Son incompatibles: pedir STARTTLS en el 465 deja la conexion
+#   colgada o la corta el servidor, y al reves falla la negociacion.
+#
+#   Estaba fijo en STARTTLS. Funcionaba con el 587 de Gmail, que era el valor
+#   por defecto, y se rompia en cuanto alguien ponia el 465 -- que es
+#   justamente lo que recomienda cPanel para este dominio.
+def _modo_tls(puerto: int) -> dict:
+    return {"use_tls": True, "start_tls": False} if puerto == 465 else {"use_tls": False, "start_tls": True}
+
+
 async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
     """Envía un email HTML vía SMTP."""
     if not SMTP_USER or not SMTP_PASS:
@@ -30,13 +44,28 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
     msg["Subject"] = asunto
     msg["From"] = EMAIL_FROM
     msg["To"] = destinatario
+    # DATE Y MESSAGE-ID: SIN ELLAS EL CORREO ACABA EN SPAM
+    #
+    #   Son obligatorias segun el RFC 5322 y casi todos los filtros penalizan
+    #   su ausencia -- SpamAssassin tiene reglas especificas para las dos. Un
+    #   mensaje sin Message-ID ademas rompe el hilo en el cliente: cada
+    #   respuesta abre una conversacion nueva.
+    #
+    #   El servidor las acepta igual y devuelve 250, asi que el sintoma no es
+    #   un error: es que el correo "se envia" y no aparece. Que es peor,
+    #   porque no hay nada que mirar.
+    #
+    #   El dominio del Message-ID sale del remitente: uno inventado que no
+    #   coincida con el From tambien puntua mal.
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=EMAIL_FROM.split("@")[-1] if "@" in EMAIL_FROM else None)
     msg.attach(MIMEText(html_body, "html"))
 
     try:
         await aiosmtplib.send(
             msg, hostname=SMTP_HOST, port=SMTP_PORT,
             username=SMTP_USER, password=SMTP_PASS,
-            use_tls=False, start_tls=True,
+            **_modo_tls(SMTP_PORT),
         )
         log.info(f"Email enviado a {destinatario}: {asunto}")
         return True

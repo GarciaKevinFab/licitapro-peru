@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LicitaPro">
+  <!-- MARCA LICITAPRO: una senal que destaca entre el ruido.
+       Misma geometria que el favicon, sin el tile de fondo y con currentColor,
+       para que el mismo archivo sirva en cabecera clara y oscura.
+       Si esta y web/static/favicon.svg dejan de coincidir, la pestana y la
+       cabecera muestran marcas distintas: cambiar las dos a la vez. -->
+  <g fill="currentColor" opacity=".4">
+    <circle cx="12.5" cy="13.5" r="2.2"/>
+    <circle cx="52.5" cy="15.0" r="1.9"/>
+    <circle cx="13.5" cy="50.5" r="2.0"/>
+  </g>
+  <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+  <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor"
+          stroke-width="3.4" stroke-linecap="round"
+          stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+</svg>

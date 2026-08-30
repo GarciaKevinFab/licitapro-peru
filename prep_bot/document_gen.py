@@ -194,7 +194,7 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
         row = table.add_row()
         _set_cell_text(row.cells[0], str(idx), size=9)
         _set_cell_text(row.cells[1], exp["entidad_contratante"] or "", size=9)
-        _set_cell_text(row.cells[2], exp["objeto"] or "", size=9)
+        _set_cell_text(row.cells[2], exp["objeto_contrato"] or "", size=9)
         _set_cell_text(row.cells[3], format_monto(exp["monto"]) if exp["monto"] else "—", size=9)
         _set_cell_text(row.cells[4], format_fecha(exp["fecha_inicio"]), size=9)
         _set_cell_text(row.cells[5], format_fecha(exp["fecha_fin"]), size=9)

@@ -87,6 +87,21 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
             path = await generar_propuesta_economica(propuesta_id, empresa_id, licitacion, precio)
             documentos_generados.append(("05_Propuesta_Economica.docx", path))
 
+        # 6-8. Los anexos que ningún otro paso cubre: declaración jurada de
+        # plazo, compromiso del personal clave y pacto de integridad. Los tres
+        # se exigen de forma habitual, y el módulo que los escribe llevaba
+        # desde el principio sin que nadie lo llamara.
+        try:
+            from prep_bot.autofill.annexes import generar_anexos_complementarios
+            from shared.knowledge_base import obtener_datos_empresa_completos
+            datos = await obtener_datos_empresa_completos(empresa_id)
+            documentos_generados.extend(await generar_anexos_complementarios(
+                propuesta_id, empresa_id, licitacion, datos))
+        except Exception as e:
+            # No tumba el expediente: los cinco documentos principales ya están
+            # y valen por sí solos. Se registra para poder arreglarlo.
+            log.error("Los anexos complementarios fallaron: %s", e, exc_info=True)
+
         # Crear ZIP
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for nombre_zip, filepath in documentos_generados:

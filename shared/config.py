@@ -11,6 +11,23 @@ load_dotenv()
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
+# httpx a WARNING: EL TOKEN VIAJA EN LA URL
+#
+#   La API de Telegram mete el token del bot en la ruta, y httpx loguea la URL
+#   completa de cada peticion a nivel INFO. Con INFO global, cada bot escribia
+#   su token en claro varias veces por minuto:
+#
+#     [httpx] INFO: HTTP Request: POST https://api.telegram.org/bot<TOKEN>/getUpdates
+#
+#   Son tres tokens repetidos hasta el infinito en los logs del servidor, que
+#   es justo donde acaban mirando mas manos de las que deberian. Y a cambio de
+#   nada: esa linea no dice nada que no sepamos ya.
+#
+#   Los errores siguen saliendo, porque WARNING y ERROR pasan.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+# httpcore es la capa de debajo y es aun mas ruidosa cuando se sube el nivel.
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 def env(key: str, default: str = "") -> str:
     return os.getenv(key, default)

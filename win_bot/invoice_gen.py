@@ -53,12 +53,33 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     enc.add_run(f"{contrato.get('direccion', '')}\n").font.size = Pt(10)
 
     # Título
+    #
+    # DECIA "FACTURA ELECTRONICA" Y NO LO ES.
+    #
+    # Una factura electrónica en Perú es un XML firmado que se emite ante SUNAT,
+    # directamente o a través de un OSE/PSE, y que devuelve una CDR. Esto es un
+    # DOCX. La facturación electrónica quedó fuera de alcance a propósito -- lo
+    # dice `web/contratos.py` -- así que el documento no puede llamarse como
+    # aquello que el producto declara no hacer.
+    #
+    # El riesgo no es cosmético: un proveedor que ve "FACTURA ELECTRONICA N° 12"
+    # en un Word se lo manda a la entidad creyendo que ya facturó. La entidad no
+    # lo acepta, el plazo legal de pago no empieza a correr, y él se entera
+    # semanas después preguntando por qué no le pagan.
     doc.add_paragraph()
     titulo = doc.add_paragraph()
     titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = titulo.add_run(f"FACTURA ELECTRONICA\nN° {numero_factura}")
+    run = titulo.add_run(f"PROFORMA DE COBRO\nN° {numero_factura}")
     run.bold = True
     run.font.size = Pt(14)
+
+    nota = doc.add_paragraph()
+    nota.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    aclaracion = nota.add_run(
+        "Documento informativo. NO es un comprobante de pago electrónico y no "
+        "sustituye a la factura que debe emitirse ante SUNAT.")
+    aclaracion.italic = True
+    aclaracion.font.size = Pt(9)
 
     doc.add_paragraph()
 

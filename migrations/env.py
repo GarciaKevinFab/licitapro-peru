@@ -12,6 +12,39 @@ if config.config_file_name:
 
 
 def url_bd() -> str:
+    """La misma base a la que apunta la aplicacion.
+
+    DATABASE_URL MANDA SOBRE LAS PIEZAS SUELTAS
+
+      `shared/db.py` ya la respetaba; esto no. Con Supabase configurada, la app
+      hablaba con el pooler y Alembic intentaba `localhost:5433`: las
+      migraciones fallaban con "connection refused" mientras todo lo demas
+      parecia bien puesto, o -- peor -- las aplicaba contra una base local
+      vacia que ningun otro proceso usa.
+
+    POR QUE SE REESCRIBE EL ESQUEMA DE LA URL
+
+      Supabase entrega `postgresql://...`. Con ese prefijo, SQLAlchemy elige su
+      driver por defecto, que en SQLAlchemy 2 no es psycopg2; aqui el
+      controlador instalado es psycopg2, asi que se fuerza.
+
+    POR QUE SE ANADE sslmode=require
+
+      Supabase solo acepta TLS. Sin esto la conexion se rechaza con un mensaje
+      que no apunta a la causa.
+    """
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if url:
+        for viejo, nuevo in (("postgresql+asyncpg://", "postgresql+psycopg2://"),
+                             ("postgres://", "postgresql+psycopg2://"),
+                             ("postgresql://", "postgresql+psycopg2://")):
+            if url.startswith(viejo):
+                url = nuevo + url[len(viejo):]
+                break
+        if "sslmode=" not in url:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
+        return url
+
     return (
         f"postgresql+psycopg2://{os.getenv('POSTGRES_USER', 'licitapro')}:"
         f"{os.getenv('POSTGRES_PASSWORD', 'licitapro')}@"
@@ -21,7 +54,22 @@ def url_bd() -> str:
     )
 
 
-config.set_main_option("sqlalchemy.url", url_bd())
+# LOS % DE LA URL HAY QUE DUPLICARLOS AQUI
+#
+#   `set_main_option` escribe en un configparser, que trata `%` como sintaxis
+#   de interpolacion. La contrasena de Supabase llega percent-encoded -- %40
+#   por @, %23 por # -- y eso basta para que Alembic ni arranque:
+#
+#     ValueError: invalid interpolation syntax at position 58
+#
+#   El mensaje no menciona la contrasena ni el .env, asi que se parece mas a un
+#   alembic.ini roto que a lo que es. Duplicando los % queda bien guardado, y
+#   `config.get_section()` los devuelve a uno solo al leerlos de vuelta, que es
+#   por donde pasa run_migrations_online().
+#
+#   run_migrations_offline() NO necesita esto: usa url_bd() directamente, sin
+#   configparser de por medio.
+config.set_main_option("sqlalchemy.url", url_bd().replace("%", "%%"))
 target_metadata = None
 
 

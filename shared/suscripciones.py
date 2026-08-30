@@ -297,6 +297,12 @@ RUTAS_LIBRES = (
     # el derecho a saber que hacemos con tus datos y a pedir que los borremos
     # no depende de estar al dia con el pago.
     "/privacidad", "/terminos",
+    # La vista de gasto del dueno. Va aqui porque este middleware corta el
+    # producto cuando la suscripcion vence, y el dueno no deja de necesitar sus
+    # metricas porque su propia cuenta caduque: es justo cuando mas falta hacen.
+    # Quien puede entrar lo decide `web/admin.py` comparando el correo con
+    # LICITAPRO_ADMIN_EMAIL, y sin esa variable responde 404 a todo el mundo.
+    "/admin",
 )
 
 

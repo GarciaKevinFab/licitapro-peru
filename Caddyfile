@@ -1,0 +1,85 @@
+# Proxy inverso con TLS. Es la pieza que faltaba para poder publicar.
+#
+# DESPLIEGUE.md ya traia un Caddyfile de ejemplo, pero solo como texto para
+# instalar Caddy a mano en el host. Un ejemplo en la documentacion es algo que
+# alguien tiene que copiar bien; esto es un servicio que arranca con el resto.
+#
+# POR QUE CADDY Y NO NGINX CON CERTBOT
+#
+#   Nginx necesita: emitir el certificado a mano la primera vez, un cron de
+#   renovacion, un hook que recargue nginx al renovar, y acordarse de que todo
+#   eso existe. Cada pieza puede fallar en silencio, y el sintoma llega noventa
+#   dias despues en forma de navegador en rojo.
+#
+#   Caddy pide el certificado a Let's Encrypt solo, lo renueva solo y recarga
+#   solo. Para quien ademas tiene que llevar el negocio, eso no es comodidad:
+#   es la diferencia entre que el TLS siga vivo dentro de un ano o no.
+#
+# EL DOMINIO SALE DEL ENTORNO
+#
+#   `LICITAPRO_DOMINIO` en el .env. Sin definir, Caddy sirve en :80 sin TLS --
+#   sirve para probar el despliegue y NO para produccion: la aplicacion manda
+#   HSTS fuera de desarrollo, asi que sin certificado de verdad el navegador se
+#   queda forzando https contra un puerto que no lo habla, y eso solo se
+#   arregla limpiando el estado del navegador de cada visitante.
+#
+# PARA QUE IZIPAY PUEDA VERIFICAR
+#
+#   Piden que la web este "terminada y activa", y la revisan desde fuera. Eso
+#   exige dominio propio y HTTPS valido: con autofirmado o con http a secas, la
+#   revision no pasa.
+
+{$LICITAPRO_DOMINIO::80} {
+	# El panel corre en la red interna de compose, asi que se llega por el
+	# nombre del servicio y no hace falta que publique puerto al exterior.
+	reverse_proxy web:8200 {
+		# CON CLOUDFLARE DELANTE, ESTO NO ES OPCIONAL.
+		#
+		# La aplicacion guarda la IP en `intentos_acceso` para frenar la fuerza
+		# bruta contra las contrasenas. La saca de `request.client.host`, que
+		# uvicorn rellena desde X-Forwarded-For.
+		#
+		# Sin esta lista, Caddy ve como cliente al borde de Cloudflare y pone
+		# ESA ip en la cabecera. Resultado: todos los usuarios que salen por el
+		# mismo borde comparten contador, y al primer atacante el freno los
+		# bloquea a todos a la vez. Un ataque contra una cuenta se convierte en
+		# una caida para muchas.
+		#
+		# Declarando los rangos de Cloudflare como proxies de confianza, Caddy
+		# respeta el X-Forwarded-For que ellos mandan, que si trae la IP real.
+		#
+		# Estos rangos cambian de vez en cuando. Para refrescarlos:
+		#   curl -s https://www.cloudflare.com/ips-v4
+		#   curl -s https://www.cloudflare.com/ips-v6
+		# Si se quedan viejos el fallo es silencioso: se vuelve al contador
+		# compartido sin que nada avise.
+		#
+		# Sin Cloudflare delante esta lista sobra y no estorba: ninguna de esas
+		# IPs sera nunca el cliente directo.
+		trusted_proxies \
+			173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 \
+			141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 \
+			197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 \
+			104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 \
+			2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 \
+			2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+
+	encode gzip zstd
+
+	# La aplicacion ya manda su propia Content-Security-Policy con nonce por
+	# peticion, HSTS, X-Frame-Options y las demas. NO se repiten aqui: dos
+	# origenes para la misma cabecera acaban discrepando, y el dia que se
+	# endurezca la politica en el codigo el proxy seguiria mandando la vieja.
+	header {
+		# Esta si es cosa del proxy: que no anuncie que es Caddy.
+		-Server
+	}
+
+	# Sin esto, un fallo del panel se ve como una pagina en blanco y no queda
+	# rastro de que peticion lo provoco.
+	log {
+		output stdout
+		format console
+	}
+}

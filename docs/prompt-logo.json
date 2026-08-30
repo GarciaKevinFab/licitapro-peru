@@ -1,0 +1,63 @@
+{
+  "_para": "Encargar el LOGOTIPO. Pegar el campo prompt que corresponda.",
+  "_nota": "El icono suelto ya existe en web/static/marca.svg. Lo que falta es el lockup completo con el nombre.",
+
+  "contexto_de_marca": {
+    "nombre": "LicitaPro Peru",
+    "que_hace": "Vigila las licitaciones del Estado peruano (SEACE) y avisa por Telegram de las que encajan con tu empresa. Ademas prepara el expediente y sigue el cobro del contrato.",
+    "quien_lo_usa": "Duenos de PYMES peruanas que venden al Estado. Gente ocupada y no tecnica, que abre esto entre reuniones.",
+    "tono": "Serio, institucional, competente. Es una herramienta de trabajo con dinero de por medio, no una app de consumo.",
+    "donde_aparece": "Cabecera de la web, firma de correos, y las facturas y expedientes que el cliente entrega a entidades del Estado. Tiene que aguantar impreso en blanco y negro."
+  },
+
+  "sistema_visual_existente": {
+    "tipografia_titulos": "Sora SemiBold (600), letter-spacing -0.022em",
+    "tipografia_texto": "DM Sans Light (300)",
+    "tipografia_cifras": "JetBrains Mono, cifras tabulares",
+    "acento_claro": "#0F7A63",
+    "acento_oscuro": "#34E0B4",
+    "tinta": "#12181C",
+    "gris": "#7A8A93",
+    "fondo_oscuro": "#06080B",
+    "por_que_dos_verdes": "El #0F7A63 sobre negro queda apagado y sin contraste suficiente. La aplicacion ya cambia a #34E0B4 en modo oscuro, y el logotipo debe hacer lo mismo."
+  },
+
+  "entregables": [
+    {
+      "id": "logo_horizontal_claro",
+      "medida_de_referencia": "240x64 px",
+      "prompt": "Logotipo horizontal para 'LicitaPro Peru'. A la izquierda, el icono de la marca: un campo de puntos pequenos y tenues del que destaca un punto solido y mas grande, descentrado, rodeado de un anillo fino abierto. A la derecha, el nombre 'LicitaPro' en Sora SemiBold color #12181C y, a continuacion, 'PERU' en un cuerpo menor, mayusculas, con letter-spacing amplio, en gris #7A8A93. El icono en #0F7A63. Alineacion optica cuidada: el icono se centra con la altura de la x del texto, no con su caja. Fondo transparente, version plana, sin efectos.",
+      "por_que": "Es la version que va en documentos que el cliente entrega a entidades publicas."
+    },
+    {
+      "id": "logo_horizontal_oscuro",
+      "prompt": "La misma marca horizontal invertida para fondo oscuro #06080B: icono en #34E0B4, 'LicitaPro' en #F2F6F8 y 'PERU' en #67777F. Identico trazo, identicas proporciones y identico espaciado que la version clara. Es la misma marca con otra ropa, no un diseno distinto.",
+      "por_que": "La portada y el modo oscuro del panel. Si las proporciones no coinciden con la version clara, al alternar entre modos se nota el salto."
+    },
+    {
+      "id": "isotipo",
+      "prompt": "Solo el simbolo, sin texto, en un lienzo cuadrado con margenes iguales. Mismo trazo y misma construccion geometrica que el del lockup. Entregar en SVG con el color como currentColor para poder heredarlo.",
+      "por_que": "Para avatares, la app movil y donde no quepa el nombre."
+    },
+    {
+      "id": "og_image",
+      "medida": "1200x630 px",
+      "prompt": "Imagen para compartir en redes, 1200x630. Fondo casi negro #06080B con un campo sutil de puntos verdes muy tenues, mas denso hacia la esquina superior derecha. En el tercio izquierdo, en Sora SemiBold blanco #F2F6F8 y a gran tamano: 'El Estado publica cientos al dia.' y debajo, en #34E0B4: 'Nosotros encontramos las tuyas.'. Abajo a la izquierda, el logotipo horizontal oscuro, pequeno. Composicion con mucho aire, sin recargar.",
+      "por_que": "Es el titular real de la portada. En Peru esto se comparte por WhatsApp, y esa miniatura decide si alguien pincha. Hoy no existe: al pegar el enlace no sale nada."
+    }
+  ],
+
+  "evitar": [
+    "Lupas, engranajes, martillos y balanzas judiciales",
+    "Banderas del Peru literales",
+    "Degradados morado-a-rosa de startup",
+    "Mascotas o cualquier registro juguetón",
+    "Fuentes distintas de Sora: el logotipo tiene que casar con la cabecera de la aplicacion"
+  ],
+
+  "al_recibirlo": [
+    "Guardar en web/static/ y referenciarlo con {{ estatico('...') }} para que el cache no sirva el anterior",
+    "Anadir las metaetiquetas og: en web/templates/_base.html y en landing.html",
+    "img-src de la CSP ya admite 'self' y data:, asi que no hay que tocar la politica"
+  ]
+}

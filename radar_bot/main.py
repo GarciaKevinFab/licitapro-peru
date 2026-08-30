@@ -281,6 +281,30 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ─── Scheduled Tasks ─────────────────────────────────────
+async def _vigilar_fuente(app: Application):
+    """Avisa al administrador si la fuente principal esta muda o seca.
+
+    En su propio try: que falle el aviso no puede tumbar la tarea programada
+    ni impedir que la siguiente corrida salga.
+    """
+    try:
+        from shared import vigilancia
+        estado = await vigilancia.revisar()
+
+        if estado["muda"]:
+            log.warning("Fuente %s muda: %.1f horas sin cosechar nada",
+                        estado["fuente"], estado["horas_silencio"] or 0)
+        elif estado["seca"]:
+            log.warning("Fuente %s seca: %s corridas sin novedades",
+                        estado["fuente"], estado["racha"])
+
+        if estado["avisar"] and ADMIN_ID:
+            await app.bot.send_message(ADMIN_ID, vigilancia.mensaje(estado),
+                                       parse_mode="HTML")
+    except Exception as e:
+        log.error("La vigilancia de fuentes fallo: %s", e, exc_info=True)
+
+
 async def scheduled_scrape(app: Application):
     """Ejecuta TODOS los scrapers cada hora y envía alertas."""
     log.info("Iniciando scraping programado de 12 fuentes...")
@@ -302,8 +326,21 @@ async def scheduled_scrape(app: Application):
         log.info(
             f"Scraping completado: {results['total_nuevas']} nuevas de "
             f"{len(results['por_fuente'])} fuentes | avisos: {parte}")
+
     except Exception as e:
         log.error(f"Scheduled scrape failed: {e}")
+
+    # LA VIGILANCIA VA FUERA DEL TRY DE ARRIBA, Y NO ES UN DETALLE DE ESTILO
+    #
+    #   Antes vivia dentro, despues del reparto. Eso significaba que si
+    #   `run_all_scrapers` lanzaba -- justo el escenario en que algo va mal --
+    #   se saltaba entero el unico aviso que existe. El vigilante se apagaba
+    #   con lo que tenia que vigilar.
+    #
+    #   Ahora corre pase lo que pase con el scrapeo. Es una consulta a
+    #   `scraping_log`, no depende de que la pasada haya ido bien, y su gracia
+    #   esta precisamente en hablar cuando el resto calla.
+    await _vigilar_fuente(app)
 
 
 # ─── Main ────────────────────────────────────────────────

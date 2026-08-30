@@ -1,4 +1,22 @@
-"""Annexes — Llenado automático de los 14+ tipos de anexos estándar."""
+"""Anexos estandar del expediente.
+
+QUE APORTA ESTE MODULO Y QUE NO
+
+  De los catorce anexos de la lista, `zip_builder` ya genera cinco por su
+  cuenta (carta, declaracion jurada, experiencia, propuesta tecnica y
+  economica) y cuatro no los puede generar nadie porque son documentos que
+  emite un tercero: constancia del RNP, vigencia de poder, constancia de no
+  estar inhabilitado y promesa de consorcio.
+
+  Lo que solo esta aqui son TRES: la declaracion jurada de plazo de entrega, la
+  carta de compromiso del personal clave y el pacto de integridad. Los tres se
+  exigen de forma habitual y los tres se pueden escribir con lo que ya hay en
+  la base. Por eso `generar_anexos_complementarios` genera esos tres y no llama
+  a `llenar_anexos`: llamarla duplicaria los cinco que el ZIP ya trae.
+
+  `llenar_anexos` se conserva para el dia que haga falta el inventario completo
+  con su estado; hoy el expediente se arma con la funcion de abajo.
+"""
 import os
 import logging
 from shared.db import connection, kb_get, get_empresa
@@ -28,6 +46,57 @@ ANEXOS_ESTANDAR = [
     {"num": 13, "nombre": "Plan de Trabajo", "tipo": "docx", "auto": True},
     {"num": 14, "nombre": "Equipamiento Disponible", "tipo": "docx", "auto": True},
 ]
+
+
+async def generar_anexos_complementarios(
+        propuesta_id: int, empresa_id: int, licitacion: dict,
+        datos: dict) -> list[tuple[str, str]]:
+    """Los tres anexos que el resto del expediente no cubre.
+
+    Devuelve pares (nombre dentro del ZIP, ruta en disco). Cada uno se intenta
+    por separado: que falle el pacto de integridad no puede dejar fuera la
+    declaracion jurada de plazo, porque son documentos independientes y el
+    expediente vale mas con dos que con ninguno.
+    """
+    empresa = await get_empresa(empresa_id)
+    if not empresa:
+        return []
+
+    salida = []
+    output_dir = os.path.join(os.getenv("TEMPLATES_DIR", "templates"), "output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    async with connection() as conn:
+        tiene_equipo = await conn.fetchval(
+            """SELECT EXISTS(SELECT 1 FROM equipo_tecnico
+                              WHERE empresa_id=$1 AND disponible=TRUE)""",
+            empresa_id)
+
+    tareas = [
+        ("06_DJ_Plazo_Entrega.docx",
+         _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir)),
+        ("08_Pacto_Integridad.docx",
+         _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos,
+                                   output_dir)),
+    ]
+    # Sin profesionales registrados, la carta de compromiso saldria sin nadie
+    # que se comprometa. Un anexo vacio en el expediente se lee peor que un
+    # anexo ausente: parece que se respondio y no se respondio.
+    if tiene_equipo:
+        tareas.insert(1, (
+            "07_Compromiso_Personal_Clave.docx",
+            _generar_compromiso_personal(propuesta_id, empresa_id, licitacion,
+                                         output_dir)))
+
+    for nombre, tarea in tareas:
+        try:
+            ruta = await tarea
+            if ruta:
+                salida.append((nombre, ruta))
+        except Exception as e:
+            log.error("El anexo %s fallo: %s", nombre, e, exc_info=True)
+
+    return salida
 
 
 async def llenar_anexos(propuesta_id: int, empresa_id: int,
@@ -174,7 +243,7 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
     if equipo:
         for m in equipo:
             doc.add_paragraph(
-                f"Yo, {m['nombre']}, identificado(a) con DNI N° {m['dni'] or '[DNI]'}, "
+                f"Yo, {m['nombre_completo']}, identificado(a) con DNI N° {m['dni'] or '[DNI]'}, "
                 f"profesional en {m['titulo_profesional'] or '[TITULO]'}, "
                 f"me comprometo a participar como parte del equipo técnico "
                 f"para el proceso de selección indicado."

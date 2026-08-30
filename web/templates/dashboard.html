@@ -3,7 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{# HTMX inyecta al arrancar una hoja de estilos propia para `htmx-indicator`.
+   Nuestra CSP no admite estilos en linea, asi que el navegador la bloqueaba y
+   dejaba un error en la consola en cada carga del panel. No se pierde nada al
+   desactivarla: la espera se marca con `.htmx-request`, que se define mas
+   abajo en este mismo archivo y por tanto lleva el nonce, y `htmx-indicator`
+   no se usa en ninguna plantilla.
+   Va aqui y no en _base.html porque esta plantilla NO hereda de ella, y es la
+   unica que carga HTMX.
+   Se apaga con una meta y no con JS porque script-src tampoco admite en linea. #}
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 <title>Panel · LicitaPro Perú</title>
+{# Esta plantilla NO hereda de _base.html, asi que el favicon que va alli no
+   llega aqui. El panel es la pagina que el cliente deja abierta en una pestana
+   todo el dia: es justo donde mas se nota que no haya icono. #}
+<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -169,6 +183,39 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 .sfill.p90{width:90%}
 .sfill.p95{width:95%}
 .sfill.p100{width:100%}
+
+/* ---------- PROFUNDIDAD EN LAS CIFRAS ----------
+   Esta es la primera pantalla del dia. Lo que se busca aqui no es sorprender:
+   es que los cuatro numeros se lean antes que nada.
+
+   Por eso el 3D esta en las TARJETAS y no en el fondo. Al pasar el cursor la
+   pieza se acerca un grado y se levanta: dice "esto se puede mirar" sin anadir
+   un pixel de adorno. Y por eso gira un grado y no ocho — esto se abre
+   cuarenta veces al dia, y lo que la primera vez parece elegante, a la
+   cuarenta estorba. */
+.tarjetas{perspective:1100px}
+.t{
+  transform-style:preserve-3d;
+  transition:transform .35s cubic-bezier(.22,1,.36,1),
+             box-shadow .35s cubic-bezier(.22,1,.36,1);
+}
+.t:hover{
+  transform:translateY(-3px) rotateX(1.2deg) scale(1.008);
+  box-shadow:0 14px 30px -18px rgba(0,0,0,.45);
+}
+/* La de urgentes lleva un filo de color arriba: es la unica de las cuatro que
+   pide una accion HOY, y merece distinguirse sin gritar. */
+.t.alerta{position:relative;overflow:hidden}
+.t.alerta::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--urg),transparent);
+}
+/* Cifras tabulares para que el numero no empuje el texto mientras cuenta. */
+.t .n{font-variant-numeric:tabular-nums}
+
+@media (prefers-reduced-motion:reduce){
+  .t,.t:hover{transform:none;transition:none}
+}
 </style>
 </head>
 <body>
@@ -242,6 +289,6 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 </main>
 
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-<script src="/static/licitapro.js" defer></script>
+<script src="{{ estatico('licitapro.js') }}" defer></script>
 </body>
 </html>

@@ -1,0 +1,21 @@
+{
+  "_para": "Encargar el FAVICON. Pegar el campo prompt en el generador o mandarselo al disenador.",
+  "_nota": "Ya existe una version hecha a mano en web/static/favicon.svg. Este encargo es para tener una alternativa profesional; si la nueva no supera a la actual a 16px, quedarse con la actual.",
+
+  "entregable": {
+    "formatos": ["SVG (principal)", "PNG 32x32", "PNG 16x16", "PNG 180x180 para apple-touch-icon"],
+    "fondo": "SVG y PNG pequenos con fondo propio redondeado. El de 180x180 SIN transparencia: iOS la rellena de negro por su cuenta y queda sucio."
+  },
+
+  "prompt": "Icono de aplicacion, vectorial y plano, para una herramienta peruana que vigila las licitaciones del Estado. Concepto: una senal que destaca entre el ruido. Composicion: cinco o seis puntos pequenos y tenues repartidos por el lienzo (el ruido) y UN punto solido y mas grande, descentrado hacia la derecha, rodeado de un anillo fino abierto (la senal detectada). Fondo: cuadrado con esquinas redondeadas en negro azulado #06080B. Elementos en verde menta #34E0B4; los puntos del ruido al 45% de opacidad, el punto principal y el anillo al 100%. Geometria limpia, trazo de grosor uniforme, sin degradados, sin sombras, sin texto, sin bordes exteriores. Estilo: iconografia de producto B2B, del registro visual de Linear o Stripe.",
+
+  "restricciones_duras": [
+    "Debe leerse a 16x16 px: como mucho tres elementos distinguibles",
+    "Nada de lupas, engranajes, martillos ni balanzas judiciales",
+    "Nada de banderas del Peru: parece organismo publico y no lo es",
+    "Sin texto ni iniciales dentro del icono",
+    "Un solo color de acento sobre el fondo. Sin degradados"
+  ],
+
+  "prueba_de_aceptacion": "Abrirlo como pestana del navegador junto a otras diez pestanas. Si no lo distingues de un vistazo, esta demasiado detallado y hay que simplificarlo. Es la unica prueba que importa."
+}

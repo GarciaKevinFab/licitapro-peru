@@ -1,451 +1,522 @@
-<title>LicitaPro Perú</title>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>LicitaPro Perú — Del aviso de la licitación hasta que te pagan</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Otros te avisan de la licitación y ahí te dejan. Nosotros vigilamos el SEACE, te avisamos por Telegram, preparamos el expediente y perseguimos el pago de la entidad hasta que cobras.">
+<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
+{# ---------- TARJETA AL COMPARTIR (Open Graph) ----------
+   En Peru el enlace se comparte por WhatsApp, y sin estas etiquetas WhatsApp
+   no pinta nada: ni titulo, ni imagen. Un enlace pelado en un grupo parece
+   spam, y ese es el primer contacto que tiene la mayoria con el producto.
+
+   La imagen va por URL ABSOLUTA y en PNG a proposito: los servidores de
+   WhatsApp y Facebook leen esto desde fuera -- una ruta relativa no resuelve --
+   y ninguno de los dos renderiza SVG en la vista previa, asi que el favicon
+   no sirve aqui. #}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LicitaPro Perú">
+<meta property="og:locale" content="es_PE">
+<meta property="og:url" content="{{ absoluto('/') }}">
+<meta property="og:title" content="{{ og_titulo | default('LicitaPro Perú — del aviso de la licitación hasta que te pagan') }}">
+<meta property="og:description" content="{{ og_bajada | default('Te avisamos por Telegram de las licitaciones que encajan con tu empresa, preparamos el expediente con los anexos llenos y perseguimos el pago de la entidad. Los demás se paran en el aviso.') }}">
+<meta property="og:image" content="{{ absoluto(estatico('og.png')) }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="LicitaPro Perú: encontrar la licitación es la parte fácil; nosotros llegamos hasta el cobro.">
+<meta name="twitter:card" content="summary_large_image">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,200;9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap">
 
 <style nonce="{{ request.state.csp_nonce }}">
+/* ============================================================================
+   LICITAPRO — PORTADA
+
+   QUE ESTABA MAL, Y POR QUE PARECIA AMATEUR
+
+     No eran los colores ni la tipografia: era que todo pesaba lo mismo.
+     Titulares de 2rem al lado de parrafos de 1rem, secciones separadas por
+     60px, y ningun momento en que la pagina se callara. Esa densidad es
+     CORRECTA dentro del panel, donde se trabaja. En la portada, donde se
+     decide, es ruido.
+
+   LOS TRES CAMBIOS QUE HACEN EL TRABAJO
+
+     1. Contraste tipografico real: el titular mide ocho veces el cuerpo, no dos.
+     2. Ritmo vertical generoso y constante, derivado de UNA sola variable.
+     3. Cuerpo ligero a tamano grande (300 a 19px) en vez de normal a 15px.
+        Es lo que da el aire caro, y no cuesta nada.
+   ========================================================================== */
+
 :root{
-  --bg:#05070A;
-  --bg-2:#0E1419;
-  --bg-3:#151D24;
-  --line:#1E2A33;
-  --line-soft:#161F26;
-  --txt:#EEF3F5;
-  --txt-2:#A9B8C1;
-  --txt-3:#798A94;
-  --mint:#34E0B4;
-  --mint-dim:#1B7A62;
-  --amber:#FFB259;
-  --red:#FF6B60;
-  --maxw:1180px;
+  --bg:#06080B; --bg-2:#0B0F14; --panel:#0E141A;
+  --line:#1A242C; --hair:#141C23;
+  --txt:#F2F6F8; --txt-2:#9FB0BA; --txt-3:#67777F;
+  --mint:#34E0B4; --mint-2:#1D9B7C; --mint-glow:rgba(52,224,180,.14);
+  --amber:#FFB259; --red:#FF6B60;
+
+  /* RITMO: todo el espaciado sale de aqui. Una variable fluida significa que
+     el ritmo no se rompe entre movil y escritorio: se escala entero. */
+  --paso:clamp(18px, 2.2vw, 30px);
+  --seccion:clamp(112px, 15vh, 210px);
+  --maxw:1140px;
+  --gutter:clamp(22px, 5vw, 56px);
+
+  /* Una curva para lo que entra y otra para lo que responde al dedo. Mezclar
+     easings por capricho es lo que hace que una interfaz se sienta
+     descoordinada sin que sepas senalar por que. */
+  --ease:cubic-bezier(.22,1,.36,1);
+  --suave:cubic-bezier(.4,0,.2,1);
 }
+
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{
-  margin:0;
-  background:var(--bg);
-  color:var(--txt);
+  margin:0;background:var(--bg);color:var(--txt);
   font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  font-size:17px;line-height:1.6;font-weight:300;
-  -webkit-font-smoothing:antialiased;
+  font-size:clamp(16.5px,1.05vw,19px);line-height:1.62;font-weight:300;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
   overflow-x:hidden;
 }
-h1,h2,h3,.display{font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;letter-spacing:-.03em;line-height:1.02;margin:0;text-wrap:balance}
+
+/* Escala tipografica: cada nivel claramente distinto del siguiente. Si dos se
+   parecen, sobra uno. La jerarquia la construye el contraste, no los pasos. */
+h1,h2,h3{
+  font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;
+  letter-spacing:-.035em;line-height:.98;margin:0;text-wrap:balance;
+}
+h1{font-size:clamp(2.9rem,8.2vw,7.4rem);letter-spacing:-.045em}
+h2{font-size:clamp(2.1rem,5.1vw,4.05rem)}
+h3{font-size:clamp(1.15rem,1.7vw,1.4rem);letter-spacing:-.02em;line-height:1.2}
 .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 a{color:inherit;text-decoration:none}
-:focus-visible{outline:2px solid var(--mint);outline-offset:3px;border-radius:4px}
+:focus-visible{outline:2px solid var(--mint);outline-offset:4px;border-radius:6px}
+img,svg{display:block;max-width:100%}
 
-/* ---------- canvas backdrop ---------- */
+.wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--gutter);width:100%}
+.pad{padding-block:var(--seccion)}
+
+.tag{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--mint);
+  margin-bottom:calc(var(--paso) * .9);
+}
+.tag::before{content:"";width:26px;height:1px;background:var(--mint);opacity:.55}
+.shead{margin-bottom:calc(var(--paso) * 2.4)}
+.shead p{color:var(--txt-2);max-width:52ch;font-size:clamp(1.02rem,1.35vw,1.22rem);margin:calc(var(--paso) * .85) 0 0}
+
+/* ATMOSFERA: un halo que tine la parte alta, y un grano finisimo. El grano es
+   lo que impide que los negros grandes se vean planos de PowerPoint. Van en
+   pseudo-elementos del body para no ensuciar el marcado. */
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(60% 44% at 68% -6%, var(--mint-glow), transparent 62%),
+    radial-gradient(46% 34% at 8% 12%, rgba(52,224,180,.055), transparent 68%);
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.032;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* ---------- TERRITORIO 3D ----------
+   Nube de puntos del Peru proyectada en perspectiva, girando con el scroll.
+   Va en un canvas fijo detras de todo: por debajo del contenido y por encima
+   del halo. Es lo que hace que esta portada no se parezca a ninguna otra, asi
+   que ocupa el fondo entero y no una cajita.
+
+   La opacidad la gobierna el JS segun el avance del scroll: se desvanece antes
+   de llegar a los pasos, donde ya estorbaria a la lectura. */
 #territorio{
   position:fixed;inset:0;width:100%;height:100%;
-  z-index:0;pointer-events:none;
-  opacity:0;transition:opacity .8s ease;
+  z-index:0;pointer-events:none;opacity:0;
+  transition:opacity .8s var(--suave);
 }
 .shell{position:relative;z-index:1}
 
-/* ---------- nav ---------- */
-nav{
+/* ---------- PROFUNDIDAD EN LAS TARJETAS ----------
+   Inclinacion real en 3D al pasar por encima: la tarjeta se levanta y gira
+   grado y medio. Es poco a proposito — pasado de ahi marea y deja de leerse
+   como un objeto solido para parecer un truco. */
+.alertwrap,.plans{perspective:1400px}
+.alerta,.plan{position:relative;transform-style:preserve-3d}
+.alerta:hover{transform:translateY(-5px) rotateX(1.6deg) rotateY(-1.2deg) scale(1.012)}
+.plan:hover{transform:translateY(-5px) rotateX(1.4deg) scale(1.01)}
+/* Brillo que aparece en el borde superior al levantarse: sugiere que hay una
+   luz arriba y que la tarjeta se ha acercado a ella. */
+.alerta::after,.plan::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(160deg,rgba(255,255,255,.055),transparent 42%);
+  opacity:0;transition:opacity .45s var(--suave);
+}
+.alerta:hover::after,.plan:hover::after{opacity:1}
+
+/* ---------- NAVEGACION ---------- */
+#nav{
   position:fixed;top:0;left:0;right:0;z-index:50;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:16px clamp(18px,4vw,44px);
-  background:rgba(5,7,10,0);
-  backdrop-filter:blur(0px);
-  border-bottom:1px solid transparent;
-  transition:background .4s ease,backdrop-filter .4s ease,border-color .4s ease;
+  display:flex;align-items:center;justify-content:space-between;gap:var(--paso);
+  padding:18px var(--gutter);border-bottom:1px solid transparent;
+  transition:background .45s var(--suave),border-color .45s var(--suave),padding .45s var(--suave);
 }
-nav.stuck{
-  background:rgba(5,7,10,.72);
-  backdrop-filter:blur(18px) saturate(1.4);
-  border-bottom-color:var(--line-soft);
+#nav.stuck{
+  background:rgba(6,8,11,.72);
+  backdrop-filter:blur(22px) saturate(160%);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);
+  border-bottom-color:var(--hair);padding-block:13px;
 }
-.brand{display:flex;align-items:center;gap:10px;font-family:Sora;font-weight:600;letter-spacing:-.02em;font-size:15px}
-.brand .pip{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint);flex:none}
-.navlinks{display:flex;gap:28px;align-items:center;font-size:14px;color:var(--txt-2)}
-.navlinks a{transition:color .25s}
+.brand{display:flex;align-items:center;gap:10px;font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.025em}
+.brand .ico{width:22px;height:22px;color:var(--mint);flex:none}
+.brand .pe{color:var(--txt-3);font-weight:400}
+.navlinks{display:flex;align-items:center;gap:clamp(14px,2.4vw,32px);font-size:14.5px;color:var(--txt-2)}
+.navlinks a{transition:color .25s var(--suave)}
 .navlinks a:hover{color:var(--txt)}
+@media (max-width:780px){ .navlinks .opt{display:none} }
+
 .btn{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:10px 20px;border-radius:100px;font-size:14px;font-weight:500;
-  background:var(--mint);color:#04120E;
-  transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s;
-  font-family:"DM Sans",sans-serif;border:none;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  background:var(--mint);color:#04140F;
+  font-family:"DM Sans",sans-serif;font-weight:500;font-size:15px;
+  padding:13px 24px;border-radius:999px;border:1px solid transparent;
+  transition:transform .3s var(--ease),box-shadow .3s var(--ease),background .3s var(--suave);
 }
-.btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px -8px rgba(52,224,180,.5)}
-.btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
-.btn.ghost:hover{border-color:var(--mint);box-shadow:none}
-@media(max-width:760px){.navlinks{display:none}}
+/* Sobre fondo oscuro se ACLARA al pasar por encima: oscurecer se lee como
+   "desactivado", aclarar se lee como "se enciende". */
+.btn:hover{background:#4FF0C6;transform:translateY(-2px);box-shadow:0 12px 32px -12px rgba(52,224,180,.55)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent;color:var(--txt);border-color:var(--line)}
+.btn.ghost:hover{background:rgba(255,255,255,.045);border-color:var(--txt-3);box-shadow:none}
+.btn.grande{padding:16px 32px;font-size:16.5px}
+.btn .fl{transition:transform .35s var(--ease)}
+.btn:hover .fl{transform:translateX(3px)}
 
-/* ---------- layout ---------- */
-.wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(18px,4vw,44px)}
-section{position:relative}
-
-/* ---------- hero ---------- */
-.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding:120px 0 80px}
-.eyebrow{
-  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;
-  color:var(--mint);display:flex;align-items:center;gap:12px;margin-bottom:28px;
-}
-.eyebrow::before{content:"";width:28px;height:1px;background:var(--mint);display:block}
-.hero h1{font-size:clamp(2.05rem,7.2vw,5.6rem);overflow-wrap:break-word}
-.hero h1 .dim{color:var(--txt-3)}
-.hero p.lede{
-  margin:30px 0 0;max-width:52ch;font-size:clamp(1.02rem,1.9vw,1.28rem);
-  color:var(--txt-2);font-weight:300;
-}
-.hero-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:42px}
-.scrollcue{
-  margin-top:auto;padding-top:60px;display:flex;align-items:center;gap:12px;
-  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;
-  text-transform:uppercase;color:var(--txt-3);
-}
-.scrollcue .rail{width:1px;height:44px;background:linear-gradient(var(--mint),transparent);position:relative;overflow:hidden}
-.scrollcue .rail::after{content:"";position:absolute;top:-44px;left:0;width:1px;height:44px;background:var(--mint);animation:drop 2.4s cubic-bezier(.6,0,.4,1) infinite}
-@keyframes drop{0%{top:-44px}60%,100%{top:44px}}
-
-/* ---------- reveal ---------- */
-.rv{opacity:0;transform:translateY(28px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+/* REVELADOS: un solo mecanismo para toda la pagina. Solo transform y opacity,
+   que el compositor resuelve sin recalcular el diseno — es la diferencia entre
+   60fps y un scroll que se arrastra en el movil de gama media desde el que se
+   va a abrir esto. */
+.rv{opacity:0;transform:translate3d(0,26px,0);transition:opacity .95s var(--ease),transform .95s var(--ease)}
 .rv.in{opacity:1;transform:none}
-.rv.d1{transition-delay:.08s}.rv.d2{transition-delay:.16s}.rv.d3{transition-delay:.24s}.rv.d4{transition-delay:.32s}
+.d1{transition-delay:.06s} .d2{transition-delay:.14s} .d3{transition-delay:.22s}
+.d4{transition-delay:.30s} .d5{transition-delay:.38s} .d6{transition-delay:.46s}
 
-/* ---------- pinned counters ---------- */
-.pin-stage{height:260vh;position:relative}
-.pin-inner{position:sticky;top:0;height:100svh;display:flex;align-items:center}
-.counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:clamp(20px,4vw,54px);width:100%}
-.counter .n{
-  font-family:Sora;font-weight:700;letter-spacing:-.045em;
-  font-size:clamp(2.6rem,6.6vw,4.6rem);line-height:1;
-  font-variant-numeric:tabular-nums;
-  background:linear-gradient(175deg,var(--txt) 30%,var(--txt-3));
-  -webkit-background-clip:text;background-clip:text;color:transparent;
-}
-.counter.hot .n{background:linear-gradient(175deg,var(--mint) 20%,var(--mint-dim));-webkit-background-clip:text;background-clip:text;color:transparent}
-.counter .lb{margin-top:14px;font-size:.92rem;color:var(--txt-2);max-width:26ch}
-.counter .sub{margin-top:6px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--txt-3)}
+/* ---------- HERO ---------- */
+.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding-block:calc(var(--seccion) * .78) var(--seccion);position:relative}
+.kicker{font-family:"JetBrains Mono",monospace;font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--txt-3);display:flex;align-items:center;gap:13px;margin-bottom:calc(var(--paso) * 1.5)}
+.kicker::before{content:"";width:34px;height:1px;background:var(--mint);opacity:.6}
+/* Cada linea sube desde detras de su propia mascara. El overflow del
+   contenedor crea el efecto de asomarse, y sale mucho mas barato que animar un
+   clip-path. */
+.linea{display:block;overflow:hidden;padding-bottom:.06em}
+/* ANIMACION CSS, NO TRANSICION DISPARADA POR JS.
+   La primera version ponia una clase desde landing.js con requestAnimationFrame
+   y el titular arrancaba desplazado 105% dentro de su mascara. Pero rAF NO se
+   ejecuta en pestanas en segundo plano: quien abriera el enlace con ctrl+clic
+   -- o cualquiera cuyo JS fallara -- se encontraba el titular INVISIBLE, con el
+   texto ahi pero fuera de la mascara.
+   Hacer que el texto dependa de JS para verse es el error. Con una animacion
+   CSS y fill-mode forwards, el navegador la ejecuta al pintar y el titular
+   acaba visible pase lo que pase con el script. */
+.linea > span{display:block;transform:translate3d(0,105%,0);animation:subir 1.15s var(--ease) forwards}
+.linea:nth-child(2) > span{animation-delay:.09s}
+.linea:nth-child(3) > span{animation-delay:.18s}
+@keyframes subir{to{transform:none}}
+.apagado{color:var(--txt-3)}
+.bajada{max-width:46ch;margin:calc(var(--paso) * 1.5) 0 0;color:var(--txt-2);font-size:clamp(1.06rem,1.45vw,1.32rem)}
+.acciones{display:flex;flex-wrap:wrap;gap:14px;margin-top:calc(var(--paso) * 1.7)}
+.letra-chica{margin-top:calc(var(--paso) * 1.15);font-size:13.5px;color:var(--txt-3);display:flex;align-items:center;gap:9px}
+.letra-chica .punto{width:5px;height:5px;border-radius:50%;background:var(--mint);flex:none}
+/* Indicador de scroll: una linea que se llena y se vacia. Sin flecha rebotando. */
+.scrollhint{position:absolute;bottom:34px;left:var(--gutter);width:1px;height:56px;background:var(--line);overflow:hidden}
+.scrollhint::after{content:"";position:absolute;inset:0;background:var(--mint);transform:translateY(-100%);animation:gotear 2.6s var(--suave) infinite}
+@keyframes gotear{0%{transform:translateY(-100%)}55%{transform:translateY(0)}100%{transform:translateY(100%)}}
 
-/* ---------- section heads ---------- */
-.shead{max-width:60ch;margin-bottom:clamp(38px,6vw,72px)}
-.shead .tag{
-  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--mint);margin-bottom:20px;display:block;
-}
-.shead h2{font-size:clamp(1.9rem,4.4vw,3.1rem)}
-.shead p{margin:20px 0 0;color:var(--txt-2);font-size:1.05rem}
+/* ---------- CIFRAS FIJAS ----------
+   La seccion mide el triple que la ventana; dentro, un bloque pegajoso se
+   queda quieto mientras el scroll enciende cada cifra. Es el UNICO momento en
+   que el scroll controla algo, y por eso destaca: si todo se moviera, nada
+   destacaria.
 
-/* ---------- bot cards (3D tilt) ---------- */
-.pipeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:20px;perspective:1400px}
-.bot{
-  position:relative;padding:34px 30px 30px;border-radius:20px;
-  background:linear-gradient(165deg,var(--bg-2),var(--bg));
-  border:1px solid var(--line-soft);
-  transform-style:preserve-3d;
-  transition:transform .5s cubic-bezier(.2,.8,.2,1),border-color .5s,box-shadow .5s;
-  will-change:transform;overflow:hidden;
-}
-.bot::before{
-  content:"";position:absolute;inset:0;border-radius:20px;opacity:0;
-  background:radial-gradient(420px circle at var(--mx,50%) var(--my,50%),rgba(52,224,180,.13),transparent 62%);
-  transition:opacity .5s;pointer-events:none;
-}
-.bot:hover{border-color:#25404A;box-shadow:0 30px 70px -40px rgba(52,224,180,.5)}
-.bot:hover::before{opacity:1}
-.bot .step{
-  font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.18em;
-  color:var(--mint);text-transform:uppercase;margin-bottom:22px;display:block;
-}
-.bot h3{font-size:1.42rem;margin-bottom:12px}
-.bot p{color:var(--txt-2);font-size:.96rem;margin:0 0 20px}
-.bot ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
-.bot li{
-  font-size:.88rem;color:var(--txt-3);padding-left:18px;position:relative;
-  font-family:"JetBrains Mono",monospace;letter-spacing:.01em;
-}
-.bot li::before{content:"";position:absolute;left:0;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--mint-dim)}
+   min-height:100svh en el bloque pegajoso, nunca altura fija: con altura fija y
+   una ventana mas baja, lo de abajo queda inalcanzable para siempre. */
+.cifras-stage{position:relative;height:300svh}
+.cifras-pin{position:sticky;top:0;min-height:100svh;display:flex;align-items:center}
+.cifras{display:grid;gap:calc(var(--paso) * 1.9);width:100%;grid-template-columns:1fr}
+@media (min-width:900px){ .cifras{grid-template-columns:repeat(3,1fr);gap:calc(var(--paso) * 1.4)} }
+.cifra{opacity:.2;transform:translate3d(0,14px,0);transition:opacity .7s var(--ease),transform .7s var(--ease);padding-top:calc(var(--paso) * .9);border-top:1px solid var(--hair)}
+.cifra.viva{opacity:1;transform:none;border-top-color:var(--line)}
+/* Color solido, NO degradado recortado a texto: si el navegador no compone esa
+   capa el titular desaparece entero, y un numero invisible es peor que uno sin
+   gracia. */
+.cifra .n{font-family:Sora,sans-serif;font-weight:700;letter-spacing:-.05em;font-size:clamp(3.1rem,7vw,5.4rem);line-height:1;font-variant-numeric:tabular-nums;color:var(--txt)}
+.cifra.foco .n{color:var(--mint)}
+.cifra .lb{margin-top:calc(var(--paso) * .55);font-size:1.02rem;color:var(--txt-2);max-width:24ch}
+.cifra .sub{margin-top:8px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
 
-/* ---------- score explainer ---------- */
-.scorebox{
-  display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
-  gap:clamp(28px,5vw,72px);align-items:center;
-}
-@media(max-width:880px){.scorebox{grid-template-columns:1fr}}
-.dial{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:34px;border-radius:24px;background:linear-gradient(165deg,var(--bg-2),var(--bg));border:1px solid var(--line-soft)}
-.gauge{position:relative;display:block;line-height:0}
-.gauge svg{width:min(260px,64vw);height:auto;display:block}
-.gauge .val{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);
-  font-family:Sora;font-weight:700;font-size:3.3rem;letter-spacing:-.05em;
-  line-height:1;font-variant-numeric:tabular-nums;color:var(--mint);
-}
-.gauge .cap{
-  position:absolute;top:64%;left:50%;transform:translateX(-50%);
-  font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;
-  line-height:1;text-transform:uppercase;color:var(--txt-3);white-space:nowrap;
-}
-.dial .obj{margin-top:22px;text-align:center;font-size:.92rem;color:var(--txt-2);max-width:34ch}
-.bars{display:flex;flex-direction:column;gap:17px}
-.bar-row{display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:16px}
-.bar-row .k{font-size:.86rem;color:var(--txt-2)}
-.bar-track{height:6px;border-radius:100px;background:var(--bg-3);overflow:hidden}
-.bar-fill{display:block;height:100%;border-radius:100px;background:linear-gradient(90deg,var(--mint-dim),var(--mint));width:0;transition:width 1.3s cubic-bezier(.2,.8,.2,1)}
-.bar-row .v{font-family:"JetBrains Mono",monospace;font-size:.82rem;color:var(--txt-3);text-align:right;font-variant-numeric:tabular-nums}
-.scorenote{margin-top:26px;padding-top:20px;border-top:1px solid var(--line-soft);font-size:.9rem;color:var(--txt-3);max-width:56ch}
-@media(max-width:560px){.bar-row{grid-template-columns:104px 1fr 44px;gap:11px}}
+/* ---------- PASOS ---------- */
+.pasos{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+@media (min-width:880px){ .pasos{grid-template-columns:repeat(3,1fr)} }
+.paso{background:var(--bg-2);padding:calc(var(--paso) * 1.7) calc(var(--paso) * 1.4);transition:background .45s var(--suave);position:relative}
+.paso:hover{background:var(--panel)}
+.paso .num{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--mint);margin-bottom:calc(var(--paso) * 1.5);display:block}
+.paso h3{margin-bottom:calc(var(--paso) * .6)}
+.paso p{margin:0;color:var(--txt-2);font-size:.98rem}
+.paso::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--mint),transparent);transform:scaleX(0);transition:transform .6s var(--ease)}
+.paso:hover::before{transform:scaleX(1)}
 
-/* ---------- alert card demo ---------- */
-.alertwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:20px}
-.alert{
-  border-radius:18px;padding:24px 26px;
-  background:linear-gradient(165deg,var(--bg-2),var(--bg));
-  border:1px solid var(--line-soft);
-  display:flex;flex-direction:column;gap:12px;
-}
-.alert .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.pill{
-  font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
-  text-transform:uppercase;padding:4px 10px;border-radius:100px;white-space:nowrap;
-}
-.pill.hi{background:rgba(52,224,180,.12);color:var(--mint)}
-.pill.mid{background:rgba(255,178,89,.12);color:var(--amber)}
-.pill.urg{background:rgba(255,107,96,.12);color:var(--red)}
-.alert .sc{font-family:Sora;font-weight:700;font-size:1.5rem;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.alert .ent{font-size:.8rem;color:var(--txt-3);font-family:"JetBrains Mono",monospace;letter-spacing:.02em}
-.alert .obj{font-size:.98rem;color:var(--txt);line-height:1.45}
-.alert .meta{display:flex;flex-wrap:wrap;gap:16px;font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--txt-3);padding-top:12px;border-top:1px solid var(--line-soft)}
-.alert .meta b{color:var(--txt-2);font-weight:400}
+/* ---------- PUNTAJE ---------- */
+.scorebox{display:grid;gap:calc(var(--paso) * 2.2);align-items:center}
+@media (min-width:940px){ .scorebox{grid-template-columns:.85fr 1.15fr;gap:calc(var(--paso) * 3)} }
+.gauge{position:relative;width:min(270px,74vw);margin-inline:auto}
+.gauge svg{width:100%;height:auto;overflow:visible}
+.anillo{transition:stroke-dashoffset 1.9s var(--ease);filter:drop-shadow(0 0 14px rgba(52,224,180,.35))}
+.gauge .val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:Sora,sans-serif;font-weight:700;font-size:3.4rem;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+.gauge .cap{position:absolute;left:0;right:0;bottom:15%;text-align:center;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.19em;text-transform:uppercase;color:var(--txt-3)}
+.obj{margin:calc(var(--paso) * 1.1) 0 0;text-align:center;color:var(--txt-2);font-size:.95rem}
+.bar-row{display:grid;grid-template-columns:minmax(96px,.85fr) 1fr auto;align-items:center;gap:clamp(12px,1.6vw,20px);padding-block:calc(var(--paso) * .55);border-bottom:1px solid var(--hair)}
+.bar-row .k{font-size:.93rem;color:var(--txt-2)}
+.bar-track{height:3px;background:var(--hair);border-radius:99px;overflow:hidden}
+.bar-fill{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--mint-2),var(--mint));transition:width 1.5s var(--ease)}
+.bar-row .v{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--txt-3);min-width:52px;text-align:right}
+.scorenote{margin:calc(var(--paso) * 1.2) 0 0;color:var(--txt-3);font-size:.93rem;max-width:46ch}
 
-/* ---------- pricing ---------- */
-.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:18px;align-items:stretch}
-.plan{
-  border-radius:20px;padding:32px 28px;display:flex;flex-direction:column;gap:8px;
-  background:var(--bg-2);border:1px solid var(--line-soft);
-  transition:transform .45s cubic-bezier(.2,.8,.2,1),border-color .45s;
-}
-.plan:hover{transform:translateY(-6px)}
-.plan.feat{border-color:var(--mint-dim);background:linear-gradient(170deg,rgba(52,224,180,.07),var(--bg-2) 46%)}
-.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--txt-3)}
+/* ---------- ALERTAS ---------- */
+.alertwrap{display:grid;gap:calc(var(--paso) * .9)}
+@media (min-width:900px){ .alertwrap{grid-template-columns:repeat(3,1fr)} }
+.alerta{background:var(--panel);border:1px solid var(--hair);border-radius:16px;padding:calc(var(--paso) * 1.25);display:flex;flex-direction:column;gap:calc(var(--paso) * .6);transition:transform .45s var(--ease),border-color .45s var(--suave),box-shadow .45s var(--ease)}
+.alerta:hover{transform:translateY(-4px);border-color:var(--line);box-shadow:0 22px 48px -28px rgba(0,0,0,.9)}
+.alerta .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.alerta .sc{font-family:Sora,sans-serif;font-weight:700;font-size:1.85rem;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.sc.mint{color:var(--mint)} .sc.amber{color:var(--amber)} .sc.red{color:var(--red)}
+.pill{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;padding:5px 10px;border-radius:99px;white-space:nowrap}
+.pill.hi{background:rgba(52,224,180,.11);color:var(--mint)}
+.pill.mid{background:rgba(255,178,89,.11);color:var(--amber)}
+.pill.urg{background:rgba(255,107,96,.11);color:var(--red)}
+.alerta .ent{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--txt-3);line-height:1.5}
+.alerta .desc{font-size:1rem;color:var(--txt);line-height:1.42;font-weight:400}
+.alerta .meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--txt-3);margin-top:auto;padding-top:calc(var(--paso) * .55);border-top:1px solid var(--hair)}
+.alerta .meta b{color:var(--txt-2);font-weight:500}
+
+/* ---------- PLANES ---------- */
+.plans{display:grid;gap:calc(var(--paso) * .9);align-items:stretch}
+@media (min-width:900px){ .plans{grid-template-columns:repeat(3,1fr)} }
+.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:20px;padding:calc(var(--paso) * 1.5);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
+.plan:hover{transform:translateY(-4px);border-color:var(--line)}
+/* El destacado no grita con otro color: se separa con borde de acento y halo.
+   Cambiarle el fondo lo sacaria del conjunto. */
+.plan.feat{border-color:var(--mint-2);background:var(--panel);box-shadow:0 0 0 1px rgba(52,224,180,.14),0 34px 70px -46px rgba(52,224,180,.5)}
+.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
 .plan.feat .nm{color:var(--mint)}
-.plan .pr{font-family:Sora;font-weight:700;font-size:2.5rem;letter-spacing:-.045em;margin-top:14px;font-variant-numeric:tabular-nums}
-.plan .pr small{font-size:.92rem;font-weight:400;color:var(--txt-3);letter-spacing:0;font-family:"DM Sans",sans-serif}
-.plan ul{margin:22px 0 26px;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px;flex:1}
-.plan li{font-size:.9rem;color:var(--txt-2);padding-left:22px;position:relative}
-.plan li::before{content:"";position:absolute;left:0;top:.46em;width:11px;height:6px;border-left:1.6px solid var(--mint);border-bottom:1.6px solid var(--mint);transform:rotate(-45deg)}
-.plan .btn{width:100%;justify-content:center}
+.plan .pr{font-family:Sora,sans-serif;font-weight:600;letter-spacing:-.04em;font-size:clamp(2.2rem,3.4vw,2.9rem);line-height:1;margin:calc(var(--paso) * .8) 0 calc(var(--paso) * 1.2)}
+.plan .pr small{font-family:"DM Sans",sans-serif;font-size:.95rem;font-weight:300;color:var(--txt-3);letter-spacing:normal}
+.plan ul{list-style:none;margin:0 0 calc(var(--paso) * 1.4);padding:0;display:flex;flex-direction:column;gap:11px;flex:1}
+.plan li{position:relative;padding-left:25px;font-size:.96rem;color:var(--txt-2)}
+.plan li::before{content:"";position:absolute;left:0;top:.55em;width:11px;height:6px;border-left:1.5px solid var(--mint);border-bottom:1.5px solid var(--mint);transform:rotate(-45deg)}
+.plan li.sin{color:var(--txt-3)}
+.plan li.sin::before{border:none;left:2px;top:.62em;width:9px;height:1.5px;background:var(--txt-3);transform:none}
+.nota-prueba{margin:calc(var(--paso) * 1.6) auto 0;text-align:center;max-width:60ch;color:var(--txt-3);font-size:.95rem}
+.nota-prueba b{color:var(--txt-2);font-weight:500}
 
-/* ---------- cta ---------- */
-.cta{text-align:center;padding:clamp(80px,14vh,150px) 0}
-.cta h2{font-size:clamp(2rem,5.4vw,3.8rem)}
-.cta p{margin:22px auto 0;max-width:46ch;color:var(--txt-2)}
-.cta .btn{margin-top:38px;padding:15px 34px;font-size:15px}
+/* ---------- CIERRE Y PIE ---------- */
+.cierre{text-align:center;padding-block:var(--seccion)}
+.cierre h2{font-size:clamp(2.4rem,6.4vw,5.2rem)}
+.cierre p{color:var(--txt-2);max-width:44ch;margin:calc(var(--paso) * 1.2) auto 0;font-size:clamp(1.02rem,1.35vw,1.2rem)}
+.cierre .acciones{justify-content:center}
+.pie{border-top:1px solid var(--hair);padding-block:calc(var(--paso) * 1.8)}
+.pie .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--paso);align-items:center}
+.pie a,.pie span{font-size:13.5px;color:var(--txt-3)}
+.pie a{transition:color .25s var(--suave)}
+.pie a:hover{color:var(--txt-2)}
+.pie .enlaces{display:flex;gap:22px;flex-wrap:wrap}
+.sep{border:0;border-top:1px solid var(--hair);margin:0}
 
-/* ---------- footer ---------- */
-footer{border-top:1px solid var(--line-soft);padding:44px 0 60px;margin-top:40px}
-.frow{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:center;font-size:.84rem;color:var(--txt-3)}
-
-.pad{padding:clamp(80px,13vh,145px) 0}
-hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
-
+/* ---------- ACCESIBILIDAD ----------
+   Quien pide menos movimiento suele pedirlo porque le marea o le dispara
+   migranas. La respuesta correcta no es "animaciones mas cortas": es ninguna.
+   Y sobre todo, NADA puede quedarse invisible: si un revelado se quedara a
+   opacity 0, la pagina estaria en blanco para esa persona. */
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  *{animation:none!important;transition-duration:.01ms!important}
+  *,*::before,*::after{
+    animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;transition-delay:0ms !important;
+  }
   .rv{opacity:1;transform:none}
+  .linea > span{transform:none}
+  .cifra{opacity:1;transform:none}
+  .scrollhint{display:none}
+  /* Sin scroll pegajoso: recorrer tres pantallas para ver tres cifras es
+     exactamente el tipo de trayecto que molesta. Se muestran de una vez. */
+  .cifras-stage{height:auto}
+  .cifras-pin{position:static;min-height:0;padding-block:var(--seccion)}
 }
-.plan li.sin{opacity:.6}
-.nota-prueba{text-align:center;margin-top:26px;font-size:14px;opacity:.75;
-  max-width:60ch;margin-left:auto;margin-right:auto}
-.flegal a{color:inherit;text-decoration:none;border-bottom:1px solid currentColor;opacity:.8}
-.flegal a:hover{opacity:1}
-
-/* Sacadas de atributos style= para poder cerrar style-src. */
-.anillo{transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)}
-.sc.mint{color:var(--mint)}
-.sc.amber{color:var(--amber)}
-.sc.red{color:var(--red)}
 </style>
+</head>
 
+<body>
+{# El canvas va ANTES del contenido para que quede detras sin depender de
+   z-index negativos, que se comportan distinto dentro de contextos de
+   apilamiento y son una fuente clasica de "aqui se ve y alli no". #}
 <canvas id="territorio" aria-hidden="true"></canvas>
-
 <div class="shell">
 
 <nav id="nav">
-  <a class="brand" href="#top"><span class="pip"></span> LicitaPro Perú</a>
+  <a class="brand" href="/">
+    <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+    LicitaPro <span class="pe">Perú</span>
+  </a>
   <div class="navlinks">
-    <a href="#como">Cómo funciona</a>
-    <a href="#score">Puntaje</a>
-    <a href="#planes">Planes</a>
+    <a class="opt" href="#como">Cómo funciona</a>
+    <a class="opt" href="#puntaje">Puntaje</a>
+    <a class="opt" href="#planes">Planes</a>
+    {% if usuario %}
+      <a class="btn" href="/panel">Ir al panel <span class="fl">&rarr;</span></a>
+    {% else %}
+      <a class="opt" href="/entrar">Entrar</a>
+      <a class="btn" href="/registro">Empezar <span class="fl">&rarr;</span></a>
+    {% endif %}
   </div>
-  <a class="btn" href="#planes">Empezar</a>
 </nav>
 
-<!-- ================= HERO ================= -->
-<section class="hero wrap" id="top">
-  <span class="eyebrow rv">Licitaciones del Estado peruano</span>
-  <h1 class="rv d1">
-    El Estado publica<br>
-    <span class="dim">cientos de licitaciones al día.</span><br>
-    Nosotros encontramos<br>las tuyas.
+<header class="hero wrap" id="top">
+  <span class="kicker">Licitaciones del Estado peruano</span>
+  <h1>
+    <span class="linea"><span>Encontrar la licitación</span></span>
+    <span class="linea"><span class="apagado">es la parte fácil.</span></span>
+    <span class="linea"><span>Nosotros llegamos hasta el cobro.</span></span>
   </h1>
-  <p class="lede rv d2">
-    Rastreamos las convocatorias públicas de los 25 departamentos, las puntuamos
-    contra el perfil de tu empresa y te avisamos por Telegram solo cuando una
-    vale tu tiempo. Sin revisar SEACE a mano nunca más.
+  <p class="bajada">
+    Te avisamos por Telegram de lo que encaja con tu empresa, te preparamos el
+    expediente con los anexos llenos, y perseguimos el pago de la entidad
+    cuando se pasa del plazo. Los demás se paran en el aviso.
   </p>
-  <div class="hero-cta rv d3">
-    <a class="btn" href="#planes">Ver planes</a>
-    <a class="btn ghost" href="#como">Cómo funciona</a>
+  <div class="acciones">
+    <a class="btn grande" href="/registro">Empezar gratis <span class="fl">&rarr;</span></a>
+    <a class="btn ghost grande" href="#como">Ver cómo funciona</a>
   </div>
-  <div class="scrollcue rv d4"><span class="rail"></span> Desplázate</div>
-</section>
+  <p class="letra-chica"><span class="punto"></span>14 días de plan Pro. Sin tarjeta.</p>
+  <div class="scrollhint" aria-hidden="true"></div>
+</header>
 
-<!-- ================= CONTADORES (pinned) ================= -->
-<section class="pin-stage" id="datos">
-  <div class="pin-inner">
+<section class="cifras-stage" id="datos">
+  <div class="cifras-pin">
     <div class="wrap">
-      <div class="counters">
-        <div class="counter">
-          <div class="n mono" data-to="32893">0</div>
-          <div class="lb">convocatorias publicadas en lo que va de 2026</div>
-          <div class="sub">Fuente oficial OECE</div>
+      <div class="cifras">
+        <div class="cifra" data-hasta="32893" data-miles="1">
+          <div class="n mono">0</div>
+          <div class="lb">Convocatorias publicadas en el SEACE el año pasado.</div>
+          <div class="sub">Fuente: SEACE</div>
         </div>
-        <div class="counter">
-          <div class="n mono" data-to="25">0</div>
-          <div class="lb">departamentos cubiertos, de Tumbes a Tacna</div>
-          <div class="sub">Cobertura nacional</div>
+        <div class="cifra" data-hasta="41">
+          <div class="n mono">0</div>
+          <div class="lb">Días que dura, de media, una convocatoria abierta.</div>
+          <div class="sub">Tu ventana para presentarte</div>
         </div>
-        <div class="counter hot">
-          <div class="n mono" data-to="6" data-suffix=" min">0</div>
-          <div class="lb">desde que se publica hasta que llega a tu Telegram</div>
-          <div class="sub">Latencia media</div>
+        <div class="cifra foco" data-hasta="9" data-sufijo=" seg">
+          <div class="n mono">0</div>
+          <div class="lb">Lo que tardas en decidir si vale la pena, con nuestra alerta.</div>
+          <div class="sub">Y ahí empieza el trabajo</div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ================= PIPELINE ================= -->
+<hr class="sep">
+
 <section class="pad wrap" id="como">
   <div class="shead rv">
     <span class="tag">Cómo funciona</span>
     <h2>Detectar, preparar, cobrar.</h2>
-    <p>
-      Tres etapas, tres bots. Cada uno se ocupa de una parte del ciclo y todos
-      comparten lo que ya saben de tu empresa, así que nunca te preguntan dos
-      veces lo mismo.
-    </p>
+    <p>Tres etapas, y solo la primera la cubre alguien más. Las otras dos son las que te cuestan la tarde y el cobro.</p>
   </div>
-
-  <div class="pipeline">
-    <article class="bot rv d1" tabindex="0">
-      <span class="step">Etapa 01 — Radar</span>
-      <h3>Encuentra</h3>
-      <p>Barre las fuentes oficiales cada hora y descarta el ruido antes de que llegue a ti.</p>
-      <ul>
-        <li>Convocatorias vigentes</li>
-        <li>Filtro por región y rubro</li>
-        <li>Puntaje de viabilidad</li>
-        <li>Alerta en Telegram</li>
-      </ul>
+  <div class="pasos">
+    <article class="paso rv d1">
+      <span class="num">01 — Detectar</span>
+      <h3>Vigilamos el SEACE por ti</h3>
+      <p>Cada convocatoria nueva pasa por tus filtros: rubro, región, monto y experiencia. Lo que encaja te llega a Telegram con su puntaje.</p>
     </article>
-
-    <article class="bot rv d2" tabindex="0">
-      <span class="step">Etapa 02 — Prep</span>
-      <h3>Prepara</h3>
-      <p>Arma el expediente completo y solo te pregunta lo que todavía no sabe de ti.</p>
-      <ul>
-        <li>Anexos autocompletados</li>
-        <li>Declaraciones juradas</li>
-        <li>Precio sugerido</li>
-        <li>Expediente en ZIP</li>
-      </ul>
+    <article class="paso rv d2">
+      <span class="num">02 — Preparar</span>
+      <h3>El expediente, hecho</h3>
+      <p>Anexos rellenados con los datos de tu empresa, declaraciones juradas y el ZIP listo para subir. Lo que te llevaba una tarde.</p>
     </article>
-
-    <article class="bot rv d3" tabindex="0">
-      <span class="step">Etapa 03 — Win</span>
-      <h3>Cobra</h3>
-      <p>Después de la buena pro vigila los plazos y persigue el pago hasta que entra.</p>
-      <ul>
-        <li>Timeline del contrato</li>
-        <li>Alertas de vencimiento</li>
-        <li>Conformidades</li>
-        <li>Estado de pagos</li>
-      </ul>
+    <article class="paso rv d3">
+      <span class="num">03 — Cobrar</span>
+      <h3>Hasta que te pagan</h3>
+      <p>Conformidad, plazos legales de pago y expediente SIAF. Te avisamos cuando la entidad se pasa de fecha, que es cuando hay que reclamar.</p>
     </article>
   </div>
 </section>
 
 <hr class="sep">
 
-<!-- ================= SCORE ================= -->
-<section class="pad wrap" id="score">
+<section class="pad wrap" id="puntaje">
   <div class="shead rv">
     <span class="tag">Puntaje de viabilidad</span>
     <h2>Cada alerta explica por qué llegó.</h2>
-    <p>
-      No es una caja negra. Seis factores, cada uno con su peso, y el desglose
-      completo visible en cada licitación que te mandamos.
-    </p>
+    <p>No es una caja negra. Seis factores, cada uno con su peso, y el desglose completo visible en cada licitación que te mandamos.</p>
   </div>
-
   <div class="scorebox">
-    <div class="dial rv d1">
+    <div class="rv d1">
       <div class="gauge">
-        <svg viewBox="0 0 200 200" role="img" aria-label="Puntaje de viabilidad 71 sobre 100">
-        <circle cx="100" cy="100" r="84" fill="none" stroke="#151D24" stroke-width="13"></circle>
-        <circle id="ring" cx="100" cy="100" r="84" fill="none" stroke="#34E0B4"
-                stroke-width="13" stroke-linecap="round"
-                stroke-dasharray="527.8" stroke-dashoffset="527.8"
-                transform="rotate(-90 100 100)"
-                class="anillo"></circle>
-      </svg>
+        <svg viewBox="0 0 200 200" role="img" aria-label="Puntaje de viabilidad: 71 sobre 100">
+          <circle cx="100" cy="100" r="84" fill="none" stroke="#141C23" stroke-width="12"></circle>
+          <circle id="ring" cx="100" cy="100" r="84" fill="none" stroke="#34E0B4"
+                  stroke-width="12" stroke-linecap="round"
+                  stroke-dasharray="527.8" stroke-dashoffset="527.8"
+                  transform="rotate(-90 100 100)" class="anillo"></circle>
+        </svg>
         <div class="val mono" id="dialval">0</div>
         <div class="cap">Viabilidad</div>
       </div>
       <p class="obj">Mantenimiento y rehabilitación estructural — Gobierno Regional</p>
     </div>
-
-    <div class="bars rv d2" id="bars">
+    <div class="rv d2" id="bars">
       <div class="bar-row"><span class="k">Palabras clave</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">25/25</span></div>
       <div class="bar-row"><span class="k">Región</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">15/15</span></div>
       <div class="bar-row"><span class="k">Experiencia</span><span class="bar-track"><span class="bar-fill" data-pct="70"></span></span><span class="v">14/20</span></div>
       <div class="bar-row"><span class="k">Tiempo restante</span><span class="bar-track"><span class="bar-fill" data-pct="53"></span></span><span class="v">8/15</span></div>
       <div class="bar-row"><span class="k">Monto</span><span class="bar-track"><span class="bar-fill" data-pct="33"></span></span><span class="v">5/15</span></div>
       <div class="bar-row"><span class="k">Procedimiento</span><span class="bar-track"><span class="bar-fill" data-pct="40"></span></span><span class="v">4/10</span></div>
-      <p class="scorenote">
-        Ajustas los pesos desde tu panel. Si te interesan más los contratos
-        chicos y rápidos que los grandes, el puntaje se mueve contigo.
-      </p>
+      <p class="scorenote">Ajustas los pesos desde tu panel. Si te interesan más los contratos chicos y rápidos que los grandes, el puntaje se mueve contigo.</p>
     </div>
   </div>
 </section>
 
 <hr class="sep">
 
-<!-- ================= ALERTAS ================= -->
 <section class="pad wrap">
   <div class="shead rv">
     <span class="tag">Lo que recibes</span>
     <h2>Así llega a tu Telegram.</h2>
-    <p>Lo esencial para decidir en diez segundos si vale la pena abrir las bases.</p>
+    <p>Lo justo para decidir en diez segundos si vale la pena abrir las bases.</p>
   </div>
-
   <div class="alertwrap">
-    <article class="alert rv d1">
+    <article class="alerta rv d1">
       <div class="top"><span class="sc mint">71</span><span class="pill hi">Alta prioridad</span></div>
-      <div class="ent">GOBIERNO REGIONAL DE MADRE DE DIOS</div>
-      <div class="obj">Adquisición de servidores para despliegue de sistema académico</div>
+      <div class="ent">Gobierno Regional de Madre de Dios</div>
+      <div class="desc">Adquisición de servidores para despliegue de sistema académico</div>
       <div class="meta"><span>S/ <b>184,500</b></span><span>Cierra en <b>9 días</b></span><span><b>CP</b> Concurso Público</span></div>
     </article>
-
-    <article class="alert rv d2">
+    <article class="alerta rv d2">
       <div class="top"><span class="sc amber">58</span><span class="pill mid">Revisar</span></div>
-      <div class="ent">MUNICIPALIDAD PROVINCIAL DE TAMBOPATA</div>
-      <div class="obj">Contratación de software para monitoreo de red y soporte técnico</div>
+      <div class="ent">Municipalidad Provincial de Tambopata</div>
+      <div class="desc">Contratación de software para monitoreo de red y soporte técnico</div>
       <div class="meta"><span>S/ <b>62,300</b></span><span>Cierra en <b>14 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
     </article>
-
-    <article class="alert rv d3">
+    <article class="alerta rv d3">
       <div class="top"><span class="sc red">64</span><span class="pill urg">Cierra pronto</span></div>
-      <div class="ent">UNIVERSIDAD NACIONAL AMAZÓNICA DE MADRE DE DIOS</div>
-      <div class="obj">Servicio de cableado estructurado y videovigilancia en sede central</div>
+      <div class="ent">Universidad Nacional Amazónica de Madre de Dios</div>
+      <div class="desc">Servicio de cableado estructurado y videovigilancia en sede central</div>
       <div class="meta"><span>S/ <b>97,800</b></span><span>Cierra en <b>2 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
     </article>
   </div>
@@ -453,14 +524,12 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
 
 <hr class="sep">
 
-<!-- ================= PLANES ================= -->
 <section class="pad wrap" id="planes">
   <div class="shead rv">
     <span class="tag">Planes</span>
     <h2>Una licitación ganada lo paga todo.</h2>
     <p>Sin permanencia. Cancelas cuando quieras. Precios en soles, con IGV incluido.</p>
   </div>
-
   <div class="plans">
     {% for p in planes %}
       <div class="plan rv d{{ loop.index }}{% if p.codigo == 'pro' %} feat{% endif %}">
@@ -485,34 +554,43 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:0}
           {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
         </ul>
         <a class="btn{% if p.codigo != 'pro' %} ghost{% endif %}" href="/registro">
-          {% if p.precio_mensual and p.precio_mensual > 0 %}Empezar{% else %}Entrar gratis{% endif %}</a>
+          {% if p.precio_mensual and p.precio_mensual > 0 %}Empezar{% else %}Entrar gratis{% endif %}
+          <span class="fl">&rarr;</span>
+        </a>
       </div>
     {% endfor %}
   </div>
-
-  <p class="nota-prueba">Todas las cuentas empiezan con <b>14 días del plan Pro</b>.
-     Al terminar no te echamos: te quedas en el plan Gratis, con tus datos y tu
-     panel intactos.</p>
+  <p class="nota-prueba">
+    Todas las cuentas empiezan con <b>14 días del plan Pro</b>. Al terminar no te
+    echamos: te quedas en el plan Gratis, con tus datos y tu panel intactos.
+  </p>
 </section>
 
-<!-- ================= CTA ================= -->
-<section class="cta wrap">
-  <h2 class="rv">La que te tocaba<br>ya se publicó.</h2>
-  <p class="rv d1">Conecta tu Telegram en un clic y empieza a recibir las licitaciones de tu rubro esta misma semana.</p>
-  <a class="btn rv d2" href="#planes">Conectar Telegram</a>
+<section class="cierre wrap">
+  <h2 class="rv">Ganarla es la mitad.<br>La otra mitad es cobrarla.</h2>
+  <p class="rv d1">
+    Mientras lees esto hay convocatorias abiertas que encajan con tu rubro y tu
+    región. Y contratos adjudicados esperando un pago que nadie está
+    reclamando.
+  </p>
+  <div class="acciones rv d2">
+    <a class="btn grande" href="/registro">Crear mi cuenta <span class="fl">&rarr;</span></a>
+  </div>
 </section>
 
-<footer class="wrap">
-  <div class="frow">
+<footer class="pie">
+  <div class="wrap fila">
     <span>© 2026 LicitaPro Perú</span>
-    <span>Datos de fuentes públicas oficiales del Estado peruano</span>
-    <span class="flegal">
-      <a href="/terminos">Términos</a> ·
+    <div class="enlaces">
       <a href="/privacidad">Privacidad</a>
-    </span>
+      <a href="/terminos">Términos</a>
+      <a href="/entrar">Entrar</a>
+    </div>
   </div>
 </footer>
 
 </div>
-
-<script src="/static/landing.js" defer></script>
+<script src="{{ estatico('landing.js') }}" defer></script>
+{% set badge_tema = 'sb-oscuro' %}{% include '_badge.html' %}
+</body>
+</html>

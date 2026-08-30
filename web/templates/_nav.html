@@ -1,13 +1,28 @@
+{# Cabecera del panel. La incluyen las 17 plantillas de la aplicacion, asi que
+   `activo`, `usuario` y request.state.susc_aviso son contrato: cambiarlos aqui
+   obliga a tocarlas todas. #}
 <header>
-  <a class="brand" href="/panel"><span class="pip"></span> LicitaPro</a>
+  <a class="brand" href="/panel">
+    <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+    LicitaPro <span class="pe">Perú</span>
+  </a>
+
   <nav class="menu">
-    <a href="/panel" {% if activo == 'licitaciones' %}class="activo"{% endif %}>Licitaciones</a>
-    <a href="/propuestas" {% if activo == 'propuestas' %}class="activo"{% endif %}>Propuestas</a>
-    <a href="/contratos" {% if activo == 'contratos' %}class="activo"{% endif %}>Contratos</a>
-    <a href="/empresas" {% if activo == 'empresas' %}class="activo"{% endif %}>Empresas</a>
-    <a href="/configuracion" {% if activo == 'config' %}class="activo"{% endif %}>Configuración</a>
-    <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo"{% endif %}>Suscripción</a>
+    <a href="/panel" {% if activo == 'licitaciones' %}class="activo" aria-current="page"{% endif %}>Licitaciones</a>
+    <a href="/propuestas" {% if activo == 'propuestas' %}class="activo" aria-current="page"{% endif %}>Propuestas</a>
+    <a href="/contratos" {% if activo == 'contratos' %}class="activo" aria-current="page"{% endif %}>Contratos</a>
+    <a href="/informes" {% if activo == 'informes' %}class="activo" aria-current="page"{% endif %}>Informes</a>
+    <a href="/empresas" {% if activo == 'empresas' %}class="activo" aria-current="page"{% endif %}>Empresas</a>
+    <a href="/configuracion" {% if activo == 'config' %}class="activo" aria-current="page"{% endif %}>Configuración</a>
+    <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo" aria-current="page"{% endif %}>Suscripción</a>
   </nav>
+
   <span class="sesion">
     {% set susc_aviso = request.state.susc_aviso | default(none) %}
     {% if susc_aviso %}
@@ -16,7 +31,13 @@
     {% if not usuario.telegram_chat_id %}
       <a class="aviso" href="/configuracion">conecta Telegram</a>
     {% endif %}
-    {{ usuario.nombre or usuario.email }}
+
+    {# La inicial ancla la mirada y ocupa mucho menos que el correo entero, que
+       en pantallas medianas partia la barra en dos lineas. El correo completo
+       sigue accesible en el title. #}
+    <span class="yo" title="{{ usuario.email }}" aria-hidden="true">{{ (usuario.nombre or usuario.email)[0] }}</span>
+    <span class="quien">{{ usuario.nombre or usuario.email }}</span>
+
     <form class="en-linea" method="post" action="/salir">
       <button type="submit" class="sec">Salir</button>
     </form>

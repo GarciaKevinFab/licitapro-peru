@@ -5,13 +5,6 @@
 .nota-plazo{border-left:2px solid var(--ac);padding:2px 0 2px 16px;margin-top:18px;
   display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:var(--ink-2)}
 
-table.datos{width:100%;border-collapse:collapse;font-size:13.5px}
-table.datos th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;padding:0 12px 9px 0;border-bottom:1px solid var(--line)}
-table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
-table.datos tr:last-child td{border-bottom:none}
-table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
-  font-variant-numeric:tabular-nums}
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
   text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
@@ -27,7 +20,6 @@ table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mo
   padding:3px 7px;border-radius:3px}
 .sesion button{padding:5px 11px;font-size:12px}
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
-.tabla-caja{overflow-x:auto}
 
 main{max-width:900px}
 .cabecera h1{font-family:Sora,sans-serif;font-size:1.3rem;font-weight:600;margin:6px 0 0;
@@ -38,6 +30,23 @@ main{max-width:900px}
 .metas div b{font-family:"JetBrains Mono",monospace;font-weight:600;font-variant-numeric:tabular-nums}
 tr.hecho td{opacity:.5}
 tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
+
+/* ---------- EL ESTADO GANA AL PASAR POR ENCIMA ----------
+   _base.html pinta un filo de acento en el primer td al pasar el raton, y esa
+   regla es mas especifica que `tr.vencido td:first-child`. Resultado: la marca
+   roja de un plazo vencido se volvia verde justo al senalarla -- la senal
+   desaparecia en el momento de mirarla.
+
+   Estas dos reglas devuelven la prioridad al ESTADO, que es informacion, por
+   encima del hover, que es solo orientacion. */
+table.datos tbody tr.vencido:hover td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
+table.datos tbody tr.hecho:hover td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+/* Lo hecho tambien se marca, en verde y apagado: sin filo, una fila completada
+   y una normal se distinguian solo por la opacidad, que se pierde de un
+   vistazo en una tabla larga. */
+table.datos tbody tr.hecho td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+tr.hecho td{transition:opacity .25s ease}
+tr.hecho:hover td{opacity:.8}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
@@ -97,7 +106,15 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
   <div class="tarjeta">
     <h2>Cobros</h2>
     <p class="sub">Registro interno de lo facturado y lo cobrado. No emite comprobantes:
-       la factura electrónica la sigue emitiendo tu contador.</p>
+       la factura electrónica la sigue emitiendo tu contador. La «proforma» es un
+       documento de acompañamiento y lo dice en su portada; no sustituye a la
+       factura ante SUNAT.</p>
+    <p class="sub">
+      <a href="/contratos/{{ c.id }}/conformidad">Descargar acta de conformidad</a>
+      — el plazo legal de pago corre en días hábiles desde la conformidad, no
+      desde la factura, así que tenerla firmada es lo que te deja reclamar con
+      una fecha concreta.
+    </p>
     {% if pagos %}
       <div class="tabla-caja">
       <table class="datos">
@@ -124,10 +141,12 @@ tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
               {% endif %}
             </td>
             <td><span class="pill {% if pg.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ pg.estado }}</span></td>
-            <td>{% if pg.estado != 'pagado' %}
-              <form method="post" action="/pagos/{{ pg.id }}/cobrado">
-                <button type="submit" class="sec">Marcar cobrado</button></form>
-            {% else %}{{ pg.fecha_pago_real.strftime('%d/%m/%y') if pg.fecha_pago_real else '' }}{% endif %}</td>
+            <td class="acciones">
+              <a class="btn sec" href="/contratos/{{ c.id }}/pagos/{{ pg.id }}/proforma">Proforma</a>
+              {% if pg.estado != 'pagado' %}
+                <form method="post" action="/pagos/{{ pg.id }}/cobrado">
+                  <button type="submit" class="sec">Marcar cobrado</button></form>
+              {% else %}<span class="ayuda">{{ pg.fecha_pago_real.strftime('%d/%m/%y') if pg.fecha_pago_real else '' }}</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

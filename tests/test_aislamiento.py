@@ -487,43 +487,301 @@ async def test_la_guia_desaparece_al_completar_los_pasos(usuario, empresa):
     assert pasos is not None and pasos["hechos"] == 2
 
 
-# ─── API interna de n8n ──────────────────────────────────
+# ─── Experiencia y equipo tecnico ────────────────────────
 
-async def test_la_api_interna_falla_cerrada_sin_token():
-    """No tenia ninguna comprobacion de acceso, y uno de sus endpoints devuelve
-    los contratos activos de TODOS los inquilinos.
+async def test_no_se_puede_agregar_experiencia_a_una_empresa_ajena(
+        usuario, empresa, marca, cliente):
+    """Rutas de escritura nuevas, asi que la propiedad se comprueba explicitamente.
 
-    Sin la variable configurada se niega entera, en vez de responder: una API
-    interna sin token no es "todavia sin proteger", es una filtracion esperando
-    a que alguien la arranque siguiendo el comentario de ejecucion.
+    La experiencia acreditada es dato competitivo: con quien has contratado y
+    por cuanto. Poder escribirla en la empresa de otro seria, ademas de una
+    fuga, una forma de estropearle la calificacion.
+    """
+    from shared.db import borrar_cuenta, crear_usuario, connection
+    from shared.seguridad import hashear_password
+
+    email = f"intruso-exp-{marca}@ejemplo.pe"
+    intruso = await crear_usuario(email, hashear_password("ClaveDePrueba123!"), "Intruso")
+    try:
+        await cliente.post("/entrar", data={"email": email,
+                                            "password": "ClaveDePrueba123!"})
+        r = await cliente.post(f"/empresas/{empresa}/experiencia", data={
+            "objeto_contrato": "Contrato inventado",
+            "entidad_contratante": "Entidad inventada"})
+        assert r.status_code == 303
+        assert "no+es+tuya" in r.headers["location"]
+
+        r = await cliente.post(f"/empresas/{empresa}/equipo",
+                               data={"nombre_completo": "Profesional inventado"})
+        assert r.status_code == 303
+        assert "no+es+tuya" in r.headers["location"]
+
+        # Y no se escribio nada.
+        async with connection() as c:
+            assert await c.fetchval(
+                "SELECT COUNT(*) FROM experiencia WHERE empresa_id=$1", empresa) == 0
+            assert await c.fetchval(
+                "SELECT COUNT(*) FROM equipo_tecnico WHERE empresa_id=$1", empresa) == 0
+    finally:
+        await borrar_cuenta(intruso["id"])
+
+
+async def test_borrar_experiencia_exige_que_sea_de_esa_empresa(
+        usuario, empresa, marca, cliente):
+    """El id de la experiencia y el de la empresa vienen los DOS de la URL.
+
+    Sin el empresa_id en el WHERE bastaria con cambiar un numero para borrar la
+    experiencia de cualquier otra empresa del sistema, aun siendo dueno de la
+    propia.
+    """
+    from shared.db import connection
+
+    async with connection() as c:
+        otra_empresa = await c.fetchval(
+            """INSERT INTO empresas (razon_social, ruc, usuario_id, activa)
+               VALUES ($1, $2, $3, TRUE) RETURNING id""",
+            f"Ajena {marca} SAC", "21" + marca[:9], usuario["id"])
+        exp_ajena = await c.fetchval(
+            """INSERT INTO experiencia (empresa_id, entidad_contratante,
+                                        objeto_contrato)
+               VALUES ($1,'Entidad','Obra de la otra empresa') RETURNING id""",
+            otra_empresa)
+
+    await cliente.post("/entrar", data={"email": usuario["email"],
+                                        "password": usuario["password"]})
+    # Se pide borrar la experiencia de `otra_empresa` a traves de `empresa`.
+    r = await cliente.post(f"/empresas/{empresa}/experiencia/{exp_ajena}/borrar")
+    assert r.status_code == 303
+
+    async with connection() as c:
+        sigue = await c.fetchval("SELECT COUNT(*) FROM experiencia WHERE id=$1",
+                                 exp_ajena)
+    assert sigue == 1, "el empresa_id del WHERE no esta frenando el cruce de ids"
+
+
+async def test_las_claves_de_busqueda_salen_normalizadas(usuario, empresa, cliente):
+    """`knowledge_base` cruza estas claves contra el objeto de la licitacion.
+
+    Ese cruce compara arrays, asi que solo casa si los dos lados estan
+    normalizados igual: minusculas y sin tildes. Guardando el texto tal como lo
+    escribe el usuario, el cruce no encontraria nunca nada y la experiencia
+    relevante no se propondria jamas.
+    """
+    from shared.db import connection
+
+    await cliente.post("/entrar", data={"email": usuario["email"],
+                                        "password": usuario["password"]})
+    await cliente.post(f"/empresas/{empresa}/experiencia", data={
+        "objeto_contrato": "AMPLIACIÓN del SISTEMA de Alcantarillado",
+        "entidad_contratante": "Municipalidad de Prueba",
+        "monto": "S/ 1,240,500.00"})
+
+    async with connection() as c:
+        fila = await c.fetchrow(
+            "SELECT monto, keywords FROM experiencia WHERE empresa_id=$1", empresa)
+
+    assert "ampliacion" in fila["keywords"], fila["keywords"]
+    assert "alcantarillado" in fila["keywords"]
+    # Sin tildes ni mayusculas en ninguna.
+    assert all(k == k.lower() and k.isalnum() for k in fila["keywords"])
+    # Y el monto con separadores y simbolo de moneda se guardo como numero.
+    assert fila["monto"] == pytest.approx(1240500.0)
+
+
+# ─── Vista de administracion ─────────────────────────────
+
+async def test_la_vista_de_gasto_se_cierra_a_los_clientes(usuario, cliente):
+    """Ensena los correos de todos los clientes y cuanto consume cada uno.
+
+    Es la pagina con mas datos de terceros de todo el producto. Se comprueban
+    los dos cierres: un cliente con sesion valida no la ve, y sin la variable
+    configurada no la ve NADIE -- ni el dueno. Lo segundo importa porque un
+    despliegue con la variable olvidada, si abriera, publicaria esa lista.
     """
     import os
 
-    import httpx
-
-    from shared.api_server import app as api
-
-    previo = os.environ.pop("LICITAPRO_API_TOKEN", None)
+    previo = os.environ.get("LICITAPRO_ADMIN_EMAIL")
     try:
-        transporte = httpx.ASGITransport(app=api)
-        async with httpx.AsyncClient(transport=transporte,
-                                     base_url="http://interna") as c:
-            sin_configurar = await c.get("/api/contratos")
-            assert sin_configurar.status_code == 503
+        # Un cliente cualquiera, con el dueno configurado y siendo otro.
+        os.environ["LICITAPRO_ADMIN_EMAIL"] = "dueno-que-no-eres-tu@ejemplo.pe"
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+        assert (await cliente.get("/admin/ia")).status_code == 404
 
-            os.environ["LICITAPRO_API_TOKEN"] = "token-de-prueba"
-            assert (await c.get("/api/contratos")).status_code == 401
-            assert (await c.get("/api/contratos",
-                                headers={"X-API-Token": "otro"})).status_code == 401
-            assert (await c.get("/api/contratos",
-                                headers={"X-API-Token": "token-de-prueba"})
-                    ).status_code == 200
-            # El healthcheck tiene que poder consultarse sin token.
-            assert (await c.get("/api/health")).status_code == 200
+        # Y ahora ese mismo usuario SI es el dueno: tiene que verla. En
+        # mayusculas a proposito, para fijar que el correo no distingue caja.
+        os.environ["LICITAPRO_ADMIN_EMAIL"] = usuario["email"].upper()
+        assert (await cliente.get("/admin/ia")).status_code == 200
+
+        # Sin variable, cerrado incluso para el.
+        os.environ.pop("LICITAPRO_ADMIN_EMAIL", None)
+        assert (await cliente.get("/admin/ia")).status_code == 404
     finally:
-        os.environ.pop("LICITAPRO_API_TOKEN", None)
-        if previo:
-            os.environ["LICITAPRO_API_TOKEN"] = previo
+        os.environ.pop("LICITAPRO_ADMIN_EMAIL", None)
+        if previo is not None:
+            os.environ["LICITAPRO_ADMIN_EMAIL"] = previo
+
+
+async def test_no_se_descarga_la_proforma_de_un_contrato_ajeno(
+        usuario, empresa, marca, cliente):
+    """La proforma lleva dentro entidad, montos y datos bancarios."""
+    from shared.db import borrar_cuenta, connection, crear_usuario
+    from shared.seguridad import hashear_password
+
+    async with connection() as c:
+        contrato = await c.fetchval(
+            """INSERT INTO contratos (empresa_id, numero_contrato,
+                                     monto_adjudicado, estado)
+               VALUES ($1,$2,$3,'vigente') RETURNING id""",
+            empresa, f"C-{marca}", 50000)
+        pago = await c.fetchval(
+            """INSERT INTO pagos (contrato_id, concepto, monto, estado)
+               VALUES ($1,'Entregable',$2,'facturado') RETURNING id""",
+            contrato, 50000)
+
+    email = f"intruso-doc-{marca}@ejemplo.pe"
+    intruso = await crear_usuario(email, hashear_password("ClaveDePrueba123!"), "Intruso")
+    try:
+        await cliente.post("/entrar", data={"email": email,
+                                            "password": "ClaveDePrueba123!"})
+        r = await cliente.get(f"/contratos/{contrato}/pagos/{pago}/proforma")
+        assert r.status_code == 303
+        assert "no+es+tuyo" in r.headers["location"]
+
+        r = await cliente.get(f"/contratos/{contrato}/conformidad")
+        assert r.status_code == 303
+        assert "no+es+tuyo" in r.headers["location"]
+    finally:
+        await borrar_cuenta(intruso["id"])
+        async with connection() as c:
+            await c.execute("DELETE FROM pagos WHERE contrato_id=$1", contrato)
+            await c.execute("DELETE FROM contratos WHERE id=$1", contrato)
+
+
+# ─── Seguimiento, vencimientos y exportacion ─────────────
+
+async def test_seguir_no_deja_redirigir_fuera_del_sitio(usuario, marca, cliente):
+    """`volver` llega de un formulario, o sea de fuera.
+
+    Sin comprobarlo seria una redireccion abierta: basta con montar un enlace
+    con `volver=//otro-sitio` para sacar al usuario del panel justo despues de
+    una accion que el mismo pidio, que es cuando menos se sospecha.
+    """
+    from shared.db import connection
+
+    lid = f"prueba-seg-{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, entidad, objeto)
+               VALUES ($1,'prueba','Entidad','Objeto de prueba')
+               ON CONFLICT (id) DO NOTHING""", lid)
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+        for destino in ("//evil.example", "https://evil.example", "javascript:1"):
+            r = await cliente.post(f"/licitacion/{lid}/seguir",
+                                   data={"volver": destino})
+            assert r.headers["location"] == f"/licitacion/{lid}", destino
+
+        # Y una ruta propia si se respeta.
+        r = await cliente.post(f"/licitacion/{lid}/seguir", data={"volver": "/panel"})
+        assert r.headers["location"] == "/panel"
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones_seguidas WHERE licitacion_id=$1", lid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lid)
+
+
+async def test_seguir_alterna_y_no_duplica(usuario, marca, cliente):
+    """Seguir dos veces no es un estado distinto de seguir una."""
+    from shared.db import connection
+
+    lid = f"prueba-seg2-{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, entidad, objeto)
+               VALUES ($1,'prueba','Entidad','Objeto de prueba')
+               ON CONFLICT (id) DO NOTHING""", lid)
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+
+        async def cuantas():
+            async with connection() as c:
+                return await c.fetchval(
+                    """SELECT COUNT(*) FROM licitaciones_seguidas
+                        WHERE usuario_id=$1 AND licitacion_id=$2""",
+                    usuario["id"], lid)
+
+        await cliente.post(f"/licitacion/{lid}/seguir")
+        assert await cuantas() == 1
+        await cliente.post(f"/licitacion/{lid}/seguir")   # alterna: deja de seguir
+        assert await cuantas() == 0
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones_seguidas WHERE licitacion_id=$1", lid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lid)
+
+
+async def test_no_se_anotan_vencimientos_en_una_empresa_ajena(
+        usuario, empresa, marca, cliente):
+    from shared.db import borrar_cuenta, connection, crear_usuario
+    from shared.seguridad import hashear_password
+
+    email = f"intruso-venc-{marca}@ejemplo.pe"
+    intruso = await crear_usuario(email, hashear_password("ClaveDePrueba123!"), "Intruso")
+    try:
+        await cliente.post("/entrar", data={"email": email,
+                                            "password": "ClaveDePrueba123!"})
+        r = await cliente.post(f"/empresas/{empresa}/vencimiento", data={
+            "tipo": "Poliza inventada", "fecha_vencimiento": "2027-01-01"})
+        assert r.status_code == 303
+        assert "no+es+tuya" in r.headers["location"]
+
+        async with connection() as c:
+            assert await c.fetchval(
+                "SELECT COUNT(*) FROM vencimientos WHERE empresa_id=$1", empresa) == 0
+    finally:
+        await borrar_cuenta(intruso["id"])
+
+
+async def test_el_csv_lo_abre_excel_en_espanol(usuario, cliente):
+    """Dos detalles que parecen manias y deciden si la exportacion sirve.
+
+    Sin BOM, Excel lee el archivo como ANSI y toda tilde sale rota en cada
+    fila. Con comas en vez de punto y coma, la configuracion regional de Peru
+    mete la fila entera en la primera columna. Cualquiera de las dos convierte
+    la funcion en algo que el usuario prueba una vez y no vuelve a usar.
+    """
+    await cliente.post("/entrar", data={"email": usuario["email"],
+                                        "password": usuario["password"]})
+    r = await cliente.get("/informes/cobros.csv")
+    assert r.status_code == 200
+    assert r.content.startswith(b"\xef\xbb\xbf"), "falta el BOM"
+    assert b";" in r.content.split(b"\n")[0], "la cabecera no usa punto y coma"
+    assert "attachment" in r.headers.get("content-disposition", "")
+
+
+async def test_el_html_no_se_cachea_nunca(cliente):
+    """Un intermediario que guarde /panel se lo sirve al siguiente visitante.
+
+    Hoy Cloudflare no cachea HTML por defecto, asi que en la practica no
+    ocurre. Pero eso es configuracion que vive FUERA de este repositorio: una
+    regla de "Cache Everything" puesta con buena intencion convierte el panel
+    en una fuga entre clientes. La aplicacion tiene que defenderse sola.
+
+    Hay un segundo motivo, independiente: todas las plantillas llevan un nonce
+    de CSP distinto por peticion. Un cuerpo guardado con el nonce de ayer,
+    servido con la cabecera de hoy, no casa, y la pagina sale sin estilos.
+
+    `/static` queda fuera a proposito: archivos sin nonce y sin datos de nadie.
+    """
+    for ruta in ("/", "/entrar", "/registro", "/privacidad", "/panel"):
+        r = await cliente.get(ruta)
+        assert r.headers.get("cache-control") == "private, no-store", ruta
+
+    estatico = await cliente.get("/static/licitapro.js")
+    assert "cache-control" not in estatico.headers
 
 
 # ─── Paginas legales ─────────────────────────────────────

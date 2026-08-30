@@ -1,0 +1,147 @@
+{% extends "_base.html" %}
+{% block titulo %}Informes · LicitaPro{% endblock %}
+{% block estilos %}
+main{max-width:980px}
+.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.ent{font-size:11.5px;color:var(--ink-3);display:block}
+.cifras{display:flex;flex-wrap:wrap;gap:30px}
+.cifras div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:3px}
+.cifras div b{font-family:"JetBrains Mono",monospace;font-size:24px;font-weight:600;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.vacio{padding:30px 20px;text-align:center;color:var(--ink-2)}
+{% endblock %}
+{% block cuerpo %}
+{% with activo='informes' %}{% include "_nav.html" %}{% endwith %}
+<main>
+
+  {% if vencimientos %}
+  <div class="tarjeta">
+    <h2>Vence pronto</h2>
+    <div class="tabla-caja">
+      <table class="datos">
+        <thead><tr><th>Documento</th><th>Empresa</th><th>Vence</th><th></th></tr></thead>
+        <tbody>
+          {% for v in vencimientos %}
+            <tr>
+              <td>{{ v.tipo }}{% if v.descripcion %}<span class="ent">{{ v.descripcion }}</span>{% endif %}</td>
+              <td>{{ v.razon_social }}</td>
+              <td>{{ v.fecha.strftime('%d/%m/%Y') }}</td>
+              <td>
+                {% if v.dias < 0 %}
+                  <span class="pill urg">vencido hace {{ -v.dias }} día(s)</span>
+                {% elif v.dias <= 15 %}
+                  <span class="pill pend">en {{ v.dias }} día(s)</span>
+                {% else %}
+                  <span class="pill neutro">en {{ v.dias }} días</span>
+                {% endif %}
+              </td>
+            </tr>
+            {# El RNP no es un aviso más: sin inscripción vigente la oferta es
+               inadmisible, así que todo expediente que se prepare mientras
+               tanto es trabajo perdido. #}
+            {% if v.inhabilita and v.dias < 0 %}
+              <tr><td colspan="4">
+                <div class="mensaje mal">Con el RNP vencido no puedes contratar
+                  con el Estado. Cualquier oferta que presentes es inadmisible
+                  hasta que renueves.</div></td></tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="tarjeta">
+    <h2>Tu historial</h2>
+    <div class="cifras">
+      <div><span>Propuestas</span><b>{{ r.propuestas }}</b></div>
+      <div><span>Ganadas</span><b>{{ r.ganados }}</b></div>
+      <div><span>Adjudicado</span><b>S/ {{ '{:,.0f}'.format(r.adjudicado or 0) }}</b></div>
+      <div><span>Por cobrar</span><b>S/ {{ '{:,.0f}'.format(r.por_cobrar or 0) }}</b></div>
+    </div>
+    {% if r.propuestas %}
+      <p class="ayuda mt-14">
+        Ganas {{ '{:.0f}'.format(r.ganados / r.propuestas * 100) }} de cada 100
+        propuestas que preparas. Si el número es bajo, casi siempre es el filtro
+        y no la oferta: te estás presentando donde no encajas.
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Con qué entidades ganas</h2>
+    {% if por_entidad %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr><th>Entidad</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
+          <tbody>
+            {% for e in por_entidad %}
+              <tr>
+                <td>{{ e.entidad }}</td>
+                <td class="num">{{ e.ganados }}</td>
+                <td class="num">S/ {{ '{:,.0f}'.format(e.monto) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="ayuda">Donde ya ganaste conocen tu trabajo. Es el sitio más barato
+         para volver a presentarte.</p>
+    {% else %}
+      <div class="vacio"><p>Todavía no has registrado ninguna buena pro.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Por mes</h2>
+    {% if por_mes %}
+      <div class="tabla-caja">
+        <table class="datos">
+          <thead><tr><th>Mes</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
+          <tbody>
+            {% for m in por_mes %}
+              <tr>
+                <td>{{ m.mes.strftime('%m/%Y') }}</td>
+                <td class="num">{{ m.ganados }}</td>
+                <td class="num">S/ {{ '{:,.0f}'.format(m.monto) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="vacio"><p>Sin adjudicaciones con fecha registrada.</p></div>
+    {% endif %}
+  </div>
+
+  {% if por_estado %}
+  <div class="tarjeta">
+    <h2>Tus propuestas</h2>
+    <div class="acciones">
+      {% for e in por_estado %}
+        <span class="pill neutro">{{ e.estado }}: {{ e.n }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="tarjeta">
+    <h2>Exportar</h2>
+    <p class="sub">En CSV con punto y coma y codificación UTF-8 con BOM, que es lo
+       que Excel en español abre sin romper las tildes ni meter todo en una columna.</p>
+    <div class="acciones">
+      <a class="btn sec" href="/informes/licitaciones.csv">Licitaciones que te encajan</a>
+      <a class="btn sec" href="/informes/cobros.csv">Facturado y cobrado</a>
+    </div>
+  </div>
+
+</main>
+{% endblock %}

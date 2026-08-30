@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from urllib.parse import quote_plus
 
+from shared import ia
 from shared.banderas import describir
 from shared.pdf_firmable import generar_pdf
 from shared.db import connection, empresa_es_de, empresas_de, responder_pregunta
@@ -49,7 +50,8 @@ async def _propuesta_del_usuario(propuesta_id: int, usuario_id: int):
 # ─── Detalle de licitacion y alta de propuesta ───────────
 
 @router.get("/licitacion/{licitacion_id}", response_class=HTMLResponse)
-async def detalle_licitacion(request: Request, licitacion_id: str, error: str = ""):
+async def detalle_licitacion(request: Request, licitacion_id: str,
+                             error: str = "", aviso: str = ""):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse(f"/entrar?siguiente=/licitacion/{licitacion_id}",
@@ -64,6 +66,10 @@ async def detalle_licitacion(request: Request, licitacion_id: str, error: str = 
                  FROM propuestas p JOIN empresas e ON e.id = p.empresa_id
                 WHERE p.licitacion_id = $1 AND e.usuario_id = $2""",
             licitacion_id, usuario["id"])
+        seguida = await conn.fetchval(
+            """SELECT EXISTS(SELECT 1 FROM licitaciones_seguidas
+                              WHERE usuario_id=$1 AND licitacion_id=$2)""",
+            usuario["id"], licitacion_id)
 
     detalle = lic["score_detalle"]
     if isinstance(detalle, str):
@@ -79,8 +85,115 @@ async def detalle_licitacion(request: Request, licitacion_id: str, error: str = 
         "banderas": [describir(c) for c in (lic["banderas"] or [])],
         "request": request, "usuario": usuario, "lic": lic,
         "score_detalle": detalle or {}, "propuestas": mias,
-        "empresas": await empresas_de(usuario["id"]), "error": error,
+        "empresas": await empresas_de(usuario["id"]),
+        # Los analisis son de ESTE usuario: `analisis_guardado` filtra por su
+        # id. El analisis se hace contra una empresa concreta, asi que hay uno
+        # por empresa suya que lo haya pedido.
+        "analisis": await ia.analisis_guardado(usuario["id"], licitacion_id),
+        "cuota_ia": await ia.cuota(usuario["id"]),
+        "seguida": seguida,
+        "error": error, "aviso": aviso,
     })
+
+
+@router.post("/licitacion/{licitacion_id}/seguir")
+async def alternar_seguimiento(request: Request, licitacion_id: str,
+                               volver: str = Form("")):
+    """Marca o desmarca interes en una licitacion, sin abrir expediente.
+
+    POR QUE HACE FALTA UN PASO INTERMEDIO
+
+      Hasta ahora la unica accion era postular, y postular abre un expediente
+      con sus preguntas y sus documentos. Es demasiado compromiso para algo que
+      todavia estas evaluando: entre "me avisaron" y "me presento" hay dias de
+      leer bases y mandar consultas.
+
+      Sin donde apuntarlo, quien duda acaba llevando la lista en otro sitio --
+      que es justo donde empieza a no necesitar el producto.
+
+    El destino vuelve por formulario porque se sigue desde dos sitios, la ficha
+    y la tabla del panel, y el usuario espera quedarse donde estaba.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse(f"/entrar?siguiente=/licitacion/{licitacion_id}",
+                                status_code=303)
+
+    async with connection() as conn:
+        # DELETE primero y, si no borro nada, INSERT. Un viaje de ida y vuelta
+        # menos que consultar antes, y sin ventana entre la consulta y la
+        # escritura.
+        estado = await conn.execute(
+            """DELETE FROM licitaciones_seguidas
+                WHERE usuario_id=$1 AND licitacion_id=$2""",
+            usuario["id"], licitacion_id)
+        # asyncpg devuelve el estado de Postgres, "DELETE <n>". Se lee el
+        # numero y no se compara contra la cadena entera: comparar con un
+        # literal que parece SQL confunde a `tools/auditar_sql.py`, que lo
+        # recoge como una consulta y falla al validarla.
+        borradas = int(estado.rsplit(" ", 1)[-1])
+        if borradas == 0:
+            await conn.execute(
+                """INSERT INTO licitaciones_seguidas (usuario_id, licitacion_id)
+                   VALUES ($1,$2) ON CONFLICT DO NOTHING""",
+                usuario["id"], licitacion_id)
+
+    destino = volver.strip() or f"/licitacion/{licitacion_id}"
+    # Solo rutas propias: `volver` llega de un formulario, y sin esta
+    # comprobacion seria una redireccion abierta hacia donde quisiera quien
+    # montara el enlace.
+    if not destino.startswith("/") or destino.startswith("//"):
+        destino = f"/licitacion/{licitacion_id}"
+    return RedirectResponse(destino, status_code=303)
+
+
+@router.post("/licitacion/{licitacion_id}/analizar")
+async def analizar_con_ia(request: Request, licitacion_id: str,
+                          empresa_id: int = Form(...)):
+    """Pide el analisis de viabilidad de esta licitacion para una empresa.
+
+    Cada pulsacion es una llamada de pago a la API de Anthropic que paga la
+    plataforma, no el cliente. De ahi las tres comprobaciones antes de gastar:
+    que la empresa sea suya, que su plan incluya IA, y que le quede cuota. Sin
+    la ultima, una cuenta que pulse en bucle gasta mas de lo que paga al mes.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse(f"/entrar?siguiente=/licitacion/{licitacion_id}",
+                                status_code=303)
+
+    destino = f"/licitacion/{licitacion_id}"
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        # Mismo mensaje que si la empresa no existiera: confirmar que un id
+        # ajeno es valido ya es filtrar algo.
+        return RedirectResponse(f"{destino}?error={quote_plus('Empresa no valida')}",
+                                status_code=303)
+
+    permiso = await ia.cuota(usuario["id"])
+    if not permiso["permitido"]:
+        if not permiso["por_plan"]:
+            motivo = (f"El analisis con IA no esta incluido en tu plan "
+                      f"{permiso['plan']}. Cambia de plan para usarlo.")
+        else:
+            motivo = (f"Has usado los {permiso['tope']} analisis con IA de este "
+                      f"mes. El contador vuelve a cero el dia 1.")
+        return RedirectResponse(f"{destino}?error={quote_plus(motivo)}",
+                                status_code=303)
+
+    async with connection() as conn:
+        lic = await conn.fetchrow("SELECT * FROM licitaciones WHERE id=$1",
+                                  licitacion_id)
+    if not lic:
+        return RedirectResponse("/panel", status_code=303)
+
+    from radar_bot.analyzer import analizar
+    salida = await analizar(usuario["id"], empresa_id, dict(lic))
+
+    if salida["aviso"]:
+        return RedirectResponse(f"{destino}?error={quote_plus(salida['aviso'])}",
+                                status_code=303)
+    return RedirectResponse(f"{destino}?aviso={quote_plus('Analisis actualizado')}",
+                            status_code=303)
 
 
 @router.post("/postular")
@@ -159,12 +272,57 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
             """SELECT * FROM preguntas WHERE propuesta_id=$1
                ORDER BY respondida, id""", propuesta_id)
 
+    # Que falta para que el expediente sea presentable, y cuanto se ha pagado
+    # por trabajos parecidos. Los dos modulos existian desde el principio y no
+    # los llamaba nadie: el ZIP se armaba con los campos legales vacios, y
+    # `historico_precios` -- que los scrapers llenan en cada corrida -- no lo
+    # leia ninguna consulta del producto.
+    validacion = await _validacion(propuesta_id)
     return _plantillas(request).TemplateResponse("propuesta.html", {
         "request": request, "usuario": usuario, "p": prop,
         "preguntas": preguntas,
         "pendientes": [q for q in preguntas if not q["respondida"]],
+        "validacion": validacion,
+        "precio": await _precio_de_mercado(prop),
         "aviso": aviso, "error": error,
     })
+
+
+async def _validacion(propuesta_id: int) -> dict | None:
+    """Que le falta a la propuesta. None si el validador se cae.
+
+    Se traga el error a proposito: un fallo aqui no puede dejar sin ficha a
+    alguien que solo queria leer sus preguntas. Lo que NO se traga es el fallo
+    al generar el ZIP, donde si hay que parar.
+    """
+    try:
+        from prep_bot.autofill.validator import validar_propuesta
+        return await validar_propuesta(propuesta_id)
+    except Exception as e:
+        log.error("Validacion de %s fallo: %s", propuesta_id, e, exc_info=True)
+        return None
+
+
+async def _precio_de_mercado(prop) -> dict | None:
+    """Rango de precios de trabajos parecidos, del historico de adjudicaciones."""
+    if not prop["licitacion_id"]:
+        return None
+    try:
+        from prep_bot.autofill.pricing import estimar_precio_mercado
+        estimado = await estimar_precio_mercado({
+            # El id va incluido para que la propia licitacion quede fuera de su
+            # comparativa: sin el, el monto referencial que se quiere estimar
+            # entra como una muestra mas y arrastra la mediana hacia si mismo.
+            "id": prop["licitacion_id"],
+            "objeto": prop["objeto"], "tipo": prop["tipo"],
+            "monto_referencial": prop["monto_referencial"],
+            "departamento": prop["departamento"],
+        })
+        return None if estimado.get("error") else estimado
+    except Exception as e:
+        log.error("Estimacion de precio de %s fallo: %s", prop["id"], e,
+                  exc_info=True)
+        return None
 
 
 @router.post("/propuestas/{propuesta_id}/responder")
@@ -215,8 +373,68 @@ async def generar(request: Request, propuesta_id: int):
             f"/propuestas/{propuesta_id}?error=No+se+pudieron+generar+los+documentos",
             status_code=303)
 
-    return RedirectResponse(f"/propuestas/{propuesta_id}?aviso=Documentos+generados",
-                            status_code=303)
+    aviso = await _propuesta_tecnica(usuario["id"], prop)
+    return RedirectResponse(
+        f"/propuestas/{propuesta_id}?aviso={quote_plus('Documentos generados. ' + aviso)}",
+        status_code=303)
+
+
+async def _propuesta_tecnica(usuario_id: int, prop) -> str:
+    """Genera la propuesta tecnica y devuelve que se le puede decir al usuario.
+
+    `zip_builder` la incluye "si existe", y hasta ahora no existia nunca porque
+    nadie llamaba a quien la escribe. El expediente salia sin ella y sin avisar.
+
+    SE RIGE POR EL PLAN, PERO NO GASTA LA CUOTA DE ANALISIS
+
+      Por dos motivos. Uno: `analisis_ia` tiene clave unica por (usuario,
+      empresa, licitacion), asi que anotar aqui el documento SOBRESCRIBIRIA el
+      analisis de viabilidad de esa misma ficha. Dos: el contador que se pinta
+      en la ficha dice "analisis con IA", y verlo subir al generar un documento
+      no cuadra con lo que el usuario acaba de hacer.
+
+      Tampoco hace falta como freno. El tope existe porque "Analizar" se puede
+      pulsar en bucle sobre cualquier ficha del pozo; una propuesta tecnica es
+      una por propuesta, y abrir propuestas ya esta acotado por `max_empresas`
+      y por el trabajo humano de rellenarlas.
+
+    Sin IA se escribe igual, con la plantilla: un documento sin IA es peor que
+    uno con IA, y los dos son mucho mejores que presentarse sin propuesta
+    tecnica.
+    """
+    from prep_bot.autofill.proposal import generar_propuesta_tecnica
+    from shared.knowledge_base import obtener_datos_empresa_completos
+
+    permiso = await ia.cuota(usuario_id)
+    con_ia = permiso["por_plan"] and ia.disponible()
+
+    try:
+        datos = await obtener_datos_empresa_completos(prop["emp_id"])
+        licitacion = {"id": prop["licitacion_id"], "objeto": prop["objeto"],
+                      "entidad": prop["entidad"], "tipo": prop["tipo"],
+                      "monto_referencial": prop["monto_referencial"]}
+        if con_ia:
+            if await generar_propuesta_tecnica(
+                    prop["id"], prop["emp_id"], licitacion, datos):
+                return "Propuesta técnica redactada con IA."
+        else:
+            # Sin ANTHROPIC_KEY la propia funcion cae a la plantilla; sin cuota
+            # hay que forzarla desde aqui, que es donde se conoce el plan.
+            import prep_bot.autofill.proposal as pp
+            clave, pp.ANTHROPIC_KEY = pp.ANTHROPIC_KEY, ""
+            try:
+                await generar_propuesta_tecnica(
+                    prop["id"], prop["emp_id"], licitacion, datos)
+            finally:
+                pp.ANTHROPIC_KEY = clave
+            motivo = ("tu plan no incluye IA" if not permiso["por_plan"]
+                      else "no hay clave de IA configurada")
+            return f"Propuesta técnica con plantilla, porque {motivo}."
+    except Exception as e:
+        log.error("Propuesta tecnica de %s fallo: %s", prop["id"], e, exc_info=True)
+        return "La propuesta técnica no se pudo generar; el resto sí."
+
+    return "La propuesta técnica no se pudo generar; el resto sí."
 
 
 @router.post("/propuestas/{propuesta_id}/expediente")
@@ -227,6 +445,19 @@ async def armar_expediente(request: Request, propuesta_id: int):
     if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
+
+    # Se valida ANTES de armar nada. Un expediente al que le falta el DNI del
+    # representante o la partida registral no es un expediente incompleto: es
+    # una oferta que la entidad devuelve en mesa de partes. Generarlo igual y
+    # dejar que el proveedor lo descubra alli es el peor momento posible para
+    # enterarse, porque el plazo ya venció.
+    validacion = await _validacion(propuesta_id)
+    if validacion and validacion.get("faltantes"):
+        falta = ", ".join(f["desc"] for f in validacion["faltantes"])
+        return RedirectResponse(
+            f"/propuestas/{propuesta_id}?error="
+            f"{quote_plus(f'Antes de armar el expediente falta: {falta}')}",
+            status_code=303)
 
     try:
         from prep_bot.zip_builder import generar_expediente_zip

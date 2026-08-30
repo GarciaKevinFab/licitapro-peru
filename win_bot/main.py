@@ -17,6 +17,15 @@ from shared.db import (
 )
 from shared.config import format_monto, format_fecha, ADMIN_ID
 
+# Estos cuatro se USABAN sin importarse. `/factura`, `/conformidad`, `/entrega`
+# y `/pago` no fallaban al arrancar el bot -- Python resuelve los nombres al
+# ejecutar, no al importar -- sino en el momento en que alguien escribia el
+# comando, con un NameError que el manejador de errores de la libreria se
+# tragaba: el cliente veia que su mensaje no obtenia respuesta, y ya.
+from win_bot.conformity_gen import generar_acta_conformidad, generar_informe_entrega
+from win_bot.invoice_gen import generar_factura
+from win_bot.payment_tracker import registrar_pago
+
 
 # ─── Email sender ────────────────────────────────────────
 async def enviar_email_buena_pro(contrato, licitacion):
@@ -76,7 +85,7 @@ async def enviar_email_buena_pro(contrato, licitacion):
         await aiosmtplib.send(
             msg, hostname=smtp_host, port=smtp_port,
             username=smtp_user, password=smtp_pass,
-            use_tls=False, start_tls=True,
+            **({'use_tls': True, 'start_tls': False} if smtp_port == 465 else {'use_tls': False, 'start_tls': True}),
         )
         log.info(f"Email enviado a {destinatario}")
         return True

@@ -33,14 +33,30 @@ cp .env.example .env
 nano .env  # Llena todos los campos marcados con ← LLENAR
 ```
 
-### 4. Levantar todo con Docker
+### 4. Levantar
+
+El `docker-compose.yml` de desarrollo levanta **solo la infraestructura**
+(PostgreSQL y Redis). El panel y los bots corren fuera del contenedor para
+poder recargarlos sin reconstruir la imagen:
+
 ```bash
-docker-compose up -d
+docker compose up -d          # PostgreSQL + Redis
+alembic upgrade head          # esquema al día
+start.bat                     # panel (:8200) + los 3 bots
 ```
-Esto levanta: PostgreSQL + Redis + los 3 bots.
+
+En producción es al revés: `docker-compose.prod.yml` levanta los seis servicios
+—panel y bots incluidos— y aplica las migraciones antes de arrancar.
+Ver [DESPLIEGUE.md](DESPLIEGUE.md).
 
 ### 5. Verificar
-Abre Telegram y envía `/start` a cada uno de tus 3 bots.
+
+- Panel: <http://127.0.0.1:8200> — regístrate y entra.
+- Salud: <http://127.0.0.1:8200/salud>
+- Telegram: envía `/start` a cada uno de tus 3 bots.
+
+El panel es el producto; los bots son un canal de aviso más, junto a WhatsApp y
+el correo. Se puede usar todo sin tocar Telegram.
 
 ## 📁 Estructura del Proyecto
 
