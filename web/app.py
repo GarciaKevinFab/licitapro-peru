@@ -581,6 +581,20 @@ def _base_url() -> str:
     return f"https://{os.getenv('LICITAPRO_DOMINIO', 'licitapro.sisac.pe')}"
 
 
+def absoluto(ruta: str) -> str:
+    """Convierte una ruta del sitio en URL absoluta.
+
+    Open Graph NO admite rutas relativas: WhatsApp, Facebook y LinkedIn leen la
+    etiqueta desde sus propios servidores, donde "/static/og.png" no significa
+    nada. Una ruta relativa ahi no da error: simplemente no sale la imagen,
+    que es justo el sintoma que se venia arrastrando.
+    """
+    return f"{_base_url()}{ruta}"
+
+
+templates.env.globals["absoluto"] = absoluto
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
     lineas = ["User-agent: *"]

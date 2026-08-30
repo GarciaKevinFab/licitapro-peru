@@ -7,6 +7,28 @@
 {# Un solo SVG sirve de favicon en claro y en oscuro, y escala a cualquier
    tamano. No hacen falta los seis PNG de siempre. #}
 <link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
+{# ---------- TARJETA AL COMPARTIR (Open Graph) ----------
+   En Peru el enlace se comparte por WhatsApp, y sin estas etiquetas WhatsApp
+   no pinta nada: ni titulo, ni imagen. Un enlace pelado en un grupo parece
+   spam, y ese es el primer contacto que tiene la mayoria con el producto.
+
+   La imagen va por URL ABSOLUTA y en PNG a proposito: los servidores de
+   WhatsApp y Facebook leen esto desde fuera -- una ruta relativa no resuelve --
+   y ninguno de los dos renderiza SVG en la vista previa, asi que el favicon
+   no sirve aqui. #}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LicitaPro Perú">
+<meta property="og:locale" content="es_PE">
+<meta property="og:url" content="{{ absoluto(request.url.path) }}">
+<meta property="og:title" content="{{ og_titulo | default('LicitaPro Perú — del aviso de la licitación hasta que te pagan') }}">
+<meta property="og:description" content="{{ og_bajada | default('Te avisamos por Telegram de las licitaciones que encajan con tu empresa, preparamos el expediente con los anexos llenos y perseguimos el pago de la entidad. Los demás se paran en el aviso.') }}">
+<meta property="og:image" content="{{ absoluto(estatico('og.png')) }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="LicitaPro Perú: encontrar la licitación es la parte fácil; nosotros llegamos hasta el cobro.">
+<meta name="twitter:card" content="summary_large_image">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
