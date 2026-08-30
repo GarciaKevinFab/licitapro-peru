@@ -9,9 +9,35 @@ RAIZ = pathlib.Path(os.getenv('AUDIT_ROOT', '.'))
 SQL_INICIO = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\b', re.IGNORECASE)
 
 
+def _es_ajeno(py: pathlib.Path) -> bool:
+    """Si el archivo NO es del proyecto y por tanto no se audita.
+
+    POR QUE NO BASTA CON LISTAR 'venv' Y '.venv'
+
+      El puente se instala en `.venv-tarea/`, dentro del propio repositorio y
+      tal como manda DESPLIEGUE.md. Ese nombre no estaba en la lista, asi que
+      el auditor se ponia a preparar contra Postgres los docstrings de pytest
+      y de anyio: 50 fallos inventados que tapaban los de verdad.
+
+      En el CI no se ve, porque alli no existe ese directorio. Solo se rompe en
+      la maquina de quien monto el puente -- es decir, en la unica maquina
+      donde el puente corre.
+
+      Se filtra por site-packages y por cualquier carpeta que empiece por
+      "venv" o ".venv", que cubre tambien el siguiente entorno que alguien
+      cree con otro sufijo.
+    """
+    for parte in py.parts:
+        if parte in ('__pycache__', 'site-packages', 'graphify-out'):
+            return True
+        if parte.startswith(('venv', '.venv')):
+            return True
+    return False
+
+
 def literales_sql():
     for py in sorted(RAIZ.rglob('*.py')):
-        if any(p in py.parts for p in ('__pycache__', 'venv', '.venv', 'graphify-out')):
+        if _es_ajeno(py):
             continue
         try:
             arbol = ast.parse(py.read_text(encoding='utf-8'))

@@ -258,7 +258,11 @@ class Sonda:
         try:
             resp = await client.get(url)
         except Exception as e:
+            # El fallo se GUARDA (va a `scraping_log` en el diagnostico) y
+            # ademas se registra: la tabla sirve para enterarse de que algo se
+            # rompio, y el log para ver el mensaje entero al arreglarlo.
             self.fallos.append(f"{_corto(url)}: {type(e).__name__}")
+            log.debug("%s: %s fallo con %s", self.fuente, url, e)
             return None
         if resp.status_code != 200:
             self.fallos.append(f"{_corto(url)}: HTTP {resp.status_code}")
