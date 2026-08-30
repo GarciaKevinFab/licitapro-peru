@@ -73,6 +73,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Crear el esquema base
+        # migrations/0001 es una baseline que NO crea nada: nacio sobre una
+        # base ya montada a mano con shared/schema.sql. En una base vacia --
+        # como la de este runner -- la 0002 se estrella con
+        # `relation "empresas" does not exist`, y parece una migracion rota
+        # cuando es un paso de instalacion que falta.
+        run: python tools/crear_esquema.py
+
       - name: Aplicar migraciones
         run: alembic upgrade head
 
@@ -81,6 +89,17 @@ jobs:
         # las columnas inventadas, que es un fallo que no se ve hasta que un
         # usuario pisa esa ruta en produccion.
         run: python tools/auditar_sql.py
+
+      - name: Validar la configuracion de pytest
+        # SIN `-p no:warnings`, y esa es toda la gracia. Una opcion de pytest.ini
+        # que la libreria instalada no reconoce sale como aviso, no como error:
+        # se ignora en silencio y la configuracion no hace nada. El paso de abajo
+        # apaga los avisos para leer la salida, asi que ahi no se veria.
+        #
+        # Fue exactamente asi como asyncio_default_test_loop_scope estuvo
+        # declarada sin existir, con 37 pruebas cayendo por una causa que el
+        # propio pytest estaba diciendo en voz baja.
+        run: pytest --strict-config --collect-only -q
 
       - name: Pruebas
         run: pytest -q -p no:warnings
