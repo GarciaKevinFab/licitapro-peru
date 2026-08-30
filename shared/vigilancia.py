@@ -140,9 +140,27 @@ async def horas_sin_cosecha(fuente: str = FUENTE_PRINCIPAL) -> float | None:
 
 
 async def _hora_de_lima() -> int:
-    """La hora del reloj de la base, que es la de Lima por `server_settings`."""
+    """La hora en Lima, convertida explicitamente.
+
+    LA SESION DE LA BASE ESTA EN UTC, NO EN LIMA
+
+      Este comentario decia lo contrario -- que `server_settings` dejaba la
+      sesion en hora de Lima -- y era falso. Comprobado contra la base:
+      `SHOW timezone` responde UTC, y `EXTRACT(HOUR FROM NOW())` devolvia 7
+      con Lima en las 2.
+
+      Con eso, el recordatorio diario del silencio sonaba a las 9 UTC, o sea
+      a las CUATRO de la manana. Un aviso que llega a esa hora no se lee
+      cuando llega y se lee tarde, que es la mitad del problema que este
+      recordatorio existe para resolver.
+
+      No afecta a `horas_sin_cosecha`: alli se restan dos marcas del MISMO
+      reloj, y por eso la resta se hace en SQL en vez de contra un
+      `datetime.now()` de Python.
+    """
     async with connection() as conn:
-        return int(await conn.fetchval("SELECT EXTRACT(HOUR FROM NOW())"))
+        return int(await conn.fetchval(
+            "SELECT EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/Lima'))"))
 
 
 async def revisar(fuente: str = FUENTE_PRINCIPAL) -> dict:
