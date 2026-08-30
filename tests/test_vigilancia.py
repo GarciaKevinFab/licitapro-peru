@@ -163,12 +163,16 @@ async def test_las_corridas_bloqueadas_no_cuentan_como_pasadas(marca):
                 """INSERT INTO scraping_log
                        (fuente, fin, registros_encontrados, registros_nuevos, errores)
                    VALUES ($1, NOW() - INTERVAL '3 hours', 800, 5, 0)""", fuente)
+            # El intervalo va como PARAMETRO, no interpolado. Un f-string aqui
+            # deja la consulta en la lista de "revisar a mano" de
+            # tools/auditar_sql.py para siempre: el auditor no puede PREPARAR
+            # lo que no esta completo, asi que se la salta en vez de validarla.
             for horas in (2, 1, 0):
                 await c.execute(
-                    f"""INSERT INTO scraping_log
-                            (fuente, fin, registros_encontrados, registros_nuevos, errores)
-                        VALUES ($1, NOW() - INTERVAL '{horas} hours', 0, 0, 1)""",
-                    fuente)
+                    """INSERT INTO scraping_log
+                           (fuente, fin, registros_encontrados, registros_nuevos, errores)
+                       VALUES ($1, NOW() - make_interval(hours => $2), 0, 0, 1)""",
+                    fuente, horas)
 
             # Los tres bloqueos no cuentan: la ultima pasada REAL trajo 5.
             assert await vigilancia.racha_sin_novedades(fuente) == 0
