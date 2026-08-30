@@ -178,11 +178,38 @@ fi
 # Una copia en el mismo disco que la base protege contra un borrado, no contra
 # el disco. Con RESPALDO_REMOTO puesto (un destino de rclone, p.ej. "r2:licitapro")
 # se sube; sin el, se avisa en cada pasada para que no se olvide.
+# COMPROBAR QUE LO SUBIDO ES LO QUE HAY EN DISCO
+#
+#   La configuracion de rclone lleva `no_head = true`, y no por capricho: R2
+#   devuelve 501 al HEAD con el que rclone comprueba el objeto, asi que la
+#   PRIMERA subida fallaba siempre y solo colaba en el reintento. El log se
+#   llenaba de ERROR en cada pasada, que es la forma mas rapida de que nadie
+#   los lea el dia que digan algo.
+#
+#   Pero `no_head` significa que rclone ya no verifica lo que subio. Esa
+#   comprobacion no se pierde: se hace aqui. Un respaldo remoto que nadie
+#   contrasta es otra vez una suposicion, y ademas una cara: se descubriria
+#   el dia de restaurar, que es el peor dia para descubrir nada.
+comprobar_subida() {
+  local archivo="$1" nombre bytes_local bytes_remoto
+  nombre="$(basename "$archivo")"
+  bytes_local="$(wc -c < "$archivo")"
+  bytes_remoto="$(rclone lsjson "$RESPALDO_REMOTO/$nombre" 2>/dev/null | grep -o '"Size":[0-9]*' | head -1 | cut -d: -f2)"
+  if [[ "$bytes_remoto" != "$bytes_local" ]]; then
+    echo "ERROR: $nombre pesa $bytes_local en disco y ${bytes_remoto:-0} en el destino." >&2
+    return 1
+  fi
+  echo "  verificado en el destino: $nombre ($bytes_local bytes)"
+}
+
 if [[ -n "${RESPALDO_REMOTO:-}" ]] && command -v rclone >/dev/null 2>&1; then
   echo "[$(date '+%F %T')] Subiendo a $RESPALDO_REMOTO..."
   rclone copy "$DUMP" "$RESPALDO_REMOTO" --no-traverse
-  [[ -f "$FIRMAS" ]] && rclone copy "$FIRMAS" "$RESPALDO_REMOTO" --no-traverse
-  echo "  Subido."
+  comprobar_subida "$DUMP"
+  if [[ -f "$FIRMAS" ]]; then
+    rclone copy "$FIRMAS" "$RESPALDO_REMOTO" --no-traverse
+    comprobar_subida "$FIRMAS"
+  fi
 else
   echo "AVISO: RESPALDO_REMOTO sin configurar. La copia se queda en este mismo" >&2
   echo "       servidor, que es justo lo que no protege contra perder el servidor." >&2
