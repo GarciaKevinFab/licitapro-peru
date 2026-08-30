@@ -37,6 +37,7 @@ QUIEN NO RECIBE NADA
     servicio, es un motivo de baja.
   - Quien no dio consentimiento explicito para WhatsApp.
 """
+import html
 import logging
 import os
 from datetime import datetime
@@ -191,6 +192,33 @@ async def sembrar_historico(usuario_id: int, canal: str) -> int:
 
 # ─── Como se redacta ─────────────────────────────────────
 
+def _esc(texto) -> str:
+    """Escapa para HTML lo que escribe una fuente externa.
+
+    POR QUE, SI HOY NINGUNA LICITACION TIENE UN "&"
+
+      Comprobado contra produccion: 0 de 842. Pero el objeto y la entidad los
+      escribe una entidad del Estado en su portal, no nosotros, y "SERVICIOS
+      GENERALES A & B S.A.C." es un nombre de empresa normal en Peru.
+
+      El dia que llegue uno, esto no se rompe a medias:
+
+        - Telegram envia con `parse_mode="HTML"`. Un "&" suelto o un "<" hace
+          que la API devuelva 400 y el mensaje NO SE MANDE. Se pierde el aviso
+          ENTERO de ese usuario, no solo esa linea.
+        - En el correo, el cliente ve el resumen cortado por la mitad.
+
+      Es decir: la primera empresa peruana con un "&" en el nombre dejaria sin
+      aviso a todos los usuarios a los que les encajara esa licitacion. Y el
+      sintoma seria "no me llegan las alertas", que es el sintoma de otras
+      cinco cosas.
+
+    quote=False porque el texto va en el cuerpo, no dentro de un atributo:
+    convertir las comillas ahi solo ensuciaria lo que lee el cliente.
+    """
+    return html.escape(str(texto or ""), quote=False)
+
+
 def _titulo(lic: dict) -> str:
     return (lic.get("nomenclatura") or lic.get("objeto") or "Sin descripción")[:90]
 
@@ -208,7 +236,7 @@ def _resumen_texto(lics: list[dict]) -> str:
         cierre = l.get("fecha_cierre")
         cuando = cierre.strftime("%d/%m") if cierre else "sin fecha"
         lineas.append(
-            f"• {_titulo(l)}\n  {l.get('entidad') or ''} · {_monto(l)} · cierra {cuando}")
+            f"• {_esc(_titulo(l))}\n  {_esc(l.get('entidad'))} · {_monto(l)} · cierra {cuando}")
     if len(lics) > MAX_EN_RESUMEN:
         lineas.append(f"…y {len(lics) - MAX_EN_RESUMEN} más en tu panel.")
     return "\n".join(lineas)
@@ -216,7 +244,7 @@ def _resumen_texto(lics: list[dict]) -> str:
 
 def _resumen_html(lics: list[dict]) -> str:
     filas = "".join(
-        f"<li><b>{_titulo(l)}</b><br>{l.get('entidad') or ''} — {_monto(l)}"
+        f"<li><b>{_esc(_titulo(l))}</b><br>{_esc(l.get('entidad'))} — {_monto(l)}"
         f" — cierra {l['fecha_cierre'].strftime('%d/%m/%Y') if l.get('fecha_cierre') else 'sin fecha'}</li>"
         for l in lics[:MAX_EN_RESUMEN])
     extra = (f"<p>Y {len(lics) - MAX_EN_RESUMEN} más en tu panel.</p>"

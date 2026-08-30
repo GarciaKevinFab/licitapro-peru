@@ -1,5 +1,6 @@
 """Bot 1: LicitaRadar — Detecta, filtra y analiza licitaciones."""
 import os
+import html
 import logging
 import asyncio
 from datetime import datetime
@@ -38,14 +39,24 @@ def format_licitacion_alert(lic) -> tuple[str, InlineKeyboardMarkup]:
     monto_text = format_monto(lic["monto_referencial"]) if lic["monto_referencial"] else "No especificado"
     tipo_text = TIPOS_PROCEDIMIENTO.get(lic["tipo"], lic["tipo"] or "—")
     
+    # SE ESCAPA LO QUE ESCRIBE LA ENTIDAD, NO LO QUE ESCRIBIMOS NOSOTROS
+    #
+    #   Esto se manda con `parse_mode="HTML"`. Un "&" suelto o un "<" en el
+    #   objeto o en el nombre de la entidad hace que Telegram devuelva 400 y
+    #   NO ENTREGUE el mensaje: la licitacion desaparece de la lista sin que
+    #   nadie vea un error. Y "SERVICIOS GENERALES A & B S.A.C." es un nombre
+    #   de empresa normal en Peru.
+    def esc(v):
+        return html.escape(str(v or ""), quote=False)
+
     text = (
-        f"{emoji} <b>{tipo_text}</b>{score_text}\n\n"
-        f"📋 {lic['nomenclatura'] or lic['id']}\n"
-        f"🏛️ {lic['entidad']}\n"
-        f"📦 {lic['objeto'][:200]}\n"
+        f"{emoji} <b>{esc(tipo_text)}</b>{score_text}\n\n"
+        f"📋 {esc(lic['nomenclatura'] or lic['id'])}\n"
+        f"🏛️ {esc(lic['entidad'])}\n"
+        f"📦 {esc(lic['objeto'][:200])}\n"
         f"💰 {monto_text}\n"
         f"📅 Cierre: {format_fecha(lic['fecha_cierre'])} {dias_text}\n"
-        f"📍 {lic['departamento'] or '—'}"
+        f"📍 {esc(lic['departamento'] or '—')}"
     )
     
     keyboard = InlineKeyboardMarkup([
