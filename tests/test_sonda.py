@@ -158,3 +158,57 @@ def test_el_detalle_va_escapado_para_que_telegram_no_lo_rechace():
     })
     assert "&amp;" in parte and "&lt;2&gt;" in parte
     assert "?a=1&b=<2>" not in parte
+
+
+# ─── El parser no puede ser un requisito duro ────────────
+
+def test_la_sopa_funciona_sin_lxml(monkeypatch):
+    """Si lxml no esta, se usa el parser de la biblioteca estandar.
+
+    POR QUE IMPORTA
+
+      Este modulo lo importa tambien el puente, que corre en una PC de casa
+      con Python 3.14. lxml no publica binario para cada version nueva de
+      Python enseguida, y cuando falta, pip intenta COMPILARLO y muere pidiendo
+      Microsoft Visual C++ 14.0 -- el mismo problema que ya obligo a subir
+      asyncpg a la 0.31.
+
+      Sin esta caida elegante, una dependencia que aqui no aporta nada dejaria
+      el puente sin instalar, y con el puente caido no entra ni una licitacion.
+    """
+    from radar_bot.scrapers import orchestrator
+
+    real = orchestrator.BeautifulSoup
+    intentos = []
+
+    def _falso(texto, parser):
+        intentos.append(parser)
+        if parser == "lxml":
+            raise Exception("FeatureNotFound: lxml no instalado")
+        return real(texto, parser)
+
+    monkeypatch.setattr(orchestrator, "BeautifulSoup", _falso)
+
+    sopa = orchestrator._sopa("<table><tr><td>uno</td><td>dos</td></tr></table>")
+    assert intentos == ["lxml", "html.parser"], "primero lxml, y solo si falla el otro"
+    assert [c.get_text() for c in sopa.find_all("td")] == ["uno", "dos"]
+
+
+def test_la_sopa_prefiere_lxml_cuando_esta():
+    """Que el servidor y el puente parseen igual mientras se pueda.
+
+    Si el puente cayera al parser estandar teniendo lxml, una pagina mal
+    cerrada podria leerse distinto en cada maquina, y esa diferencia se
+    persigue durante horas.
+    """
+    from radar_bot.scrapers import orchestrator
+
+    usados = []
+    real = orchestrator.BeautifulSoup
+    monkeypatch_parser = lambda t, p: (usados.append(p), real(t, p))[1]  # noqa: E731
+    orchestrator.BeautifulSoup = monkeypatch_parser
+    try:
+        orchestrator._sopa("<table><tr><td>x</td></tr></table>")
+    finally:
+        orchestrator.BeautifulSoup = real
+    assert usados == ["lxml"]

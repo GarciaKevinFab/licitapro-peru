@@ -18,13 +18,21 @@
 #   divergen, un fallo que solo pasa en uno de los dos cuesta el triple de
 #   encontrar.
 #
-# POR QUE AHORA TAMBIEN HAY BeautifulSoup Y lxml
+# POR QUE AHORA TAMBIEN HAY BeautifulSoup, Y POR QUE NO HAY lxml
 #
 #   El puente dejo de traer solo JSON: tambien cosecha el portal de
 #   cotizaciones de Madre de Dios, que es HTML y que tampoco responde al VPS.
-#   Sin estas dos, `tools/traer_oece.py` revienta al importar -- y reventaria
-#   despues de haber guardado OECE, que es la parte critica, con lo cual el
-#   fallo pareceria peor de lo que es.
+#   Sin BeautifulSoup, `tools/traer_oece.py` revienta al importar -- y
+#   reventaria DESPUES de haber guardado OECE, que es la parte critica, con lo
+#   cual el fallo pareceria peor de lo que es.
+#
+#   lxml NO se instala aqui, y es deliberado. El servidor si lo usa, pero esta
+#   maquina corre Python 3.14 y lxml no publica binario para cada version nueva
+#   enseguida: cuando falta, pip intenta COMPILARLO y muere pidiendo Microsoft
+#   Visual C++ 14.0 -- exactamente el problema que ya obligo a subir asyncpg a
+#   la 0.31. El orquestador cae al parser de la biblioteca estandar cuando lxml
+#   no esta, y sobre el portal de Madre de Dios los dos sacan las mismas 25
+#   filas.
 #
 #   Quien ya tenga el puente instalado necesita volver a correr:
 #     .venv-tarea\Scripts\pip.exe install -r requirements-puente.txt
@@ -33,4 +41,3 @@ httpx==0.28.1
 python-dotenv==1.0.1
 tenacity==9.0.0
 beautifulsoup4==4.12.3
-lxml==5.3.0

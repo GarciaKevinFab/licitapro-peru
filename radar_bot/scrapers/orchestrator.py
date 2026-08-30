@@ -38,6 +38,31 @@ HEADERS = {
     "Accept-Language": "es-PE,es;q=0.9,en;q=0.5",
 }
 
+def _sopa(texto: str) -> BeautifulSoup:
+    """BeautifulSoup con lxml si esta, y con el parser de la biblioteca si no.
+
+    POR QUE NO SE EXIGE lxml
+
+      Este modulo lo importa tambien el puente (tools/traer_oece.py), que corre
+      en una PC de casa con Python 3.14. lxml no publica binario para toda
+      version nueva de Python enseguida, y cuando falta, pip intenta COMPILARLO
+      y muere pidiendo Microsoft Visual C++ 14.0. Eso dejaria el puente sin
+      instalar por una dependencia que aqui no aporta nada.
+
+      Comprobado sobre el portal de Madre de Dios: los dos parsers sacan las
+      mismas 25 filas utiles. Para tablas asi de simples, el de la biblioteca
+      estandar da igual, y viene siempre.
+
+      Se prefiere lxml cuando esta porque es el que corre en el servidor, y que
+      los dos usen el mismo evita perseguir una diferencia de parseo el dia que
+      una pagina venga mal cerrada.
+    """
+    try:
+        return BeautifulSoup(texto, "lxml")
+    except Exception:
+        return BeautifulSoup(texto, "html.parser")
+
+
 # ==================== Utilidades compartidas ====================
 
 def _gen_id(fuente: str, *parts) -> str:
@@ -590,7 +615,7 @@ async def _scrape_gore_cotizaciones_app(
         if resp is None:
             return 0, 0, []
 
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = _sopa(resp.text)
 
         # Parse the main table
         table = soup.find("table")
@@ -691,7 +716,7 @@ async def _scrape_gore_generic(
         if resp is None:
             return 0, 0, []
 
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = _sopa(resp.text)
 
         # Strategy: look for tables with actual procurement data
         for table in soup.find_all("table"):
@@ -891,7 +916,7 @@ async def _run_peru_compras(user_id):
                     if resp.status_code != 200:
                         continue
 
-                    soup = BeautifulSoup(resp.text, "lxml")
+                    soup = _sopa(resp.text)
 
                     # Buscar tablas con datos de convocatorias
                     for table in soup.find_all("table"):
@@ -980,7 +1005,7 @@ async def _run_poder_judicial(user_id):
                     if resp.status_code != 200:
                         continue
 
-                    soup = BeautifulSoup(resp.text, "lxml")
+                    soup = _sopa(resp.text)
 
                     # Buscar tablas con procesos
                     for table in soup.find_all("table"):
@@ -1069,7 +1094,7 @@ async def _run_essalud(user_id):
                     if resp.status_code != 200:
                         continue
 
-                    soup = BeautifulSoup(resp.text, "lxml")
+                    soup = _sopa(resp.text)
 
                     # Tablas de procesos
                     for table in soup.find_all("table"):
@@ -1159,7 +1184,7 @@ async def _run_sbs(user_id):
                     if resp.status_code != 200:
                         continue
 
-                    soup = BeautifulSoup(resp.text, "lxml")
+                    soup = _sopa(resp.text)
 
                     for table in soup.find_all("table"):
                         rows = table.find_all("tr")[1:]
@@ -1244,7 +1269,7 @@ async def _run_transparencia_mef(user_id):
                     if resp.status_code != 200:
                         continue
 
-                    soup = BeautifulSoup(resp.text, "lxml")
+                    soup = _sopa(resp.text)
 
                     for table in soup.find_all("table"):
                         rows = table.find_all("tr")[1:]
@@ -1344,7 +1369,7 @@ async def _run_municipalidades(user_id):
                         if resp.status_code != 200:
                             continue
 
-                        soup = BeautifulSoup(resp.text, "lxml")
+                        soup = _sopa(resp.text)
 
                         for table in soup.find_all("table"):
                             rows = table.find_all("tr")[1:]
