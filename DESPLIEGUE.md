@@ -268,9 +268,41 @@ silencio es peor que no tener respaldo: da por cubierto un riesgo que sigue
 abierto.
 
 **Sácalo del servidor.** Una copia en el mismo disco que la base protege contra
-un borrado, no contra perder el disco. Con `RESPALDO_REMOTO` puesto (un destino
-de `rclone`, por ejemplo `r2:licitapro`) sube sola; sin ella, el script avisa en
-cada pasada.
+un borrado, no contra perder el disco. Con `RESPALDO_REMOTO` puesto sube sola;
+sin ella, el script avisa en cada pasada.
+
+### Cloudflare R2, ya configurado
+
+`rclone` va instalado desde los repos de Ubuntu (`apt install rclone`), no
+canalizando un script de internet a `bash`. Queda en `/usr/bin/rclone`, que ya
+está en el `PATH` de cron.
+
+Para rehacer la configuración —credenciales rotadas, otro bucket— está
+`/root/configurar-r2.sh`. Pide los cuatro datos **en el servidor y con el
+secreto oculto**: no pasa por ningún chat, no se imprime y no queda en el
+historial del shell. El token se saca en *Cloudflare → R2 → Manage API tokens*,
+con permiso *Object Read & Write* limitado al bucket.
+
+> El nombre del bucket va en **minúsculas**. R2, como S3, rechaza mayúsculas
+> con `InvalidBucketName`, y el mensaje no dice que el problema sea ese.
+
+**`no_head = true` no es opcional, y conviene saber por qué.** R2 responde
+`501 Not Implemented` al `HEAD` con el que rclone verifica un objeto al
+subirlo, así que la primera subida fallaba *siempre* y solo colaba en el
+reintento: cuatro líneas de `ERROR` por pasada, que es como se consigue que
+nadie las lea el día que digan algo. Probadas una a una,
+`--s3-disable-checksum`, `--s3-upload-cutoff` y `--s3-chunk-size` no cambian
+nada; `--s3-no-head` deja la subida limpia al primer intento.
+
+Su contrapartida es que rclone deja de comprobar lo que subió. Por eso la
+comprobación la hace ahora el propio script: contrasta el tamaño en el destino
+contra el del archivo en disco, y si no coinciden falla y salta el aviso por
+Telegram. Un respaldo remoto que nadie contrasta vuelve a ser una suposición.
+
+**Circuito completo verificado el 2026-08-30:** volcado → subida a R2 →
+descarga desde R2 → restauración en un Postgres desechable. 0 errores, 25
+tablas, 817 licitaciones. Es la única prueba que vale, porque el día que haga
+falta el respaldo el disco local no estará.
 
 ### Verificar la copia (sin tocar nada)
 
@@ -371,8 +403,8 @@ doscientos mensajes iguales.
 - [ ] `POSTGRES_PASSWORD` cambiada (la de desarrollo era `licitapro2026`)
 - [ ] TLS delante del puerto 8200
 - [ ] `TELEGRAM_BOT_USERNAME` con el bot real
-- [ ] Respaldos programados en el cron del host **y una restauración probada**
-- [ ] `RESPALDO_REMOTO` apuntando fuera del servidor
+- [x] Respaldos programados en el cron del host **y una restauración probada**
+- [x] `RESPALDO_REMOTO` apuntando fuera del servidor (R2)
 - [ ] Secretos del vigía (`RADAR_BOT_TOKEN`, `TELEGRAM_ADMIN_ID`) en GitHub
 - [ ] Webhook de Izipay registrado y con `IZIPAY_HMAC_KEY`
 - [ ] Términos de servicio y política de privacidad publicados
