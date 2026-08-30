@@ -307,8 +307,28 @@ RUTAS_LIBRES = (
 
 
 def ruta_libre(camino: str) -> bool:
-    return any(camino == r or camino.startswith(r + "/") or camino.startswith(r)
-               for r in RUTAS_LIBRES)
+    """Si el camino escapa del portero de suscripcion.
+
+    POR QUE NO ES UN `startswith` A SECAS
+
+      Lo era, y hoy no liberaba nada indebido de casualidad: ninguna de las 69
+      rutas declaradas empieza por un prefijo libre sin ser suya. Pero con esa
+      regla, el dia que alguien anada `/registro-empresa` o `/entrar-como`,
+      esas rutas quedan SIN COBRAR y sin que nada lo diga -- porque empiezan
+      por "/registro" y por "/entrar".
+
+      Un fallo de este tipo no da error ni ticket: solo deja de facturar. Se
+      exige el limite de segmento, que es lo que se pretendia desde el
+      principio; los prefijos que de verdad quieren cubrir un arbol entero se
+      escriben terminados en "/" y se ven a simple vista en RUTAS_LIBRES.
+    """
+    for r in RUTAS_LIBRES:
+        if r.endswith("/"):
+            if camino.startswith(r):
+                return True
+        elif camino == r or camino.startswith(r + "/"):
+            return True
+    return False
 
 
 async def regiones_permitidas(usuario_id: int, regiones: list[str]) -> tuple[list[str], str]:
