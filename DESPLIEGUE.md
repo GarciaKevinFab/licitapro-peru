@@ -272,13 +272,44 @@ un borrado, no contra perder el disco. Con `RESPALDO_REMOTO` puesto (un destino
 de `rclone`, por ejemplo `r2:licitapro`) sube sola; sin ella, el script avisa en
 cada pasada.
 
-**Prueba la restauración al menos una vez:**
+### Verificar la copia (sin tocar nada)
+
+Un respaldo que nunca se restauró no es un respaldo, es una suposición. Esto la
+restaura en un Postgres **desechable**, comprueba que sirve y lo borra. No toca
+producción en ningún momento, así que se puede correr cuando se quiera:
 
 ```bash
-gunzip -c licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL_EN_5432"
+COPIA=$(ls -t /respaldos/licitapro-*.sql.gz | head -1); docker run -d --name pg-restaura -e POSTGRES_PASSWORD=desechable -e POSTGRES_DB=verificacion postgres:17-alpine >/dev/null && sleep 12 && gunzip -c "$COPIA" | docker exec -i -e PGPASSWORD=desechable pg-restaura psql -U postgres -d verificacion 2>&1 | grep -c '^ERROR'
 ```
 
-Un respaldo que nunca se restauró no es un respaldo, es una suposición.
+Tiene que decir **0**. Después, para ver que los datos están de verdad dentro:
+
+```bash
+docker exec -e PGPASSWORD=desechable pg-restaura psql -U postgres -d verificacion -c "ANALYZE" -c "SELECT relname, n_live_tup FROM pg_stat_user_tables WHERE schemaname='public' AND n_live_tup > 0 ORDER BY relname"
+```
+
+Y al terminar, retirar el contenedor de prueba:
+
+```bash
+docker rm -f pg-restaura
+```
+
+Comprobado el 2026-08-30 sobre una copia real: 0 errores, 25 tablas, 817
+licitaciones, estructura completa (60 índices, 25 claves primarias, 28
+foráneas) y las secuencias adelantadas — es decir, un `INSERT` posterior no
+choca con los identificadores que ya existen, que es el fallo silencioso
+clásico de una restauración a medias.
+
+### Restaurar de verdad, encima de producción
+
+> **Esto vacía la base antes de escribir.** El volcado se genera con `--clean
+> --if-exists`, así que su primera parte retira las tablas existentes. Si lo
+> lanzas contra la base equivocada no hay deshacer: verifica dos veces a dónde
+> apunta la URL, y usa el puerto 5432, no el 6543.
+
+```bash
+gunzip -c /respaldos/licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "${DATABASE_URL/:6543/:5432}"
+```
 
 ## 11. Comprobaciones de salud
 
