@@ -411,8 +411,13 @@ los datos y los escribe en la **misma** base de Supabase que usa el servidor.
 En la máquina peruana, con el repositorio clonado y el `.env` copiado:
 
 ```powershell
-.\tools\instalar_puente.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\instalar_puente.ps1
 ```
+
+El `-ExecutionPolicy Bypass` no sobra: Windows se niega a ejecutar `.ps1` por
+defecto y el error que da —«la ejecución de scripts está deshabilitada en este
+sistema»— parece un problema del script y no lo es. Puesto asi solo afecta a
+esa ejecución; no cambia la política del equipo.
 
 Crea el entorno, instala las cuatro dependencias de `requirements-puente.txt`,
 programa la tarea cada 4 horas y lanza una pasada de prueba. Correrlo dos veces
