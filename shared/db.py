@@ -544,10 +544,30 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
             # de filtros no tendria donde guardar y el panel se veria roto.
             # user_id es la columna heredada (chat de Telegram); se usa el
             # negativo del id para no chocar con ningun chat real.
+            #
+            # EL AVISO POR CORREO NACE ENCENDIDO, Y ES LO QUE HACE QUE EL
+            # PRODUCTO CUMPLA LO QUE PROMETE
+            #
+            #   `email_notificaciones` guarda la direccion de destino, y nacia
+            #   en NULL. `repartir()` recorre los tres canales y los tres
+            #   estaban apagados: Telegram sin vincular, WhatsApp sin
+            #   configurar y el correo vacio. Resultado comprobado en
+            #   produccion: cero avisos enviados desde que existe el sistema.
+            #
+            #   Es decir, quien se registraba pasaba sus 14 dias de prueba --
+            #   exactamente la ventana que decide si paga -- sin recibir una
+            #   sola alerta, salvo que adivinara que tenia que entrar a
+            #   Configuracion y teclear su propio correo. La unica cosa que el
+            #   cliente viene a comprar es que le avisemos.
+            #
+            #   Se enciende con la direccion con la que se registro, que es la
+            #   que acaba de dar para esto. Sigue siendo suya: en Configuracion
+            #   puede cambiarla o vaciarla, y vaciarla apaga el canal.
             await conn.execute(
-                """INSERT INTO user_config (user_id, usuario_id)
-                   VALUES ($1, $2) ON CONFLICT DO NOTHING""",
-                -fila["id"], fila["id"],
+                """INSERT INTO user_config (user_id, usuario_id,
+                                            email_notificaciones)
+                   VALUES ($1, $2, $3) ON CONFLICT DO NOTHING""",
+                -fila["id"], fila["id"], fila["email"],
             )
     if fila:
         # La prueba nace con la cuenta: sin suscripcion el panel no sabria que
