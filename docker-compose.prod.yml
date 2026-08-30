@@ -26,6 +26,26 @@ services:
     restart: "no"
 
   web:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     restart: unless-stopped
     env_file: .env
@@ -40,6 +60,26 @@ services:
       - datos_expedientes:/app/data
 
   radar:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m radar_bot.main
     # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
@@ -55,6 +95,26 @@ services:
         condition: service_completed_successfully
 
   prep:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m prep_bot.main
     # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
@@ -72,6 +132,26 @@ services:
       - datos_expedientes:/app/data
 
   win:
+    # RESOLUTOR PROPIO, Y NO POR CAPRICHO
+    #
+    #   El VPS resuelve por el DNS de Hostinger (153.92.2.6), y ese servidor
+    #   sirvio durante horas la cadena ANTIGUA de mail.sisac.pe: el CNAME que
+    #   ya se habia borrado y las IPs de Cloudflare que van con el. Comparado
+    #   el mismo dia:
+    #
+    #     @1.1.1.1     -> 185.73.9.4                  (correcto)
+    #     @153.92.2.6  -> 104.21.40.60, 172.67.178.9  (obsoleto)
+    #
+    #   Con eso, el envio de correo fallaba con "Timed out connecting to
+    #   mail.sisac.pe": la aplicacion hablaba con el proxy de Cloudflare, que
+    #   no entiende SMTP. Vaciar la cache local no arregla nada, porque el
+    #   dato equivocado viene de arriba.
+    #
+    #   Un fallo de DNS del proveedor no puede tumbar el correo del producto,
+    #   asi que los contenedores preguntan por su cuenta.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build: .
     command: python -m win_bot.main
     # El HEALTHCHECK vive en el Dockerfile y hace `curl localhost:8200/salud`.
