@@ -73,6 +73,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Crear el esquema base
+        # migrations/0001 es una baseline que NO crea nada: nacio sobre una
+        # base ya montada a mano con shared/schema.sql. En una base vacia --
+        # como la de este runner -- la 0002 se estrella con
+        # `relation "empresas" does not exist`, y parece una migracion rota
+        # cuando es un paso de instalacion que falta.
+        run: python tools/crear_esquema.py
+
       - name: Aplicar migraciones
         run: alembic upgrade head
 

@@ -26,27 +26,58 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+from urllib.parse import urlparse
 
 import psycopg2
 
-RUTA_ESQUEMA = "/app/shared/schema.sql"
+# Todo lo de aqui se calcula desde __file__ y no desde el directorio actual.
+#
+#   `sys.path.insert(0, os.getcwd())`, que es lo que hacen otros scripts de
+#   esta carpeta, solo funciona si quien lanza el script esta parado en la raiz
+#   del proyecto. Ejecutar `python tools/crear_esquema.py` deja sys.path[0]
+#   apuntando a tools/, y el import de shared falla.
+#
+#   Y la ruta del esquema estaba fija en /app/shared/schema.sql: dentro de la
+#   imagen resuelve igual que esto, pero fuera de ella no existe. Por eso este
+#   script no se podia usar en el CI, que es exactamente donde hacia falta.
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
+RUTA_ESQUEMA = RAIZ / "shared" / "schema.sql"
+
+from shared.db import _es_gestionado  # noqa: E402
+
+
+def _conectar():
+    """Con DATABASE_URL si la hay; si no, con las piezas POSTGRES_*.
+
+    Exigir DATABASE_URL dejaba fuera los dos entornos que no la tienen: el
+    desarrollo local y el CI, donde la base es un contenedor del runner y la
+    conexion viene en piezas sueltas. Es la misma regla que sigue get_pool.
+
+    Y el TLS va SOLO contra bases gestionadas. Supabase no acepta otra cosa,
+    pero un Postgres local no habla TLS: forzar sslmode=require alli rechaza
+    la conexion con un mensaje que tampoco apunta a la causa.
+    """
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if url:
+        if _es_gestionado(urlparse(url).hostname or "") and "sslmode=" not in url:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
+        return psycopg2.connect(url)
+
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", "5433")),
+        dbname=os.getenv("POSTGRES_DB", "licitapro"),
+        user=os.getenv("POSTGRES_USER", "licitapro"),
+        password=os.getenv("POSTGRES_PASSWORD", ""),
+    )
 
 
 def main() -> int:
-    url = (os.getenv("DATABASE_URL") or "").strip()
-    if not url:
-        print("DATABASE_URL sin definir: no hay base donde crear nada.", file=sys.stderr)
-        return 1
-
-    # Supabase solo acepta TLS; sin esto la conexion se rechaza con un mensaje
-    # que no apunta a la causa.
-    if "sslmode=" not in url:
-        url += ("&" if "?" in url else "?") + "sslmode=require"
-
-    with open(RUTA_ESQUEMA, encoding="utf-8") as f:
-        sql = f.read()
-
-    con = psycopg2.connect(url)
+    sql = RUTA_ESQUEMA.read_text(encoding="utf-8")
+    con = _conectar()
     # DDL en autocommit: si una sentencia falla, lo hecho hasta ahi queda, y el
     # script es idempotente en la practica porque schema.sql usa IF NOT EXISTS.
     con.autocommit = True
