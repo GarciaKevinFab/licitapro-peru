@@ -58,6 +58,10 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       URL: ${{ vars.LICITAPRO_URL || 'https://licitapro.sisac.pe' }}
+      # `gh` deduce el repositorio del directorio git, y este job NO hace
+      # checkout a proposito. Sin esto falla con "not a git repository" justo
+      # al abrir la incidencia, o sea en la unica linea que importa.
+      GH_REPO: ${{ github.repository }}
       ETIQUETA: vigia-caida
       BOT: ${{ secrets.RADAR_BOT_TOKEN }}
       ADMIN: ${{ secrets.TELEGRAM_ADMIN_ID }}
@@ -68,12 +72,18 @@ jobs:
         run: |
           # Sin `set -e`: un fallo de curl ES el resultado que buscamos, no un
           # error del job. Se captura y se decide despues.
-          CUERPO=$(curl -sS -m 25 -w '\n%{http_code}' "$URL/salud" 2>/dev/null || echo -e '\n000')
+          CUERPO=$(curl -sS -m 25 -w '\n%{http_code}' "$URL/salud" 2>/tmp/curl.err || echo -e '\n000')
           CODIGO=$(printf '%s' "$CUERPO" | tail -n1)
           JSON=$(printf '%s' "$CUERPO" | sed '$d')
           echo "codigo=$CODIGO" >> "$GITHUB_OUTPUT"
           echo "Codigo: $CODIGO"
           echo "Cuerpo: $JSON"
+          # El motivo del fallo lo escribe curl en stderr. Mandarlo a
+          # /dev/null dejaba un "no responde" que no dice por que, que es
+          # medio aviso: sabes que algo pasa y no por donde empezar.
+          MOTIVO="$(tr -d '\n' < /tmp/curl.err | cut -c1-200)"
+          [ -n "$MOTIVO" ] && echo "curl dijo: $MOTIVO"
+          echo "motivo=$MOTIVO" >> "$GITHUB_OUTPUT"
           HORAS=$(printf '%s' "$JSON" | jq -r '.oece_horas // "desconocido"' 2>/dev/null || echo desconocido)
           # jq contra una entrada vacia sale con 0 y sin escribir nada: sin
           # esto el informe diria "Horas desde la ultima cosecha:" y nada mas.
@@ -84,6 +94,7 @@ jobs:
         env:
           CODIGO: ${{ steps.sondeo.outputs.codigo }}
           HORAS: ${{ steps.sondeo.outputs.horas }}
+          MOTIVO: ${{ steps.sondeo.outputs.motivo }}
         run: |
           set -euo pipefail
 
@@ -136,6 +147,7 @@ jobs:
             "" \
             "- URL comprobada: ${URL}/salud" \
             "- Resultado: ${QUE}" \
+            "- curl dijo: ${MOTIVO:-nada}" \
             "- Horas desde la ultima cosecha de OECE: ${HORAS}" \
             "" \
             "Que mirar en el VPS, en este orden:" \
