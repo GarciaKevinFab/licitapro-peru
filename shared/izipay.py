@@ -55,11 +55,44 @@ COMISION_PORCENTAJE = 0.040592
 COMISION_FIJA = 0.8142
 
 
+# Izipay reparte dos juegos de credenciales y se distinguen a simple vista: las
+# de prueba dicen "testpublickey_" / "testpassword_", las de verdad
+# "publickey_" / "prodpassword_". El codigo de comercio es el mismo en los dos.
+_MARCAS_DE_PRUEBA = ("testpublickey_", "testpassword_", "testprivatekey_")
+
+
+def credenciales_de_prueba() -> bool:
+    """Si las claves configuradas son las del entorno de pruebas de Izipay."""
+    valores = " ".join(v for v in (os.getenv("IZIPAY_PUBLIC_KEY"),
+                                   os.getenv("IZIPAY_API_KEY")) if v).lower()
+    return any(marca in valores for marca in _MARCAS_DE_PRUEBA)
+
+
 def modo() -> str:
     """'produccion', 'sandbox' o 'simulado'.
 
     Simulado es el valor por defecto a proposito: sin credenciales hay que
     fallar hacia "no cobra nada", nunca hacia "intenta cobrar de verdad".
+
+    POR QUE SE NIEGA A CORRER EN PRODUCCION CON CLAVES DE PRUEBA
+
+      Pasar a cobrar de verdad parece un interruptor -- cambiar
+      IZIPAY_MODO=sandbox por produccion -- y no lo es: hacen falta ademas las
+      credenciales que Izipay emite tras validar el negocio y la web.
+
+      Con las de prueba y el modo en produccion, las peticiones van al host
+      real (api-pw.izipay.pe) con llaves que alli no valen. La pasarela
+      responde con un error de autenticacion, `crear_token` devuelve fallo, y
+      el cliente ve "La pasarela no respondio. Intenta de nuevo".
+
+      Es decir: el estado en el que uno CREE que ya esta cobrando es
+      exactamente el estado en el que NADIE puede pagar. Y no se nota desde
+      dentro -- el panel funciona, el sitio funciona -- hasta que alguien
+      pregunta por que no entra dinero.
+
+      Por eso se levanta el error aqui y no se cae de vuelta a sandbox. Caer
+      de vuelta dejaria la pasarela funcionando en pruebas mientras el dueno
+      cree que factura, que es la misma confusion con otra cara.
     """
     m = (os.getenv("IZIPAY_MODO") or "").strip().lower()
     if m in ("produccion", "sandbox"):
@@ -68,6 +101,16 @@ def modo() -> str:
                 "IZIPAY_MODO=%s pero faltan IZIPAY_MERCHANT_CODE o IZIPAY_API_KEY: "
                 "se sigue en modo simulado.", m)
             return "simulado"
+        if m == "produccion" and credenciales_de_prueba():
+            raise RuntimeError(
+                "IZIPAY_MODO=produccion pero IZIPAY_PUBLIC_KEY/IZIPAY_API_KEY "
+                "son las de PRUEBAS de Izipay (llevan 'testpublickey_' o "
+                "'testpassword_'). Asi ningun cliente podria pagar: las "
+                "peticiones irian al host real con llaves que alli no valen. "
+                "Pide a Izipay las credenciales de produccion y cambialas "
+                "TODAS -- codigo de comercio, clave publica, API key y HMAC -- "
+                "antes de mover IZIPAY_MODO."
+            )
         return m
     return "simulado"
 
