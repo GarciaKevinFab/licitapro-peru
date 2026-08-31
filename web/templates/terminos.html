@@ -11,8 +11,6 @@
 .legal p{margin:0 0 12px;line-height:1.62}
 .legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
 .legal li{margin-bottom:6px}
-.revisar{background:var(--warn-soft);border:1px solid var(--warn);border-radius:5px;
-  padding:15px 17px;margin-bottom:26px;font-size:13.5px;color:var(--warn);line-height:1.55}
 .legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
   font-size:13px;color:var(--ink-3)}
 {% endblock %}
@@ -21,13 +19,6 @@
 {% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
 <main>
 <article class="legal tarjeta">
-
-  <div class="revisar">
-    <b>Borrador pendiente de revisión legal.</b> Describe lo que el sistema hace
-    de verdad, pero un contrato de servicio tiene consecuencias que no se
-    resuelven leyendo el código. Que lo revise un abogado antes de publicarlo,
-    sobre todo las cláusulas de responsabilidad y la de jurisdicción.
-  </div>
 
   <h1>Términos del servicio</h1>
   <p class="fecha">Última actualización: {{ hoy }}</p>
@@ -105,8 +96,14 @@
      documentos que no cumplan un requisito específico de unas bases concretas,
      ni por avisos que no lleguen por una caída de WhatsApp, Telegram o tu
      servidor de correo.</p>
-  <p><b>[Límite de responsabilidad económica: pendiente de definir con tu
-     abogado.]</b></p>
+  <p>Si aun así tuviéramos que responder por algo, <b>nuestra responsabilidad
+     total no superará lo que nos hayas pagado en los doce meses anteriores al
+     hecho</b>. Tampoco respondemos por lucro cesante, pérdida de oportunidad
+     comercial ni daños indirectos.</p>
+  <p>Este límite no se aplica al dolo ni a la culpa inexcusable, ni recorta los
+     derechos que la Ley 29571 (Código de Protección y Defensa del Consumidor)
+     reconoce a quien contrate como consumidor final: esos derechos no se pueden
+     renunciar por contrato, y aquí no se pretende hacerlo.</p>
 
   <h2>8. Cancelación</h2>
   <p>Puedes cerrar tu cuenta cuando quieras desde Configuración, y se borra todo
@@ -117,7 +114,11 @@
   <h2>9. Cambios y ley aplicable</h2>
   <p>Si cambiamos estos términos te avisaremos por correo. Seguir usando el
      servicio después de un cambio significa que lo aceptas.</p>
-  <p>Se rigen por la ley peruana. <b>[Jurisdicción: pendiente de definir.]</b></p>
+  <p>Se rigen por la ley peruana. Para cualquier controversia que no se resuelva
+     hablando, las partes se someten a los
+     <b>jueces y tribunales del Cercado de Lima</b>, renunciando al fuero de su
+     domicilio. Si contratas como consumidor
+     final, esto no te impide acudir a <b>Indecopi</b>.</p>
 
   <p class="pie-legal">
     <a href="/">Volver al inicio</a> &middot; <a href="/privacidad">Política de privacidad</a>

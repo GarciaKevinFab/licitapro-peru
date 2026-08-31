@@ -790,12 +790,47 @@ async def test_las_paginas_legales_son_publicas(cliente):
     """Hay que poder leerlas ANTES de registrarse. Pedir una cuenta para saber
     que hacemos con tus datos es exactamente lo que la Ley 29733 no quiere."""
     for ruta in ("/privacidad", "/terminos"):
-        r = await cliente.get(ruta)
-        assert r.status_code == 200, ruta
-        # El aviso de borrador tiene que seguir ahi hasta que un abogado lo
-        # revise: quitarlo sin revision es publicar como definitivo un texto
-        # que nadie valido.
-        assert "pendiente de revisión legal" in r.text
+        assert (await cliente.get(ruta)).status_code == 200, ruta
+
+
+async def test_los_terminos_no_se_publican_a_medias(cliente):
+    """Los terminos ya no llevan aviso de borrador, y eso sube el liston.
+
+    ANTES ESTA PRUEBA EXIGIA EL AVISO
+
+      Mientras el texto estuviera sin revisar, el aviso era lo honesto: decia
+      al lector que no se fiara del todo. El dueno decidio retirarlo, y con el
+      aviso fuera lo que hay que impedir es lo contrario -- que se publique
+      como definitivo un texto con huecos dentro.
+
+      El hueco tenia una forma concreta y reconocible: corchetes con la palabra
+      "pendiente" ("[Jurisdiccion: pendiente de definir.]"). Eso es lo que se
+      fija aqui, junto a las dos clausulas que un contrato de servicio no puede
+      no tener.
+    """
+    import re
+    t = (await cliente.get("/terminos")).text
+
+    huecos = re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.I)
+    assert not huecos, f"quedan marcadores sin resolver: {huecos}"
+    assert "pendiente de revisión legal" not in t
+
+    # Las dos que faltaban, y que sin ellas el contrato no cierra.
+    assert "doce meses anteriores" in t, "falta el limite de responsabilidad"
+    assert "Cercado de Lima" in t, "falta la jurisdiccion"
+    # Ninguna de las dos puede recortar lo que la ley no deja recortar.
+    assert "29571" in t and "Indecopi" in t
+
+
+async def test_la_privacidad_sigue_avisando_de_que_es_borrador(cliente):
+    """Y aqui el aviso SI se queda, porque senala un hueco real.
+
+    Dice que "los datos del responsable estan sin rellenar", y es verdad: son
+    las mismas cinco variables de comercio que siguen vacias. Retirarlo antes
+    de rellenarlas seria dar por definitiva una politica que la Ley 29733
+    considera incompleta, porque no identifica a quien trata los datos.
+    """
+    assert "pendiente de revisión legal" in (await cliente.get("/privacidad")).text
 
 
 async def test_la_privacidad_describe_el_sistema_real(cliente):
