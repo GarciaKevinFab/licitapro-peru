@@ -219,9 +219,12 @@ table.cred tr:last-child td{border-bottom:none}
       <div class="mt-18 col-15">
         <label class="campo"><span>Palabras clave</span>
           <textarea name="keywords" placeholder="software, servidores, cableado estructurado">{{ (config.keywords | join(', ')) if config and config.keywords else '' }}</textarea>
-          <p class="ayuda">Separadas por comas. Prefiere raíces sin tilde
-             (<code>tecnolog</code>, <code>telecomunicac</code>): las fuentes oficiales
-             publican la acentuación corrupta y una palabra con tilde puede no coincidir.</p>
+          <p class="ayuda">Separadas por comas, y <strong>palabras completas</strong>
+             (<code>tecnologia</code>, <code>internet</code>, <code>impresora</code>).
+             El plural se cubre solo, y las tildes dan igual: la comparación las
+             ignora. Una raíz suelta como <code>tecnolog</code> no coincide con nada,
+             así que escribe también las variantes que uses
+             (<code>informatico</code>, <code>informatica</code>).</p>
         </label>
 
         <label class="campo"><span>Palabras a excluir</span>

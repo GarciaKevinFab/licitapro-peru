@@ -9,6 +9,7 @@ from datetime import date, datetime
 
 import pytest
 
+from shared.config import match_keywords
 from shared.banderas import calcular, _umbral, NIVEL_ALTO, NIVEL_MEDIO, NIVEL_BAJO
 from shared.plazos_pago import (
     _pascua, dias_de_mora, en_prorroga, es_habil, fecha_limite_pago,
@@ -263,3 +264,40 @@ def test_una_celda_sin_fechas_devuelve_nada_y_no_revienta(celda):
     buena y mostraria un plazo que no existe.
     """
     assert _fechas_cotizacion(celda) == (None, None)
+
+
+# ─── Como casan de verdad las palabras clave ─────────────
+#
+#   La pantalla de Configuracion recomendaba "raices sin tilde (tecnolog,
+#   telecomunicac)". Con este comparador esas raices NO casan con nada: quien
+#   siguiera el consejo se quedaba sin una sola alerta, sin error y sin aviso.
+#
+#   El consejo se corrigio. Estas pruebas fijan el comportamiento real para que
+#   texto y codigo no vuelvan a divergir, que es lo que hizo el dano.
+
+def test_una_raiz_suelta_no_casa():
+    """El fallo que costo el consejo equivocado."""
+    assert match_keywords("SERVICIO DE TECNOLOGIA DE LA INFORMACION",
+                          ["tecnolog"]) is False
+
+
+def test_la_palabra_completa_si_casa():
+    assert match_keywords("SERVICIO DE TECNOLOGIA DE LA INFORMACION",
+                          ["tecnologia"]) is True
+
+
+def test_el_plural_se_cubre_solo():
+    """Por eso no hace falta escribir "servidor" y "servidores"."""
+    assert match_keywords("ADQUISICION DE SERVIDORES", ["servidor"]) is True
+    assert match_keywords("ADQUISICION DE IMPRESORAS", ["impresora"]) is True
+
+
+def test_las_tildes_dan_igual_en_los_dos_lados():
+    """El motivo que daba la pantalla para usar raices ya estaba resuelto."""
+    assert match_keywords("ADQUISICIÓN DE INFORMÁTICA", ["informatica"]) is True
+    assert match_keywords("ADQUISICION DE INFORMATICA", ["informática"]) is True
+
+
+def test_no_casa_dentro_de_otra_palabra():
+    """"ERP" no puede entrar por "cuERPo": es el fallo que creo esta regla."""
+    assert match_keywords("CUERPO GENERAL DE BOMBEROS", ["erp"]) is False
