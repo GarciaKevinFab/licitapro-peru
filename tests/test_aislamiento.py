@@ -13,6 +13,8 @@ QUE SE CUBRE Y POR QUE ESTO Y NO OTRA COSA
   - Reparto de avisos. Ya fallo una vez mandandolo todo al administrador; y un
     duplicado en WhatsApp cuesta dinero de verdad.
 """
+import re
+
 import pytest
 
 from tests.conftest import sin_base
@@ -822,15 +824,60 @@ async def test_los_terminos_no_se_publican_a_medias(cliente):
     assert "29571" in t and "Indecopi" in t
 
 
-async def test_la_privacidad_sigue_avisando_de_que_es_borrador(cliente):
-    """Y aqui el aviso SI se queda, porque senala un hueco real.
+# Los cuatro que la Ley 29733 exige para identificar y poder contactar al
+# responsable. El telefono no entra: es cortesia, no requisito.
+_IDENTIDAD = {
+    "LICITAPRO_RAZON_SOCIAL": "EJEMPLO DE PRUEBA S.A.C.",
+    "LICITAPRO_RUC": "20123456789",
+    "LICITAPRO_DIRECCION": "Av. de Prueba 123, Lima",
+    "LICITAPRO_CONTACTO_EMAIL": "datos@ejemplo.pe",
+}
 
-    Dice que "los datos del responsable estan sin rellenar", y es verdad: son
-    las mismas cinco variables de comercio que siguen vacias. Retirarlo antes
-    de rellenarlas seria dar por definitiva una politica que la Ley 29733
-    considera incompleta, porque no identifica a quien trata los datos.
+
+async def test_la_privacidad_avisa_mientras_falten_datos_del_responsable(cliente, monkeypatch):
+    """Sin los datos del responsable, la politica se publica diciendo que lo esta.
+
+    No es escrupulo: sin domicilio ni correo, el derecho de acceso de la Ley
+    29733 no se puede ejercer contra nadie. Publicarla como definitiva seria
+    afirmar que se cumple algo que no se puede cumplir.
     """
-    assert "pendiente de revisión legal" in (await cliente.get("/privacidad")).text
+    for v in _IDENTIDAD:
+        monkeypatch.delenv(v, raising=False)
+    t = (await cliente.get("/privacidad")).text
+    assert "Política incompleta" in t
+    # Y nunca un corchete de marcador delante del lector.
+    assert not re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.I)
+
+
+async def test_el_aviso_de_privacidad_se_apaga_solo_al_completar_la_identidad(cliente, monkeypatch):
+    """La razon de ser del cambio: el aviso depende del HECHO, no de la memoria.
+
+    Antes era texto fijo, asi que sobreviviria a que los datos se rellenaran y
+    nadie sabria si seguia puesto por descuido o a proposito. Con los cuatro en
+    el entorno tiene que desaparecer, y los datos tienen que verse.
+    """
+    for v, valor in _IDENTIDAD.items():
+        monkeypatch.setenv(v, valor)
+    t = (await cliente.get("/privacidad")).text
+    assert "Política incompleta" not in t
+    assert _IDENTIDAD["LICITAPRO_RAZON_SOCIAL"] in t
+    assert _IDENTIDAD["LICITAPRO_RUC"] in t
+    assert _IDENTIDAD["LICITAPRO_DIRECCION"] in t
+    assert _IDENTIDAD["LICITAPRO_CONTACTO_EMAIL"] in t
+
+
+async def test_el_checkout_y_la_privacidad_nombran_al_mismo_responsable(cliente, monkeypatch):
+    """Una politica que no coincide con el pie del cobro es peor que no tenerla.
+
+    Las dos leen las mismas variables, asi que discrepar solo es posible si
+    alguien vuelve a escribir los datos a mano en una de las dos plantillas.
+    """
+    for v, valor in _IDENTIDAD.items():
+        monkeypatch.setenv(v, valor)
+    for ruta in ("/privacidad", "/precios", "/comprar/pro"):
+        t = (await cliente.get(ruta)).text
+        assert _IDENTIDAD["LICITAPRO_RAZON_SOCIAL"] in t, ruta
+        assert _IDENTIDAD["LICITAPRO_RUC"] in t, ruta
 
 
 async def test_la_privacidad_describe_el_sistema_real(cliente):

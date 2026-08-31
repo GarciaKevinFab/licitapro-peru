@@ -431,9 +431,14 @@ async def privacidad(request: Request):
     Condicionar eso a estar al dia con el pago seria lo contrario de lo que
     exige la Ley 29733.
     """
+    from web.comprar import _comercio, identidad_completa
     return templates.TemplateResponse("privacidad.html", {
         "request": request,
         "usuario": await usuario_actual(request),
+        # Los datos del responsable salen del entorno, como en el checkout: son
+        # los mismos y escribirlos dos veces es como acaban discrepando.
+        "comercio": _comercio(),
+        "identidad_completa": identidad_completa(),
         "hoy": _hoy_en_letras(),
     })
 

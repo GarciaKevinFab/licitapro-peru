@@ -28,14 +28,23 @@
 <main>
 <article class="legal tarjeta">
 
-  <div class="revisar">
-    <b>Borrador pendiente de revisión legal.</b> Este texto describe con
-    exactitud lo que el sistema hace con los datos — está escrito a partir del
-    esquema real, no de una plantilla genérica. Pero no lo ha revisado un
-    abogado. Antes de publicarlo, que lo lea uno: los datos del responsable
-    están sin rellenar y hay decisiones, como los plazos de conservación, que
-    conviene confirmar.
-  </div>
+  {# EL AVISO SE APAGA SOLO, Y ESO ES EL PUNTO
+
+     Antes era texto fijo, asi que seguiria ahi hasta que alguien se acordara de
+     borrarlo -- y el dia que se acuerde no habra forma de saber si los datos ya
+     estaban puestos. Ahora depende de `identidad_completa`: mientras falte
+     razon social, RUC, domicilio o correo, la politica avisa de que esta
+     incompleta, porque sin esos cuatro la Ley 29733 no se puede cumplir (no se
+     puede ejercer el derecho de acceso contra alguien a quien no puedes
+     escribir). En cuanto esten los cuatro en el entorno, desaparece. #}
+  {% if not identidad_completa %}
+    <div class="revisar">
+      <b>Política incompleta.</b> Faltan los datos del responsable del
+      tratamiento, que la Ley 29733 exige para que puedas ejercer tus derechos.
+      El resto del texto describe con exactitud lo que el sistema hace con los
+      datos: está escrito a partir del esquema real, no de una plantilla.
+    </div>
+  {% endif %}
 
   <h1>Política de privacidad</h1>
   <p class="fecha">Última actualización: {{ hoy }}</p>
@@ -45,9 +54,20 @@
      <b>Ley 29733</b>, Ley de Protección de Datos Personales, y su reglamento.</p>
 
   <h2>1. Quién es el responsable</h2>
-  <p>El responsable del tratamiento es <b>[razón social pendiente]</b>, con RUC
-     <b>[pendiente]</b> y domicilio en <b>[pendiente]</b>. Para cualquier asunto
-     relacionado con tus datos puedes escribir a <b>[correo pendiente]</b>.</p>
+  {# Los mismos datos que el pie del checkout, de la misma fuente. Escritos dos
+     veces es como acaban discrepando, y una politica que no coincide con lo que
+     figura en el contrato de comercio es peor que no tenerla. #}
+  <p>El responsable del tratamiento es
+     <b>{{ comercio.razon_social or 'pendiente de indicar' }}</b>{% if comercio.ruc %},
+     con RUC <b>{{ comercio.ruc }}</b>{% endif %}{% if comercio.direccion %},
+     con domicilio en <b>{{ comercio.direccion }}</b>{% endif %}.
+     {% if comercio.email %}
+       Para cualquier asunto relacionado con tus datos puedes escribir a
+       <b><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a></b>{% if comercio.telefono %},
+       o llamar al <b>{{ comercio.telefono }}</b>{% endif %}.
+     {% else %}
+       La dirección de contacto para asuntos de datos está pendiente de indicar.
+     {% endif %}</p>
 
   <h2>2. Qué datos tratamos y por qué</h2>
   <div class="marco-tabla">
@@ -141,12 +161,18 @@
   <p>Mientras tengas la cuenta abierta. Si la borras, se borran con ella tus
      empresas, propuestas, contratos, logos y firmas — de verdad, no marcados
      como inactivos. Los registros de intentos de acceso se eliminan a las 24
-     horas. <b>[Plazo de conservación de los registros contables: pendiente de
-     confirmar con tu contador.]</b></p>
+     horas.</p>
+  <p>Hay una excepción, y es la única: <b>los comprobantes de pago y los
+     registros contables asociados se conservan cinco años</b> aunque borres la
+     cuenta, porque la normativa tributaria obliga a guardarlos. De esos
+     registros solo queda lo que exige una factura —razón social, RUC, importe y
+     fecha—, no tus licitaciones, tus propuestas ni tus documentos, que sí
+     desaparecen.</p>
 
   <h2>6. Tus derechos</h2>
   <p>La Ley 29733 te reconoce estos, y puedes ejercerlos escribiendo a
-     <b>[correo pendiente]</b>:</p>
+     {% if comercio.email %}<b><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a></b>
+     {%- else %}la dirección de contacto del responsable{% endif %}:</p>
   <ul>
     <li><b>Acceso.</b> Saber qué datos tuyos tenemos.</li>
     <li><b>Rectificación.</b> Corregir los que estén mal. La mayoría los puedes

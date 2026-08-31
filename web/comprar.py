@@ -107,6 +107,24 @@ def _comercio() -> dict:
     return {k: v.strip() for k, v in campos.items() if v.strip()}
 
 
+# Los cuatro datos que la Ley 29733 exige para identificar al responsable del
+# tratamiento. La direccion y el correo no son adorno: sin una via de contacto,
+# el derecho a acceder o a borrar tus datos no se puede ejercer.
+IDENTIDAD_MINIMA = ("razon_social", "ruc", "direccion", "email")
+
+
+def identidad_completa() -> bool:
+    """Si se puede identificar y contactar al responsable del tratamiento.
+
+    Ata el aviso de borrador de /privacidad a un HECHO en vez de a que alguien
+    se acuerde de borrarlo. Mientras falte uno de los cuatro, la politica se
+    publica avisando de que esta incompleta; en cuanto esten los cuatro, el
+    aviso desaparece solo.
+    """
+    comercio = _comercio()
+    return all(comercio.get(c) for c in IDENTIDAD_MINIMA)
+
+
 _COLUMNAS_PLAN = """codigo, nombre, precio_mensual, precio_anual, max_empresas,
                     max_regiones, analisis_ia, alertas"""
 
