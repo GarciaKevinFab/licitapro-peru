@@ -617,17 +617,20 @@ GORE_COTIZACIONES_PORTALS = {
 # Generic GORE portals (HTML scraping, lower reliability)
 #
 #   Cusco salio de esta lista: https://www.regioncusco.gob.pe/contrataciones/
-#   devuelve 404 desde hace meses. Con la sonda ya no era un fallo invisible,
-#   pero seguia siendo un aviso cada cuatro horas sobre algo que no se va a
-#   arreglar solo. Un aviso que sale siempre no se lee nunca.
+#   devuelve 404 desde hace meses. Y Junin salio despues: su pagina de
+#   contrataciones responde 200 con 55 KB, pero leida entera (31/08/2026) solo
+#   contiene enlaces institucionales -- TUPA, estructura organica, "trabaja con
+#   nosotros". No publica ni una compra. Mantenerla producia un "SIN EXTRAER:
+#   revisar selectores" permanente, que es una pista falsa: manda a leer un
+#   HTML donde no hay nada que leer.
 #
-#   Junin responde 200 y no publica tabla: no aporta, pero tampoco miente. Se
-#   deja por si vuelven a publicar ahi.
-GORE_GENERIC_PORTALS = {
-    "Junín": [
-        "https://www.regionjunin.gob.pe/pagina/id/contrataciones_y_adquisiciones/",
-    ],
-}
+#   BARRIDO COMPLETO del 31/08/2026, desde una conexion peruana: se sondearon
+#   los patrones cotizaciones./compras./logistica. en las 25 regiones (45
+#   URLs). Resultado: el portal de Madre de Dios es EL UNICO sistema de
+#   cotizaciones en linea vivo del pais. Cusco tiene los tres subdominios
+#   creados pero sirviendo la pagina por defecto del servidor: si algun dia
+#   montan la aplicacion, ese es el primer candidato a anadir aqui.
+GORE_GENERIC_PORTALS = {}
 
 
 async def _scrape_gore_cotizaciones_app(
