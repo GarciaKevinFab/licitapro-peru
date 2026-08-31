@@ -228,6 +228,7 @@ from web.empresas import router as router_empresas  # noqa: E402
 from web.propuestas import router as router_propuestas  # noqa: E402
 from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
+from web.comprar import router as router_comprar  # noqa: E402
 from web.webhooks_whatsapp import router as router_wa_webhook
 from web.admin import router as router_admin  # noqa: E402
 from web.informes import router as router_informes  # noqa: E402
@@ -273,6 +274,7 @@ app.include_router(router_empresas)
 app.include_router(router_propuestas)
 app.include_router(router_contratos)
 app.include_router(router_suscripcion)
+app.include_router(router_comprar)
 app.include_router(router_wa_webhook)
 app.include_router(router_admin)
 app.include_router(router_informes)
@@ -565,7 +567,7 @@ async def parte_tabla(request: Request, q: str = "", region: str = "",
 #   sitemap, no solo en la URL que mintio. Mejor no declararlo que declararlo
 #   mal. Si algun dia estas paginas pasan a tener fecha real de edicion en la
 #   base, entonces si merece la pena ponerlo.
-_PAGINAS_PUBLICAS = ("/", "/registro", "/privacidad", "/terminos")
+_PAGINAS_PUBLICAS = ("/", "/precios", "/registro", "/privacidad", "/terminos")
 
 # Zonas que exigen sesion. No es seguridad -- eso lo hace el middleware -- sino
 # cortesia con el rastreador: que no gaste presupuesto en 302 hacia el login.

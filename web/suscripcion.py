@@ -1,5 +1,6 @@
 """Suscripcion: elegir plan, pagar con Izipay y recibir la confirmacion."""
 import logging
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -60,32 +61,54 @@ async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("m
                             status_code=303)
 
 
-@router.post("/suscripcion/pagar")
-async def pagar(request: Request):
-    """Abre el cobro: crea la orden y pide el token de sesion a Izipay.
+def _con_error(ruta: str, texto: str) -> str:
+    """La ruta de vuelta con el error pegado, respetando la query que ya traiga.
+
+    `/suscripcion` no lleva query y `/comprar/pro?periodo=anual` si. Pegar
+    siempre "?" le comeria el periodo a la segunda y devolveria al usuario a un
+    checkout distinto del que estaba mirando.
+    """
+    return f"{ruta}{'&' if '?' in ruta else '?'}error={quote_plus(texto)}"
+
+
+async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion"):
+    """Crea la orden, pide el token de sesion a Izipay y pinta el formulario.
 
     El numero de orden se genera y se guarda ANTES de llamar a la pasarela. Si
     se guardara despues, un pago confirmado sin fila local quedaria huerfano: el
     cliente habria pagado sin recibir el servicio.
-    """
-    usuario = await usuario_actual(request)
-    if not usuario:
-        return RedirectResponse("/entrar", status_code=303)
 
+    POR QUE ESTA AQUI SUELTA Y NO DENTRO DE LA RUTA
+
+      La usan dos entradas: `/suscripcion/pagar`, para el cliente que ya esta
+      dentro, y `POST /comprar`, para quien llega desde la pagina publica de
+      precios sin haber entrado nunca. Este es el unico sitio del sistema donde
+      se genera un numero de orden y se registra el intento.
+
+      La alternativa obvia -- copiar el bloque en la ruta nueva -- es la peor:
+      el dia que una de las dos copias dejara de llamar a `registrar_intento`,
+      el webhook llegaria con un numero de orden sin fila que actualizar. El
+      cliente habria pagado y su cuenta no se activaria, y eso no da error en
+      ningun log: solo un cobro cargado y un servicio que no llega.
+
+    `volver_a` es adonde se devuelve al usuario si algo falla ANTES de llegar a
+    la pasarela, y no es el mismo sitio en los dos casos.
+    """
     susc = await estado_suscripcion(usuario["id"])
     if not susc.get("existe"):
-        return RedirectResponse("/suscripcion?error=No+tienes+plan+seleccionado",
+        return RedirectResponse(_con_error(volver_a, "No tienes plan seleccionado"),
                                 status_code=303)
 
     monto = (susc["precio_anual"] if susc["periodo"] == "anual"
              else susc["precio_mensual"])
     if not monto:
-        return RedirectResponse("/suscripcion?error=Ese+plan+no+tiene+precio+configurado",
-                                status_code=303)
+        return RedirectResponse(
+            _con_error(volver_a, "Ese plan no tiene precio configurado"),
+            status_code=303)
 
     numero_orden = izipay.nuevo_numero_orden()
     if not await registrar_intento(usuario["id"], monto, numero_orden):
-        return RedirectResponse("/suscripcion?error=No+se+pudo+iniciar+el+cobro",
+        return RedirectResponse(_con_error(volver_a, "No se pudo iniciar el cobro"),
                                 status_code=303)
 
     resultado = await izipay.generar_token_sesion(
@@ -95,7 +118,7 @@ async def pagar(request: Request):
         log.error("Izipay no devolvio token para %s: %s", numero_orden,
                   resultado.get("detalle"))
         return RedirectResponse(
-            "/suscripcion?error=La+pasarela+no+respondio.+Intenta+de+nuevo",
+            _con_error(volver_a, "La pasarela no respondio. Intenta de nuevo"),
             status_code=303)
 
     return _plantillas(request).TemplateResponse("pagar.html", {
@@ -104,6 +127,15 @@ async def pagar(request: Request):
         "numero_orden": numero_orden, "monto": monto,
         "plan": susc.get("plan_nombre"), "periodo": susc["periodo"],
     })
+
+
+@router.post("/suscripcion/pagar")
+async def pagar(request: Request):
+    """Cobro para quien ya tiene cuenta. La mecanica esta en `iniciar_cobro`."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    return await iniciar_cobro(request, usuario)
 
 
 @router.post("/suscripcion/retorno")

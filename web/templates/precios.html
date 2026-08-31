@@ -1,0 +1,169 @@
+{% extends "_base.html" %}
+{% block titulo %}Precios y planes · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+/* ============================================================================
+   PRECIOS — el catalogo publico
+
+   Es la unica pagina del sitio donde alguien SIN CUENTA ve el producto puesto
+   a la venta: que incluye cada plan, cuanto cuesta y un boton por plan que
+   lleva al resumen del pedido.
+
+   La portada tambien pinta precios, pero es una pagina de scroll animado y sus
+   botones llevaban a un formulario de registro. Esto es lo que se puede
+   enlazar, indexar, mandar por WhatsApp y ensenarle a la pasarela.
+   ========================================================================== */
+/* CUATRO PLANES NO CABEN EN UNA REJILLA PENSADA PARA TRES
+
+   Con la pista minima en 250px y el ancho en 1000px salian tres columnas, y
+   "Empresa" -- el plan mas caro -- caia solo a una segunda fila. Ademas de
+   feo, se lee como un plan de segunda: el ojo cuenta tres opciones y toma el
+   cuarto por una nota al pie.
+
+   Se baja la pista y se ensancha el contenedor para que los cuatro entren en
+   una fila, y se deja `auto-fit` para que siga cuadrando el dia que se anada o
+   se quite un plan, que es un UPDATE sin tocar codigo. */
+main{max-width:1180px}
+
+.planes{display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+.plan{border:1px solid var(--line);border-radius:6px;padding:22px;
+  background:var(--panel);display:flex;flex-direction:column}
+/* El destacado se marca con el borde de acento y no con un fondo distinto: un
+   fondo de color en una de tres tarjetas descuadra la comparacion de precios,
+   que es justo a lo que se viene aqui. */
+.plan.destacado{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac)}
+.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.plan.destacado .nm{color:var(--ac)}
+.plan h3{font-family:Sora,sans-serif;font-size:1.15rem;font-weight:600;margin:5px 0 0}
+.precio{font-family:Sora,sans-serif;font-weight:600;font-size:2.1rem;
+  letter-spacing:-.035em;font-variant-numeric:tabular-nums;margin:12px 0 2px}
+.precio small{font-size:.85rem;font-weight:400;color:var(--ink-3);
+  letter-spacing:0;font-family:"DM Sans",sans-serif}
+.anual{font-size:12px;color:var(--ink-3);margin:0}
+.plan ul{list-style:none;margin:16px 0 20px;padding:0;flex:1;
+  display:flex;flex-direction:column;gap:8px}
+.plan li{position:relative;padding-left:22px;font-size:13.5px;color:var(--ink-2)}
+.plan li::before{content:"";position:absolute;left:0;top:.5em;width:10px;height:5px;
+  border-left:1.5px solid var(--ac);border-bottom:1.5px solid var(--ac);
+  transform:rotate(-45deg)}
+.plan li.sin{color:var(--ink-3)}
+.plan li.sin::before{border:none;left:2px;top:.62em;width:8px;height:1.5px;
+  background:var(--ink-3);transform:none}
+
+/* LOS DOS PERIODOS, APILADOS Y NO EN FILA
+
+   En fila, con la columna a 230px, "Contratar mensual" partia en dos lineas y
+   "Anual" quedaba del mismo ancho sin decir cuanto cuesta. Dos botones
+   desiguales que no dicen su precio no son una eleccion, son un acertijo.
+
+   Apilados caben enteros, y cada uno lleva SU importe encima: el precio del
+   ano deja de estar solo en la linea gris de arriba, que es donde nadie lo
+   suma. */
+.periodos{display:flex;flex-direction:column;gap:8px}
+a.comprar{text-align:center;text-decoration:none;display:block;
+  padding:10px 12px;border-radius:4px;font-size:13.5px;white-space:nowrap;
+  background:var(--ac);color:var(--btn-txt);border:1px solid var(--ac)}
+a.comprar.sec{background:transparent;color:var(--ink-2);border-color:var(--line)}
+a.comprar:hover{opacity:.88}
+
+.medios{display:flex;flex-wrap:wrap;gap:8px}
+.medios span{font-family:"JetBrains Mono",monospace;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+  border:1px solid var(--line);border-radius:3px;padding:4px 9px}
+.comercio{font-size:12.5px;color:var(--ink-3);line-height:1.7;margin:0}
+.comercio b{color:var(--ink-2);font-weight:500}
+{% endblock %}
+
+{% block cuerpo %}
+{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main class="{% if not usuario %}pt-40{% endif %}">
+
+  <div class="tarjeta">
+    <h2 class="portada">Una licitación ganada lo paga todo.</h2>
+    <p class="sub">Precios en soles (PEN), con IGV incluido. Sin permanencia:
+       cancelas cuando quieras y conservas el acceso hasta el final del periodo
+       que ya pagaste. Toda cuenta empieza con 14 días del plan Pro sin coste.</p>
+
+    <div class="planes">
+      {% for p in planes %}
+        <div class="plan{% if p.codigo == 'pro' %} destacado{% endif %}">
+          <span class="nm">{{ p.codigo }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
+          <h3>{{ p.nombre }}</h3>
+
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            <div class="precio">S/ {{ '%.2f'|format(p.precio_mensual) }}<small> /mes</small></div>
+            {% if p.precio_anual %}
+              <p class="anual">o S/ {{ '%.2f'|format(p.precio_anual) }} al año</p>
+            {% endif %}
+          {% else %}
+            <div class="precio">Gratis<small> siempre</small></div>
+            <p class="anual">Donde te quedas si no renuevas</p>
+          {% endif %}
+
+          <ul>
+            <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
+            <li>{% if p.max_regiones %}{{ p.max_regiones }} departamento{% if p.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
+            {% if p.alertas %}
+              <li>Avisos por correo y Telegram</li>
+            {% else %}
+              <li class="sin">Sin avisos: entras tú a buscar</li>
+            {% endif %}
+            <li>Expedientes automáticos</li>
+            {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+            {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
+          </ul>
+
+          {# Dos enlaces y no un desplegable: el periodo es parte de lo que se
+             compra, y esconderlo en un <select> obliga a abrirlo para saber
+             cuanto cuesta el ano. Aqui los dos precios estan a la vista y cada
+             boton lleva a su propio resumen de pedido. #}
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            <div class="periodos">
+              <a class="comprar" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}/mes</a>
+              {% if p.precio_anual %}
+                <a class="comprar sec" href="/comprar/{{ p.codigo }}?periodo=anual">Pagar el año · S/ {{ '%.0f'|format(p.precio_anual) }}</a>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="periodos">
+              <a class="comprar sec" href="/registro">Crear cuenta gratis</a>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Cómo se paga</h2>
+    <p class="sub">El cobro lo procesa Izipay. Los datos de tu tarjeta viajan
+       directos a la pasarela: LicitaPro nunca los ve ni los guarda.</p>
+    <div class="medios">
+      <span>Visa</span><span>Mastercard</span><span>American Express</span>
+      <span>Diners Club</span><span>Soles · PEN</span>
+    </div>
+    <p class="ayuda mt-16">
+      La renovación es automática cada periodo y se cancela en cualquier momento
+      desde <b>Suscripción</b>, dentro de tu cuenta. Consulta los
+      <a href="/terminos">términos del servicio</a> y la
+      <a href="/privacidad">política de privacidad</a>.
+    </p>
+  </div>
+
+  {% if comercio %}
+  <div class="tarjeta">
+    <h2>Quién emite el cobro</h2>
+    <p class="comercio">
+      {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b><br>{% endif %}
+      {% if comercio.ruc %}RUC {{ comercio.ruc }}<br>{% endif %}
+      {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
+      {% if comercio.email %}<a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a>{% endif %}
+      {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+</main>
+{% endblock %}

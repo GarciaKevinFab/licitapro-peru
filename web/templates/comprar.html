@@ -1,0 +1,171 @@
+{% extends "_base.html" %}
+{% block titulo %}Contratar {{ plan.nombre }} · LicitaPro Perú{% endblock %}
+
+{% block estilos %}
+/* ============================================================================
+   CHECKOUT — el resumen del pedido y el boton de pagar
+
+   ESTA PAGINA NO EXISTIA, Y ESE ERA EL PROBLEMA
+
+     El sitio anunciaba precios en la portada y todos los botones llevaban a un
+     formulario de registro. Un visitante sin cuenta -- incluido el validador
+     de la pasarela -- no encontraba en ninguna parte un importe a pagar ni un
+     boton de pagar. Izipay rechazo la integracion por eso.
+
+   EL RESUMEN VA ANTES QUE EL FORMULARIO EN EL ORDEN DEL DOCUMENTO
+
+     En movil, que es como se compra en Peru, eso pone el total arriba: nadie
+     rellena una contrasena antes de saber cuanto le van a cobrar. En pantalla
+     ancha el grid lo manda a la derecha, que es donde se busca.
+   ========================================================================== */
+main{max-width:920px}
+.checkout{display:grid;gap:18px;align-items:start}
+@media (min-width:860px){
+  .checkout{grid-template-columns:1fr minmax(300px,340px)}
+  /* Se invierte solo aqui: en movil el orden del documento ya es el correcto. */
+  .resumen{order:2}
+  .formulario{order:1}
+}
+
+/* ---------- resumen del pedido ---------- */
+.lineas{display:flex;flex-direction:column;margin:14px 0 0}
+.lineas div{display:flex;justify-content:space-between;gap:14px;
+  padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+.lineas div:last-child{border-bottom:none}
+.lineas b{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
+  font-weight:500;white-space:nowrap}
+.lineas .total{border-top:1px solid var(--line);margin-top:4px;padding-top:12px;
+  font-size:1.05rem;font-weight:600}
+.lineas .total b{font-family:Sora,sans-serif;font-size:1.45rem;letter-spacing:-.03em}
+.articulo{font-size:13.5px;color:var(--ink-2);line-height:1.6;margin:0}
+.articulo b{color:var(--ink);font-weight:600}
+.incluye{list-style:none;margin:12px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink-3)}
+.incluye li{padding-left:16px;position:relative}
+.incluye li::before{content:"";position:absolute;left:0;top:.5em;width:8px;height:4px;
+  border-left:1.5px solid var(--ac);border-bottom:1.5px solid var(--ac);
+  transform:rotate(-45deg)}
+.cambiar{font-size:12px;margin-top:16px}
+
+/* ---------- formulario ---------- */
+.campos{display:flex;flex-direction:column;gap:14px;margin-top:16px}
+.pagar{margin-top:20px}
+.pagar button{width:100%;padding:13px;font-size:1rem;font-weight:600}
+.legal{font-size:11.5px;color:var(--ink-3);line-height:1.6;margin:12px 0 0}
+.medios{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+.medios span{font-family:"JetBrains Mono",monospace;font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+  border:1px solid var(--line);border-radius:3px;padding:3px 8px}
+.comercio{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin:16px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft)}
+.comercio b{color:var(--ink-2);font-weight:500}
+{% endblock %}
+
+{% block cuerpo %}
+{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main class="{% if not usuario %}pt-40{% endif %}">
+
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  <div class="checkout">
+
+    {# ---------- lo que se compra ---------- #}
+    <div class="tarjeta resumen">
+      <h2 class="portada">Resumen del pedido</h2>
+      <p class="sub">Suscripción a LicitaPro Perú</p>
+
+      <p class="articulo">
+        <b>Plan {{ plan.nombre }}</b> · facturación {{ periodo }}<br>
+        {% if periodo == 'anual' %}
+          Acceso por 12 meses desde la confirmación del pago.
+        {% else %}
+          Acceso por 30 días desde la confirmación del pago, renovable.
+        {% endif %}
+      </p>
+
+      <ul class="incluye">
+        <li>{{ plan.max_empresas }} empresa{% if plan.max_empresas != 1 %}s{% endif %} registrada{% if plan.max_empresas != 1 %}s{% endif %}</li>
+        <li>{% if plan.max_regiones %}{{ plan.max_regiones }} departamento{% if plan.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
+        {% if plan.alertas %}<li>Avisos por correo y Telegram</li>{% endif %}
+        <li>Expedientes automáticos</li>
+        {% if plan.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+      </ul>
+
+      <div class="lineas">
+        <div><span>Cantidad</span><b>1</b></div>
+        <div><span>Valor de venta</span><b>S/ {{ '%.2f'|format(importe.base) }}</b></div>
+        <div><span>IGV (18%)</span><b>S/ {{ '%.2f'|format(importe.igv) }}</b></div>
+        <div class="total"><span>Total a pagar</span><b>S/ {{ '%.2f'|format(importe.total) }}</b></div>
+      </div>
+
+      <p class="cambiar"><a href="/precios">&larr; Cambiar de plan o de periodo</a></p>
+    </div>
+
+    {# ---------- como se paga ---------- #}
+    <div class="tarjeta formulario">
+      <h2>{% if usuario %}Confirmar y pagar{% else %}Tus datos{% endif %}</h2>
+
+      {% if usuario %}
+        <p class="sub">Se cobrará a la cuenta <b>{{ usuario.email }}</b>.</p>
+      {% else %}
+        <p class="sub">Creamos tu cuenta y pasamos al pago en un solo paso.
+           ¿Ya tienes cuenta?
+           <a href="/entrar?siguiente=%2Fcomprar%2F{{ plan.codigo }}%3Fperiodo%3D{{ periodo }}">Entra aquí</a>.</p>
+      {% endif %}
+
+      <form method="post" action="/comprar">
+        {# El plan y el periodo viajan en el formulario y no solo en la URL. El
+           servidor los vuelve a validar contra la tabla `planes` y recalcula el
+           importe alli antes de cobrar: tocarlos aqui no compra un plan que no
+           existe ni a un precio que no es. #}
+        <input type="hidden" name="plan" value="{{ plan.codigo }}">
+        <input type="hidden" name="periodo" value="{{ periodo }}">
+
+        {% if not usuario %}
+          <div class="campos">
+            <label class="campo"><span>Nombre o razón social</span>
+              <input type="text" name="nombre" autocomplete="organization"></label>
+            <label class="campo"><span>Correo</span>
+              <input type="email" name="email" required autocomplete="email"></label>
+            <label class="campo"><span>Contraseña</span>
+              <input type="password" name="password" required minlength="10"
+                     autocomplete="new-password">
+              <span class="ayuda">Mínimo 10 caracteres. Con ella entrarás a tu panel.</span>
+            </label>
+          </div>
+        {% endif %}
+
+        <div class="pagar">
+          <button type="submit">Pagar S/ {{ '%.2f'|format(importe.total) }}</button>
+        </div>
+      </form>
+
+      <p class="legal">
+        Al pulsar <b>Pagar</b> aceptas los <a href="/terminos">términos del
+        servicio</a> y la <a href="/privacidad">política de privacidad</a>. El
+        cobro lo procesa <b>Izipay</b>: los datos de tu tarjeta viajan directos
+        a la pasarela y LicitaPro nunca los ve ni los guarda. La suscripción se
+        renueva automáticamente cada periodo y puedes cancelarla cuando quieras
+        desde tu cuenta, conservando el acceso hasta el final del periodo pagado.
+      </p>
+
+      <div class="medios">
+        <span>Visa</span><span>Mastercard</span><span>Amex</span>
+        <span>Diners</span><span>PEN</span>
+      </div>
+
+      {% if comercio %}
+        <p class="comercio">
+          Cobra:
+          {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b>{% endif %}
+          {% if comercio.ruc %} · RUC {{ comercio.ruc }}{% endif %}<br>
+          {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
+          {% if comercio.email %}<a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a>{% endif %}
+          {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
+        </p>
+      {% endif %}
+    </div>
+
+  </div>
+</main>
+{% endblock %}

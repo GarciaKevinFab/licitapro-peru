@@ -293,6 +293,16 @@ async def renovaciones_pendientes() -> list[dict]:
 RUTAS_LIBRES = (
     "/entrar", "/registro", "/salir", "/recuperar",
     "/suscripcion", "/webhooks/", "/salud", "/static",
+    # El escaparate y el checkout publicos. Van aqui por dos motivos, y cada
+    # uno basta por si solo:
+    #
+    #   1. Se ven SIN sesion. Hoy el portero ya deja pasar a quien no trae
+    #      cookie, pero el dia que eso cambie, la pagina donde se vende el
+    #      producto no puede quedar detras del cobro del producto.
+    #   2. Con la suscripcion SUSPENDIDA tambien se ven. Quien llega aqui viene
+    #      justamente a pagar: redirigirle a "tu suscripcion esta suspendida"
+    #      seria devolverle al sitio del que acaba de salir.
+    "/precios", "/comprar",
     # Las paginas legales se leen con la suscripcion suspendida o sin cuenta:
     # el derecho a saber que hacemos con tus datos y a pedir que los borremos
     # no depende de estar al dia con el pago.

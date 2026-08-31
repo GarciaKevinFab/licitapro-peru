@@ -47,6 +47,7 @@ ENTRADAS = [
     "web/empresas.py",
     "web/configuracion.py",
     "web/suscripcion.py",
+    "web/comprar.py",
     "web/webhooks_whatsapp.py",
 ]
 

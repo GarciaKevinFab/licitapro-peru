@@ -44,11 +44,22 @@ def _plantillas(request: Request):
 
 
 @router.get("/entrar", response_class=HTMLResponse)
-async def form_entrar(request: Request, siguiente: str = "/panel"):
+async def form_entrar(request: Request, siguiente: str = "/panel", error: str = ""):
+    """El `error` lo trae quien redirige hasta aqui, no un fallo de esta ruta.
+
+    Lo usa el checkout publico: si el correo ya tiene cuenta, manda a entrar
+    diciendo "ya tienes una cuenta, entra y terminamos la compra". Sin este
+    parametro el usuario aterrizaba en un login mudo, sin saber por que le
+    habian sacado a mitad del pago.
+    """
     if await usuario_actual(request):
-        return RedirectResponse(siguiente, status_code=303)
+        # Por _destino_seguro y no en crudo: `siguiente` viene de la URL, y sin
+        # filtrarlo esta redireccion acepta un destino absoluto. Es el mismo
+        # filtro que ya se aplicaba al entrar; faltaba solo en este atajo.
+        return RedirectResponse(_destino_seguro(siguiente), status_code=303)
     return _plantillas(request).TemplateResponse(
-        "entrar.html", {"request": request, "modo": "entrar", "siguiente": siguiente})
+        "entrar.html", {"request": request, "modo": "entrar",
+                        "siguiente": siguiente, "error": error})
 
 
 # Cuantos fallos se admiten dentro de la ventana antes de frenar. 8 deja sitio
