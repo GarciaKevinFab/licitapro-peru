@@ -29,21 +29,25 @@ from radar_bot.scrapers.orchestrator import Sonda, _corto, format_scraping_repor
 
 
 class _Respuesta:
-    def __init__(self, codigo):
+    def __init__(self, codigo, bytes_=50_000):
         self.status_code = codigo
+        # Por defecto, el tamano de una pagina con tabla de verdad. Las pruebas
+        # que miran la averia de "servidor caido" piden uno pequeno a proposito.
+        self.content = b"x" * bytes_
 
 
 class _ClienteFalso:
     """Devuelve codigos preparados, o lanza si el 'codigo' es una excepcion."""
 
-    def __init__(self, *codigos):
+    def __init__(self, *codigos, bytes_=50_000):
         self.codigos = list(codigos)
+        self.bytes_ = bytes_
 
     async def get(self, url):
         codigo = self.codigos.pop(0)
         if isinstance(codigo, Exception):
             raise codigo
-        return _Respuesta(codigo)
+        return _Respuesta(codigo, self.bytes_)
 
 
 # ─── Fuente sana ─────────────────────────────────────────
@@ -60,8 +64,8 @@ async def test_una_pasada_normal_no_deja_diagnostico():
     assert sonda.errores == 0
 
 
-async def test_cero_filas_con_la_pagina_viva_no_es_una_caida():
-    """Responde 200 y no extrae nada: apunta a los selectores, no a la URL.
+async def test_una_pagina_grande_sin_filas_apunta_a_los_selectores():
+    """Responde 200, pesa lo normal y no extrae nada: el sitio se rediseno.
 
     Son dos averias distintas y mandan a sitios distintos: una se arregla
     cambiando la direccion y la otra mirando el HTML. Un diagnostico
@@ -72,6 +76,23 @@ async def test_cero_filas_con_la_pagina_viva_no_es_una_caida():
     detalle = sonda.diagnostico(encontradas=0)
     assert detalle.startswith("SIN EXTRAER")
     assert "selectores" in detalle
+    assert "bytes" in detalle, "el tamano se informa siempre"
+
+
+async def test_una_pagina_diminuta_delata_que_la_entidad_esta_caida():
+    """El caso real: IIS sirviendo su pagina de bienvenida con 200 OK.
+
+    Paso con el portal de cotizaciones de Madre de Dios: 703 bytes, titulo
+    "IIS Windows Server". Mandar a "revisar los selectores" ahi es media hora
+    leyendo un HTML que no tiene nada que leer; la averia es de la entidad.
+    """
+    sonda = Sonda("prueba")
+    await sonda.get(_ClienteFalso(200, bytes_=703), "https://ejemplo.pe/a")
+    detalle = sonda.diagnostico(encontradas=0)
+    assert detalle.startswith("SIN EXTRAER")
+    assert "703 bytes" in detalle
+    assert "caida" in detalle
+    assert "selectores" not in detalle, "manda al sitio equivocado"
 
 
 # ─── Fuente caida ────────────────────────────────────────
@@ -90,6 +111,30 @@ async def test_ninguna_url_responde_es_una_caida(codigo):
     assert detalle.startswith("CAIDA")
     assert str(codigo) in detalle
     assert sonda.errores == 1
+
+
+async def test_una_pagina_grande_no_puede_tapar_a_una_caida():
+    """El error que se cometio al escribir esto, congelado.
+
+    La primera version resumia los tamanos en UNO SOLO -- el mayor -- y con
+    dos paginas vivas, Madre de Dios caida en 703 bytes y Junin sana en 55 KB,
+    el maximo era 55 KB: el aviso volvia a decir "revisar los selectores" y
+    escondia justo la averia que habia que ver.
+
+    Cualquier cifra agregada tiene ese defecto. Se informa por URL, y la caida
+    va primero porque el parte recorta el detalle.
+    """
+    sonda = Sonda("prueba")
+    # El doble devuelve el mismo tamano a todas, asi que se usa uno por URL
+    # para dar a cada una el suyo.
+    await Sonda.get(sonda, _ClienteFalso(200, bytes_=703), "http://caida.gob.pe/")
+    await Sonda.get(sonda, _ClienteFalso(200, bytes_=55_708), "http://sana.gob.pe/x")
+
+    detalle = sonda.diagnostico(encontradas=0)
+    assert "703 bytes" in detalle, "la caida no puede desaparecer del aviso"
+    assert "55708 bytes" in detalle
+    # Y la caida se nombra ANTES que la otra: el parte corta por longitud.
+    assert detalle.index("caida.gob.pe") < detalle.index("sana.gob.pe")
 
 
 async def test_una_url_caida_de_varias_no_tumba_la_fuente():

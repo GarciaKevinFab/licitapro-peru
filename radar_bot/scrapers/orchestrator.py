@@ -263,6 +263,11 @@ def _corto(url: str) -> str:
     return f"{partes[0]}/.../{partes[-1]}"
 
 
+# Por debajo de esto una respuesta no puede llevar una tabla de convocatorias:
+# es una pagina de bienvenida de servidor, un error maquillado o un redirector.
+_PAGINA_MINIMA = 2000
+
+
 class Sonda:
     """Deja constancia de que paso con cada URL de una fuente.
 
@@ -299,6 +304,7 @@ class Sonda:
     def __init__(self, fuente: str):
         self.fuente = fuente
         self.vivas = 0
+        self.paginas: list[tuple[str, int]] = []
         self.fallos: list[str] = []
 
     @property
@@ -328,6 +334,10 @@ class Sonda:
             self.fallos.append(f"{_corto(url)}: HTTP {resp.status_code}")
             return None
         self.vivas += 1
+        # Se guarda el tamano DE CADA URL, no un total ni un maximo: con dos
+        # paginas vivas, una caida de 703 bytes y otra sana de 55 KB, cualquier
+        # cifra agregada esconde justo la que hay que mirar. Ver diagnostico().
+        self.paginas.append((_corto(url), len(resp.content)))
         return resp
 
     def diagnostico(self, encontradas: int) -> str | None:
@@ -341,8 +351,35 @@ class Sonda:
         if self.vivas == 0 and self.fallos:
             return "CAIDA -- " + "; ".join(self.fallos[:4])
         if self.vivas and encontradas == 0:
+            # DOS COSAS MUY DISTINTAS DAN "200 Y CERO FILAS"
+            #
+            #   Paso el mismo dia que se escribio esto: el portal de
+            #   cotizaciones de Madre de Dios dejo de servir su aplicacion y su
+            #   IIS empezo a contestar la pagina de bienvenida por defecto --
+            #   703 bytes, titulo "IIS Windows Server", 200 OK.
+            #
+            #   Decir ahi "revisar los selectores" manda a leer HTML durante
+            #   media hora para descubrir que no hay nada que leer: la averia
+            #   es de la entidad y lo unico que cabe es esperar o avisarles.
+            #
+            #   El tamano lo separa sin ambiguedad -- una tabla de
+            #   convocatorias pesa decenas de miles de bytes, una pagina por
+            #   defecto no llega a dos mil -- pero SOLO si se mira por URL. El
+            #   primer intento uso el maximo de las dos, y los 55 KB de Junin
+            #   taparon los 703 de Madre de Dios: el aviso volvia a mandar al
+            #   sitio equivocado.
+            #
+            #   Las caidas van primero porque el parte recorta el detalle.
+            caidas, redisenos = [], []
+            for url, tam in self.paginas:
+                if tam < _PAGINA_MINIMA:
+                    caidas.append(f"{url}: {tam} bytes, demasiado pequena "
+                                  f"(la entidad tiene la aplicacion caida y su "
+                                  f"servidor da la pagina por defecto)")
+                else:
+                    redisenos.append(f"{url}: {tam} bytes, revisar selectores")
             aviso = (f"SIN EXTRAER -- {self.vivas} URL(s) respondieron 200 y no "
-                     f"salio ni una fila: revisar los selectores")
+                     f"salio ni una fila | " + " ; ".join((caidas + redisenos)[:3]))
             if self.fallos:
                 aviso += " | ademas " + "; ".join(self.fallos[:3])
             return aviso
