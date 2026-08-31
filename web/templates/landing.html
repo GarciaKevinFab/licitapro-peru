@@ -30,7 +30,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,200;9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Sora:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,200;9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap">
 
 <style nonce="{{ request.state.csp_nonce }}">
 /* ============================================================================
@@ -85,13 +85,26 @@ body{
 
 /* Escala tipografica: cada nivel claramente distinto del siguiente. Si dos se
    parecen, sobra uno. La jerarquia la construye el contraste, no los pasos. */
-h1,h2,h3{
-  font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;
-  letter-spacing:-.035em;line-height:.98;margin:0;text-wrap:balance;
+/* DOS FAMILIAS, Y CADA UNA DONDE RINDE
+
+     Los titulares grandes pasan a Barlow Condensed 900, que es la voz de la
+     casa (la misma de FletePro). Al ser condensada entra un 40% mas de texto
+     por linea: el titular de portada bajo de cuatro lineas a tres, y con eso
+     los botones volvieron a caber sin hacer scroll -- que era el problema real,
+     no el tamano de la letra.
+
+     Sora se queda en los h3, de 1.15 a 1.4rem. Una condensada a ese cuerpo no
+     se lee mejor, se lee apretada: la ventaja de meter mas letra por linea solo
+     existe cuando la linea es enorme. */
+h1,h2,h3{margin:0;text-wrap:balance}
+h1,h2{
+  font-family:"Barlow Condensed",ui-sans-serif,system-ui,sans-serif;
+  font-weight:900;letter-spacing:-.012em;line-height:.9;
 }
-h1{font-size:clamp(2.9rem,8.2vw,7.4rem);letter-spacing:-.045em}
-h2{font-size:clamp(2.1rem,5.1vw,4.05rem)}
-h3{font-size:clamp(1.15rem,1.7vw,1.4rem);letter-spacing:-.02em;line-height:1.2}
+h1{font-size:clamp(2.5rem,5.7vw,4.6rem)}
+h2{font-size:clamp(2rem,4.3vw,3.4rem)}
+h3{font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;
+  font-size:clamp(1.15rem,1.7vw,1.4rem);letter-spacing:-.02em;line-height:1.2}
 .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--mint);outline-offset:4px;border-radius:6px}
@@ -250,7 +263,7 @@ body::after{
 /* Color solido, NO degradado recortado a texto: si el navegador no compone esa
    capa el titular desaparece entero, y un numero invisible es peor que uno sin
    gracia. */
-.cifra .n{font-family:Sora,sans-serif;font-weight:700;letter-spacing:-.05em;font-size:clamp(3.1rem,7vw,5.4rem);line-height:1;font-variant-numeric:tabular-nums;color:var(--txt)}
+.cifra .n{font-family:"Barlow Condensed",sans-serif;font-weight:900;letter-spacing:-.01em;font-size:clamp(3rem,6.4vw,5rem);line-height:.95;font-variant-numeric:tabular-nums;color:var(--txt)}
 .cifra.foco .n{color:var(--mint)}
 .cifra .lb{margin-top:calc(var(--paso) * .55);font-size:1.02rem;color:var(--txt-2);max-width:24ch}
 .cifra .sub{margin-top:8px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
@@ -301,15 +314,24 @@ body::after{
 
 /* ---------- PLANES ---------- */
 .plans{display:grid;gap:calc(var(--paso) * .9);align-items:stretch}
-@media (min-width:900px){ .plans{grid-template-columns:repeat(3,1fr)} }
+/* TRES COLUMNAS FIJAS CON CUATRO PLANES DEJAN UNO HUERFANO
+
+   Estaba escrito `repeat(3,1fr)` cuando los planes eran tres. Al anadir el
+   plan Gratis en la base -- un INSERT, sin tocar esta plantilla -- el cuarto
+   se fue solo a una segunda fila. El numero de planes es un dato, asi que la
+   rejilla no puede llevarlo escrito a fuego: con `auto-fit` se recoloca sola
+   la proxima vez que cambie. */
+@media (min-width:820px){
+  .plans{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
+}
 .plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:20px;padding:calc(var(--paso) * 1.5);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
 .plan:hover{transform:translateY(-4px);border-color:var(--line)}
 /* El destacado no grita con otro color: se separa con borde de acento y halo.
    Cambiarle el fondo lo sacaria del conjunto. */
 .plan.feat{border-color:var(--mint-2);background:var(--panel);box-shadow:0 0 0 1px rgba(52,224,180,.14),0 34px 70px -46px rgba(52,224,180,.5)}
-.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
+.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);display:block;min-height:2.4em;line-height:1.2}
 .plan.feat .nm{color:var(--mint)}
-.plan .pr{font-family:Sora,sans-serif;font-weight:600;letter-spacing:-.04em;font-size:clamp(2.2rem,3.4vw,2.9rem);line-height:1;margin:calc(var(--paso) * .8) 0 calc(var(--paso) * 1.2)}
+.plan .pr{font-family:"Barlow Condensed",sans-serif;font-weight:900;letter-spacing:-.01em;font-size:clamp(2.5rem,3.8vw,3.2rem);line-height:1;margin:calc(var(--paso) * .8) 0 calc(var(--paso) * 1.2)}
 .plan .pr small{font-family:"DM Sans",sans-serif;font-size:.95rem;font-weight:300;color:var(--txt-3);letter-spacing:normal}
 .plan ul{list-style:none;margin:0 0 calc(var(--paso) * 1.4);padding:0;display:flex;flex-direction:column;gap:11px;flex:1}
 .plan li{position:relative;padding-left:25px;font-size:.96rem;color:var(--txt-2)}
@@ -321,15 +343,74 @@ body::after{
 
 /* ---------- CIERRE Y PIE ---------- */
 .cierre{text-align:center;padding-block:var(--seccion)}
-.cierre h2{font-size:clamp(2.4rem,6.4vw,5.2rem)}
+.cierre h2{font-size:clamp(2.4rem,5.4vw,4.2rem)}
 .cierre p{color:var(--txt-2);max-width:44ch;margin:calc(var(--paso) * 1.2) auto 0;font-size:clamp(1.02rem,1.35vw,1.2rem)}
 .cierre .acciones{justify-content:center}
-.pie{border-top:1px solid var(--hair);padding-block:calc(var(--paso) * 1.8)}
-.pie .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--paso);align-items:center}
-.pie a,.pie span{font-size:13.5px;color:var(--txt-3)}
-.pie a{transition:color .25s var(--suave)}
-.pie a:hover{color:var(--txt-2)}
-.pie .enlaces{display:flex;gap:22px;flex-wrap:wrap}
+/* ---------- TABLA COMPARATIVA ----------
+   Las tres tarjetas de plan venden; esta tabla decide. Son dos trabajos
+   distintos y por eso conviven: la tarjeta tiene que caber de un vistazo, asi
+   que solo lista lo que ese plan trae. Quien duda entre dos planes necesita
+   justo lo contrario -- verlos en la misma fila, incluido lo que NO trae cada
+   uno -- y eso en una tarjeta no cabe sin convertirla en un muro.
+
+   El scroll horizontal se queda DENTRO del contenedor. Una tabla de cinco
+   columnas no cabe en un telefono, y dejarla desbordar es lo que hace que la
+   pagina entera se pueda arrastrar de lado. */
+.comparativa{margin-top:calc(var(--paso) * 3);overflow-x:auto}
+.comparativa table{width:100%;border-collapse:collapse;min-width:600px;font-size:.95rem}
+.comparativa th,.comparativa td{padding:14px 14px;text-align:center;border-bottom:1px solid var(--hair)}
+.comparativa thead th{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);border-bottom-color:var(--line)}
+.comparativa thead th.destacada{color:var(--mint)}
+.comparativa th:first-child,.comparativa td:first-child{text-align:left;color:var(--txt-2);
+  font-weight:400;min-width:220px}
+.comparativa tbody tr:last-child td{border-bottom:none}
+.comparativa .si{color:var(--mint)}
+.comparativa .no{color:var(--txt-3)}
+.comparativa .fila-precio td{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
+  color:var(--txt);border-top:1px solid var(--line)}
+
+/* ---------- PREGUNTAS ----------
+   Con <details> nativo: sin una linea de JavaScript, plegable con el teclado y
+   buscable con Ctrl+F aunque este cerrado. Un acordeon hecho a mano pierde las
+   tres cosas y no gana ninguna. */
+.faq details{border-top:1px solid var(--hair)}
+.faq details:last-of-type{border-bottom:1px solid var(--hair)}
+.faq summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:20px;
+  justify-content:space-between;padding:calc(var(--paso) * .95) 0;
+  font-size:clamp(1.02rem,1.5vw,1.22rem);color:var(--txt);
+  transition:color .25s var(--suave)}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:hover{color:var(--mint)}
+/* Una cruz dibujada con dos degradados, que gira 45 grados al abrir y se
+   convierte en aspa. Sin icono que cargar y sin fuente de simbolos. */
+.faq summary::after{
+  content:"";flex:none;width:13px;height:13px;
+  background:
+    linear-gradient(var(--mint),var(--mint)) center/100% 1.5px no-repeat,
+    linear-gradient(var(--mint),var(--mint)) center/1.5px 100% no-repeat;
+  transition:transform .3s var(--ease);
+}
+.faq details[open] summary::after{transform:rotate(45deg)}
+.faq .resp{color:var(--txt-2);max-width:68ch;margin:0;
+  padding-bottom:calc(var(--paso) * 1.15);font-size:1rem}
+
+/* ---------- PIE ---------- */
+.pie{border-top:1px solid var(--hair);padding-block:calc(var(--paso) * 2.8) calc(var(--paso) * 1.6)}
+.pie .cols{display:grid;gap:calc(var(--paso) * 1.9);grid-template-columns:1fr}
+@media (min-width:720px){ .pie .cols{grid-template-columns:1.7fr 1fr 1fr 1fr} }
+.pie .marca-pie{font-family:"Barlow Condensed",sans-serif;font-weight:900;font-size:1.55rem;
+  letter-spacing:.005em;text-transform:uppercase;color:var(--txt);line-height:1}
+.pie .blurb{color:var(--txt-3);font-size:14px;line-height:1.6;margin:14px 0 0;max-width:36ch}
+.pie h4{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);margin:0 0 15px}
+.pie ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.pie a{font-size:14px;color:var(--txt-2);transition:color .25s var(--suave)}
+.pie a:hover{color:var(--mint)}
+.pie .abajo{margin-top:calc(var(--paso) * 2.3);padding-top:calc(var(--paso) * 1.15);
+  border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;
+  justify-content:space-between;gap:12px}
+.pie .abajo span{font-size:13px;color:var(--txt-3)}
 .sep{border:0;border-top:1px solid var(--hair);margin:0}
 
 /* ---------- ACCESIBILIDAD ----------
@@ -353,6 +434,7 @@ body::after{
   .cifras-pin{position:static;min-height:0;padding-block:var(--seccion)}
 }
 </style>
+<noscript><style nonce="{{ request.state.csp_nonce }}">.rv{opacity:1;transform:none}</style></noscript>
 </head>
 
 <body>
@@ -376,7 +458,12 @@ body::after{
   <div class="navlinks">
     <a class="opt" href="#como">Cómo funciona</a>
     <a class="opt" href="#puntaje">Puntaje</a>
-    <a class="opt" href="#planes">Planes</a>
+    <a class="opt" href="#preguntas">Preguntas</a>
+    {# A /precios y no al ancla #planes: el ancla vive dentro de una portada con
+       scroll animado, y desde ahi no hay forma de llegar al resumen del pedido
+       sin recorrerla entera. La pagina de precios es una direccion propia, se
+       puede mandar por WhatsApp y esta en el sitemap. #}
+    <a class="opt" href="/precios">Planes</a>
     {% if usuario %}
       <a class="btn" href="/panel">Ir al panel <span class="fl">&rarr;</span></a>
     {% else %}
@@ -553,10 +640,28 @@ body::after{
           {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
           {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
         </ul>
-        <a class="btn{% if p.codigo != 'pro' %} ghost{% endif %}" href="/registro">
-          {% if p.precio_mensual and p.precio_mensual > 0 %}Empezar{% else %}Entrar gratis{% endif %}
-          <span class="fl">&rarr;</span>
-        </a>
+        {# LOS TRES BOTONES LLEVABAN A /registro, Y ESE ERA EL AGUJERO
+
+           La tarjeta anunciaba un precio y el boton abria un formulario de alta:
+           entre el importe y el pago no habia nada. Quien no queria una cuenta
+           todavia -- que es todo el mundo la primera vez, y tambien el
+           validador de la pasarela -- no llegaba a ver nunca un total ni un
+           boton de pagar.
+
+           Ahora cada plan de pago apunta a SU resumen de pedido, con el importe
+           en el propio boton. El gratuito sigue yendo al alta, que es lo que
+           es: no hay nada que cobrar. #}
+        {% if p.precio_mensual and p.precio_mensual > 0 %}
+          <a class="btn{% if p.codigo != 'pro' %} ghost{% endif %}"
+             href="/comprar/{{ p.codigo }}?periodo=mensual">
+            Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}
+            <span class="fl">&rarr;</span>
+          </a>
+        {% else %}
+          <a class="btn ghost" href="/registro">
+            Entrar gratis <span class="fl">&rarr;</span>
+          </a>
+        {% endif %}
       </div>
     {% endfor %}
   </div>
@@ -564,6 +669,118 @@ body::after{
     Todas las cuentas empiezan con <b>14 días del plan Pro</b>. Al terminar no te
     echamos: te quedas en el plan Gratis, con tus datos y tu panel intactos.
   </p>
+
+  {# Las columnas salen de la misma consulta que las tarjetas. Escribirlas a
+     mano es como se desincronizo la portada la primera vez: se anadio el plan
+     Gratis en la base y aqui seguian tres precios viejos. #}
+  <div class="comparativa rv">
+    <table>
+      <thead>
+        <tr>
+          <th>Qué incluye</th>
+          {% for p in planes %}
+            <th class="{% if p.codigo == 'pro' %}destacada{% endif %}">{{ p.nombre }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Empresas registradas</td>
+          {% for p in planes %}<td>{{ p.max_empresas }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Cobertura</td>
+          {% for p in planes %}
+            <td>{% if p.max_regiones %}{{ p.max_regiones }} depto.{% else %}Todo el país{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Avisos por correo y Telegram</td>
+          {% for p in planes %}
+            <td>{% if p.alertas %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Expedientes con los anexos llenos</td>
+          {% for p in planes %}<td><span class="si">&check;</span></td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Análisis de bases con IA</td>
+          {% for p in planes %}
+            <td>{% if p.analisis_ia %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Seguimiento de contratos y cobros</td>
+          {% for p in planes %}
+            <td>{% if p.codigo != 'gratis' %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr class="fila-precio">
+          <td>Precio al mes, con IGV</td>
+          {% for p in planes %}
+            <td>{% if p.precio_mensual and p.precio_mensual > 0 %}S/ {{ '%.0f'|format(p.precio_mensual) }}{% else %}Gratis{% endif %}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section class="pad wrap" id="preguntas">
+  <div class="shead rv">
+    <span class="tag">Preguntas</span>
+    <h2>Lo que todos preguntan.</h2>
+  </div>
+  <div class="faq rv d1">
+    <details>
+      <summary>¿De dónde salen las licitaciones?</summary>
+      <p class="resp">Del SEACE, que es donde el Estado peruano publica sus
+         convocatorias, y del buscador de compras menores de gob.pe, que cubre
+         las contrataciones por debajo de las 8 UIT en todo el país. Las
+         revisamos varias veces al día; no hay que entrar a mirar.</p>
+    </details>
+    <details>
+      <summary>¿Qué pasa cuando terminan los 14 días?</summary>
+      <p class="resp">No se cierra tu cuenta. Pasas al plan Gratis conservando
+         tu panel, tus empresas y tu historial. Lo que se apaga es lo que cuesta
+         dinero: los avisos automáticos, el análisis con IA y las empresas
+         adicionales.</p>
+    </details>
+    <details>
+      <summary>¿Tengo que dar mi tarjeta para probar?</summary>
+      <p class="resp">No. La prueba de 14 días no pide tarjeta. Solo se te pide
+         cuando decides contratar un plan de pago.</p>
+    </details>
+    <details>
+      <summary>¿Puedo cancelar cuando quiera?</summary>
+      <p class="resp">Sí, desde tu propia cuenta y sin llamar a nadie. No hay
+         permanencia: conservas el acceso hasta el final del periodo que ya
+         pagaste, y a partir de ahí te quedas en el plan Gratis.</p>
+    </details>
+    <details>
+      <summary>¿Cómo me avisan?</summary>
+      <p class="resp">Por correo y por Telegram. Cada aviso explica <b>por qué</b>
+         te llegó: el puntaje de encaje, el plazo que queda y lo que hay que
+         presentar. Un aviso que no dice por qué te obliga a abrir las bases
+         para descartarlo, y eso es el trabajo que veníamos a quitarte.</p>
+    </details>
+    <details>
+      <summary>¿Los datos de mi empresa son míos?</summary>
+      <p class="resp">Sí. Cada cuenta ve lo suyo y nada más. Tus credenciales
+         del SEACE se guardan cifradas, y puedes pedir que borremos todo desde
+         Configuración: la cuenta se elimina con sus datos, sin tener que
+         escribirnos.</p>
+    </details>
+    <details>
+      <summary>¿Cuánto tardo en tenerlo funcionando?</summary>
+      <p class="resp">Una tarde. Registras tu empresa con su RUC, marcas tu
+         rubro y los departamentos donde te presentas, y conectas Telegram.
+         Desde ese momento entran los avisos.</p>
+    </details>
+  </div>
 </section>
 
 <section class="cierre wrap">
@@ -579,12 +796,42 @@ body::after{
 </section>
 
 <footer class="pie">
-  <div class="wrap fila">
-    <span>© 2026 LicitaPro Perú</span>
-    <div class="enlaces">
-      <a href="/privacidad">Privacidad</a>
-      <a href="/terminos">Términos</a>
-      <a href="/entrar">Entrar</a>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <div class="marca-pie">LicitaPro</div>
+        <p class="blurb">Licitaciones del Estado peruano, del aviso hasta que
+           cobras. SEACE y compras menores, expediente preparado y seguimiento
+           del pago de la entidad.</p>
+      </div>
+      <div>
+        <h4>Producto</h4>
+        <ul>
+          <li><a href="#como">Cómo funciona</a></li>
+          <li><a href="#puntaje">Puntaje de viabilidad</a></li>
+          <li><a href="/precios">Precios</a></li>
+          <li><a href="#preguntas">Preguntas frecuentes</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Tu cuenta</h4>
+        <ul>
+          <li><a href="/entrar">Entrar</a></li>
+          <li><a href="/registro">Crear cuenta</a></li>
+          <li><a href="/recuperar">Recuperar contraseña</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacidad">Privacidad</a></li>
+          <li><a href="/terminos">Términos del servicio</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="abajo">
+      <span>© 2026 LicitaPro Perú</span>
+      <span>Hecho en Perú</span>
     </div>
   </div>
 </footer>
