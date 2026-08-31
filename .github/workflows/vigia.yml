@@ -72,8 +72,56 @@ jobs:
         run: |
           # Sin `set -e`: un fallo de curl ES el resultado que buscamos, no un
           # error del job. Se captura y se decide despues.
-          CUERPO=$(curl -sS -m 25 -w '\n%{http_code}' "$URL/salud" 2>/tmp/curl.err || echo -e '\n000')
-          CODIGO=$(printf '%s' "$CUERPO" | tail -n1)
+          sondear() {
+            curl -sS -m 25 "$@" -w '\n%{http_code}' "$URL/salud" 2>/tmp/curl.err || echo -e '\n000'
+          }
+
+          # NO SE AVISA A LA PRIMERA, Y NO ES PEREZA
+          #
+          #   El 30/08/2026 este vigia abrio dos incidencias en siete horas --
+          #   una se cerro sola dos horas despues -- con el sitio perfectamente
+          #   sano: comprobado en ese mismo momento, 5 de 5 respuestas 200 desde
+          #   una conexion peruana y 200 dentro del contenedor. Lo que decia
+          #   curl era "Failed to connect ... after 143 ms": un tropiezo de red
+          #   entre el runner y Cloudflare.
+          #
+          #   Un vigilante que grita sin incendio se deja de leer en una semana,
+          #   y entonces tampoco avisa el dia que arde de verdad. Eso es PEOR
+          #   que no tenerlo, porque ademas da por cubierto un riesgo que sigue
+          #   abierto.
+          #
+          #   Una caida de verdad no se arregla en diez segundos: sobrevive a
+          #   los tres intentos. Un tropiezo de red, no.
+          for N in 1 2 3; do
+            CUERPO=$(sondear)
+            CODIGO=$(printf '%s' "$CUERPO" | tail -n1)
+            [ "$CODIGO" = "200" ] && break
+            echo "Intento $N de 3: codigo $CODIGO"
+            [ "$N" != "3" ] && sleep 10
+          done
+
+          # SI FALLAN LOS TRES, SE PRUEBA POR IPv4 ANTES DE DAR LA ALARMA
+          #
+          #   El dominio publica direcciones IPv6 (Cloudflare). Si el runner no
+          #   tiene ruta IPv6, curl falla al conectar aunque el sitio este
+          #   perfecto. Eso NO es una caida, y manda a mirar el sitio
+          #   equivocado: el VPS en vez de la red de quien pregunta.
+          #
+          #   Se prueba DESPUES de los reintentos y no antes, para no esconder
+          #   un fallo real de IPv6, que si afectaria a visitantes de verdad.
+          SOLO_IPV4=no
+          if [ "$CODIGO" != "200" ]; then
+            CUERPO4=$(sondear -4)
+            CODIGO4=$(printf '%s' "$CUERPO4" | tail -n1)
+            if [ "$CODIGO4" = "200" ]; then
+              echo "AVISO: no responde por la ruta por defecto pero SI por IPv4."
+              echo "El sitio esta sano; falla la ruta IPv6 de quien pregunta."
+              SOLO_IPV4=si
+              CUERPO="$CUERPO4"
+              CODIGO="$CODIGO4"
+            fi
+          fi
+          echo "solo_ipv4=$SOLO_IPV4" >> "$GITHUB_OUTPUT"
           JSON=$(printf '%s' "$CUERPO" | sed '$d')
           echo "codigo=$CODIGO" >> "$GITHUB_OUTPUT"
           echo "Codigo: $CODIGO"
