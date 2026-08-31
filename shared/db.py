@@ -486,7 +486,26 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
 
     condiciones, params = [], []
     if solo_vigentes:
-        condiciones.append("fecha_cierre > NOW()")
+        # SE COMPARA CONTRA LA HORA DE LIMA, NO CONTRA NOW()
+        #
+        #   `fecha_cierre` se guarda SIEMPRE como hora local de Lima sin zona:
+        #   `ocds_oece._fecha` convierte el offset ISO a naive de Lima, y los
+        #   portales de cotizacion publican en hora local.
+        #
+        #   `NOW()` de esta base responde en UTC -- comprobado, pese a que el
+        #   pool pide `timezone=America/Lima`: el pooler transaccional de
+        #   Supabase no aplica ese ajuste. Asi que se comparaba una hora de
+        #   Lima con una hora UTC, cinco horas por delante.
+        #
+        #   El efecto no era teorico: 925 de las 926 licitaciones de OECE
+        #   cierran a las 23:00 de Lima, y con `NOW()` desaparecian del panel
+        #   a las 18:00 de ese mismo dia. Cinco horas de la ultima tarde, que
+        #   es justo cuando alguien que la ve corre a presentarse.
+        #
+        #   `NOW() AT TIME ZONE 'America/Lima'` devuelve la hora de pared de
+        #   Lima sin zona, que es exactamente lo que hay en la columna. Es el
+        #   mismo giro que ya usa `shared/vigilancia.py`.
+        condiciones.append("fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')")
     if config["regiones"]:
         params.append(list(config["regiones"]))
         condiciones.append(f"(departamento IS NULL OR departamento = ANY(${len(params)}))")

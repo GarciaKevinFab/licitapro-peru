@@ -284,7 +284,8 @@ async def marcar_entidades_con_mal_historial() -> int:
                       banderas_nivel = GREATEST(l.banderas_nivel, $3)
                  FROM senaladas s
                 WHERE l.entidad_ruc = s.entidad_ruc
-                  AND l.fecha_cierre > NOW()
+                  -- Hora de Lima, no UTC: ver `licitaciones_para_usuario`.
+                  AND l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
              RETURNING 1""",
             MIN_RESUELTOS_ENTIDAD, CUOTA_POSTOR_UNICO, NIVEL_MEDIO)
     log.info("Licitaciones abiertas marcadas por historial de la entidad: %s", len(n))

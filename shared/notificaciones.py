@@ -176,7 +176,10 @@ async def sembrar_historico(usuario_id: int, canal: str) -> int:
         n = await conn.fetchval(
             """INSERT INTO notificaciones_enviadas (usuario_id, licitacion_id, canal)
                SELECT $1, l.id, $2 FROM licitaciones l
-                WHERE l.fecha_cierre > NOW() AND l.descartado = FALSE
+                -- Hora de Lima, no UTC: ver el porque en
+                -- `licitaciones_para_usuario` (shared/db.py).
+                WHERE l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
+                  AND l.descartado = FALSE
                ON CONFLICT (usuario_id, licitacion_id, canal) DO NOTHING
                RETURNING 1""",
             usuario_id, canal)

@@ -198,7 +198,11 @@ async def recalcular_scores_pendientes(limite: int = 200) -> int:
             """SELECT * FROM licitaciones
             WHERE score_viabilidad IS NULL
             AND descartado = FALSE
-            AND (fecha_cierre IS NULL OR fecha_cierre > CURRENT_DATE)
+            -- CURRENT_DATE es la fecha UTC: entre las 19:00 y la medianoche
+            -- de Lima ya es el dia siguiente, y lo que cierra hoy se quedaba
+            -- sin puntuar. Ver `licitaciones_para_usuario` (shared/db.py).
+            AND (fecha_cierre IS NULL
+                 OR fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')::date)
             LIMIT $1""",
             limite,
         )
