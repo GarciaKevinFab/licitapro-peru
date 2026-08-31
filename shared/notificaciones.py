@@ -176,9 +176,13 @@ async def sembrar_historico(usuario_id: int, canal: str) -> int:
         n = await conn.fetchval(
             """INSERT INTO notificaciones_enviadas (usuario_id, licitacion_id, canal)
                SELECT $1, l.id, $2 FROM licitaciones l
-                -- Hora de Lima, no UTC: ver el porque en
-                -- `licitaciones_para_usuario` (shared/db.py).
-                WHERE l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
+                -- Hora de Lima, no UTC, y la MISMA regla de vigencia que
+                -- `licitaciones_para_usuario` (shared/db.py): si divergen,
+                -- activar un canal manda como "nuevas" cosas que el panel ya
+                -- ensenaba desde hace dias.
+                WHERE (l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
+                       OR (l.fecha_cierre IS NULL AND l.fecha_publicacion >
+                           (NOW() AT TIME ZONE 'America/Lima') - INTERVAL '7 days'))
                   AND l.descartado = FALSE
                ON CONFLICT (usuario_id, licitacion_id, canal) DO NOTHING
                RETURNING 1""",

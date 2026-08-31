@@ -142,9 +142,21 @@ def _fechas_cotizacion(texto: str) -> tuple:
 
 
 def _detectar_depto(texto: str) -> str | None:
+    """Departamento mencionado en el texto, o None.
+
+    CON LIMITES DE PALABRA, NO POR SUBCADENA
+
+      La version por subcadena etiquetaba como Ica cualquier texto con
+      "farmaceutICA" o "clasifICAdor" -- paso de verdad: una compra nacional
+      de CENARES quedo como de Ica, y una del Gobierno Regional del CALLAO
+      tambien. El dano no es cosmetico: el filtro por regiones compara contra
+      esta columna, asi que un usuario de Ica recibia compras de medicamentos
+      de Lima y uno del Callao no veia las de su region.
+    """
     upper = texto.upper()
     for key, val in DEPTOS.items():
-        if key in upper:
+        if re.search(r"(?<![A-ZÑÁÉÍÓÚ])" + re.escape(key) + r"(?![A-ZÑÁÉÍÓÚ])",
+                     upper):
             return val
     return None
 
@@ -548,6 +560,10 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
     scrapers = [
         # Fuente principal: unica que entrega convocatorias vigentes.
         ("ocds_oece", _run_ocds_oece),
+        # Compras menores nacionales via el buscador de gob.pe. Ver el
+        # docstring de gob_pe.py: es la unica fuente de <8 UIT que cubre todo
+        # el pais, y responde tambien al VPS.
+        ("gob_pe", _run_gob_pe),
         # ocds_conosce y conosce_contratos quedaron FUERA de las alertas: son
         # volcados XLSX con retraso y producian 0 convocatorias vigentes (291
         # filas, ninguna postulable). Sus datos con monto se migraron a
@@ -1476,6 +1492,11 @@ async def _run_municipalidades(user_id):
 
 # ==================== 0. OCDS OECE (API oficial, tiempo real) ====================
 
+async def _run_gob_pe(user_id):
+    from radar_bot.scrapers.gob_pe import scrape_gob_pe
+    return await scrape_gob_pe(user_id)
+
+
 async def _run_ocds_oece(user_id):
     from radar_bot.scrapers.ocds_oece import scrape_ocds_oece
     # Sin user_id: el pozo es compartido y se filtra al leer.
@@ -1511,6 +1532,7 @@ def format_scraping_report(results: dict) -> str:
 
     fuente_labels = {
         "ocds_oece": "OCDS OECE (principal)",
+        "gob_pe": "gob.pe compras menores",
         "seace_3.0": "SEACE 3.0",
         "gore_portals": "GOREs Regionales",
         "peru_compras": "Peru Compras",

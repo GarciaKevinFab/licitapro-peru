@@ -505,7 +505,20 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
         #   `NOW() AT TIME ZONE 'America/Lima'` devuelve la hora de pared de
         #   Lima sin zona, que es exactamente lo que hay en la columna. Es el
         #   mismo giro que ya usa `shared/vigilancia.py`.
-        condiciones.append("fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')")
+        # LAS COTIZACIONES DE gob.pe NO PUBLICAN CIERRE EN LOS METADATOS
+        #
+        #   El plazo va dentro del PDF y no se inventa. Sin esta segunda rama
+        #   serian invisibles para siempre -- la misma trampa de las 17 filas
+        #   de datos_abiertos. Se muestran durante 7 dias desde su
+        #   publicacion: una cotizacion real dura dias, no semanas, asi que la
+        #   ventana refleja la realidad sin fabricar una fecha.
+        #
+        #   Acotado a fecha_publicacion reciente a proposito: las filas viejas
+        #   de OECE sin cierre (164 hay) no reviven con esto.
+        condiciones.append(
+            "(fecha_cierre > (NOW() AT TIME ZONE 'America/Lima') "
+            "OR (fecha_cierre IS NULL AND fecha_publicacion > "
+            "(NOW() AT TIME ZONE 'America/Lima') - INTERVAL '7 days'))")
     if config["regiones"]:
         params.append(list(config["regiones"]))
         condiciones.append(f"(departamento IS NULL OR departamento = ANY(${len(params)}))")
