@@ -134,6 +134,47 @@ Register-ScheduledTask -TaskName $Tarea -Action $accion -Trigger $disparo `
     -Principal $principal -Settings $ajustes -Force | Out-Null
 Write-Host "Tarea '$Tarea' registrada: cada 4 horas, corra o no sesion."
 
+# --- 3b. El vigilante del sitio -----------------------------------------------
+#
+#   Segunda tarea y no un anadido a la primera, porque miden cosas distintas y
+#   a ritmos distintos: el puente TRAE datos cada 4 horas, y esto PREGUNTA si la
+#   web responde cada 5 minutos.
+#
+#   POR QUE AQUI, SI YA HAY UN VIGIA EN GITHUB
+#
+#     Al de GitHub le fallan dos cosas, medidas el 31/08/2026:
+#
+#       1. Su cron pide una comprobacion cada 15 minutos y GitHub le entrega
+#          una cada 2 a 4 horas: estrangula los cron frecuentes en repos
+#          publicos. Una caida real puede tardar cuatro horas y media en
+#          avisar.
+#       2. Pregunta desde un centro de datos de Estados Unidos. Los clientes
+#          entran desde Peru, y este proyecto ya sabe que no es lo mismo: OECE
+#          responde 200 a una conexion peruana y 403 al VPS.
+#
+#     Los dos se quedan. Si esta PC se apaga, este vigilante se apaga con ella
+#     y no puede avisar de su propio silencio; el de GitHub sigue corriendo.
+$TareaVigia = 'LicitaPro - Vigia del sitio'
+$accionVigia = New-ScheduledTaskAction -Execute $PyW `
+    -Argument (Join-Path $Raiz 'tools\vigia_puente.py') -WorkingDirectory $Raiz
+
+$disparoVigia = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5)
+
+# Limite de 5 minutos: una pasada son tres peticiones HTTP. Si alguna se
+# cuelga, no puede solaparse con la siguiente ni quedarse viva para siempre.
+$ajustesVigia = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+
+Register-ScheduledTask -TaskName $TareaVigia -Action $accionVigia `
+    -Trigger $disparoVigia -Principal $principal -Settings $ajustesVigia -Force | Out-Null
+Write-Host "Tarea '$TareaVigia' registrada: cada 5 minutos."
+
+# Una pasada inmediata, para que el estado quede escrito y no se avise de una
+# recuperacion inventada en la primera comprobacion automatica.
+Start-ScheduledTask -TaskName $TareaVigia
+
 # --- 4. Aviso sobre la suspension ---------------------------------------------
 #
 #   No se cambia la configuracion de energia por cuenta propia: es un ajuste
