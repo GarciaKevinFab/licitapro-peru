@@ -92,16 +92,53 @@ def url_salud() -> str:
 
 # ─── Lo que se comprueba ─────────────────────────────────
 
-def sondear(url: str) -> tuple[int, dict | None, str]:
-    """(codigo, json, detalle_tecnico). Codigo 0 = no hubo respuesta."""
+def sondear(url: str, solo_ipv4: bool = False) -> tuple[int, dict | None, str]:
+    """(codigo, json, detalle_tecnico). Codigo 0 = no hubo respuesta.
+
+    POR QUE EXISTE EL MODO solo_ipv4
+
+      El 31/08/2026, en su primer dia, este vigilante mando DIEZ avisos en
+      ocho horas: caidas de 39 a 180 minutos... con el sitio respondiendo 200
+      desde otra conexion peruana y desde GitHub durante esas mismas horas. Y
+      los propios avisos rojos LLEGARON por Telegram desde esta PC, o sea que
+      internet habia.
+
+      La ruta IPv6 del proveedor hacia Cloudflare va por rachas. Un navegador
+      no lo nota -- cae a IPv4 en milisegundos --, asi que los clientes entran
+      con normalidad; httpx sin ese mecanismo se queda colgado en la familia
+      rota y reporta una caida que ningun humano ve. Forzar IPv4 imita al
+      navegador: `local_address="0.0.0.0"` restringe el socket a AF_INET.
+    """
+    kwargs = {}
+    if solo_ipv4:
+        kwargs["transport"] = httpx.HTTPTransport(local_address="0.0.0.0")
     try:
-        r = httpx.get(url, timeout=25, follow_redirects=True)
+        with httpx.Client(timeout=25, follow_redirects=True, **kwargs) as c:
+            r = c.get(url)
     except Exception as e:
         return 0, None, f"{type(e).__name__}: {e}"[:200]
     try:
         return r.status_code, r.json(), ""
     except Exception:
         return r.status_code, None, "el cuerpo no es JSON"
+
+
+TESTIGO = "https://www.gob.pe"
+
+
+def hay_internet() -> bool:
+    """Si esta PC llega a un tercero que no somos nosotros.
+
+    Sin esto, un corte del proveedor se contaria como caida del sitio y la
+    duracion del "estuvo caido X minutos" seria mentira. Con el testigo caido
+    no se puede saber nada del sitio: la pasada se salta sin tocar el estado.
+    """
+    try:
+        with httpx.Client(timeout=10,
+                          transport=httpx.HTTPTransport(local_address="0.0.0.0")) as c:
+            return c.get(TESTIGO).status_code < 500
+    except Exception:
+        return False
 
 
 def evaluar(codigo: int, datos: dict | None) -> tuple[bool, str]:
@@ -225,7 +262,7 @@ def main() -> int:
     _preparar_log()
     url = url_salud()
 
-    sano, motivo = False, "sin comprobar"
+    sano, motivo, detalle = False, "sin comprobar", ""
     for n in range(1, INTENTOS + 1):
         codigo, datos, detalle = sondear(url)
         sano, motivo = evaluar(codigo, datos)
@@ -235,6 +272,32 @@ def main() -> int:
                      f" [{detalle}]" if detalle else "")
         if n < INTENTOS:
             time.sleep(ESPERA)
+
+    if not sano:
+        # Cuarta pregunta forzando IPv4: si asi responde, el sitio ESTA sano
+        # -- los navegadores caen a IPv4 solos -- y lo roto es la ruta IPv6
+        # del proveedor. Se registra, no se grita.
+        codigo, datos, _ = sondear(url, solo_ipv4=True)
+        sano4, _ = evaluar(codigo, datos)
+        if sano4:
+            logging.warning("La ruta por defecto fallo pero IPv4 responde: "
+                            "el sitio esta sano; la IPv6 del proveedor esta "
+                            "rota a ratos. No se avisa.")
+            sano, motivo = True, "ok"
+        elif not hay_internet():
+            # Sin salida a internet no se sabe nada del sitio. No se toca el
+            # estado: contarlo como caida inventaria la duracion del proximo
+            # "estuvo caido X minutos".
+            logging.warning("Sin salida a internet (el testigo %s tampoco "
+                            "responde). Pasada saltada sin tocar el estado.",
+                            TESTIGO)
+            return 0
+        else:
+            # Caida real, con el detalle tecnico en el propio aviso: el
+            # primer dia de este vigilante se perdio una tarde por un mensaje
+            # que no decia si era DNS, timeout o rechazo.
+            if detalle:
+                motivo = f"{motivo} [{detalle[:120]}]"
 
     ahora = datetime.now()
     estado, mensaje = decidir(leer_estado(), sano, motivo, ahora)

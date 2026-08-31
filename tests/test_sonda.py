@@ -257,3 +257,21 @@ def test_la_sopa_prefiere_lxml_cuando_esta():
     finally:
         orchestrator.BeautifulSoup = real
     assert usados == ["lxml"]
+
+
+def test_el_parte_no_llama_error_a_lo_que_cosecha_el_puente():
+    """OECE falla desde el VPS a proposito: la cosecha la hace el puente.
+
+    El primer parte que un humano vio decia "OCDS OECE (principal): Error"
+    con la fuente perfectamente cosechada 40 minutos antes. Un parte que
+    llama Error a lo esperado ensena a ignorar la palabra Error.
+    """
+    parte = format_scraping_report({
+        "timestamp": "2026-08-31T12:00:00",
+        "total_nuevas": 1,
+        "por_fuente": {"ocds_oece": -2, "gob_pe": 1},
+        "errores": [],
+        "diagnosticos": {},
+    })
+    assert "Error" not in parte
+    assert "puente" in parte

@@ -580,8 +580,19 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
             results["total_nuevas"] += count
             log.info(f"[OK] {nombre}: {count} nuevas")
         except Exception as e:
-            results["errores"].append(f"{nombre}: {str(e)[:120]}")
-            results["por_fuente"][nombre] = -1
+            if nombre in FUENTES_DEL_PUENTE:
+                # El fallo ESPERADO: OECE bloquea al VPS y la cosecha la hace
+                # el puente. Contarlo como "Error" en el parte hacia parecer
+                # rota la fuente principal cada hora -- comprobado: el primer
+                # parte que un humano vio decia "OCDS OECE (principal): Error"
+                # con la fuente perfectamente cosechada 40 minutos antes.
+                # Sentinela -2: el parte lo cuenta como lo que es.
+                results["por_fuente"][nombre] = -2
+                log.info("%s fallo desde el VPS (esperado, cosecha el puente): %s",
+                         nombre, str(e)[:80])
+            else:
+                results["errores"].append(f"{nombre}: {str(e)[:120]}")
+                results["por_fuente"][nombre] = -1
             log.error(f"[FAIL] {nombre}: {e}")
 
         await asyncio.sleep(2)
@@ -1557,7 +1568,9 @@ def format_scraping_report(results: dict) -> str:
     for fuente, count in results["por_fuente"].items():
         label = fuente_labels.get(fuente, fuente)
         detalle = diagnosticos.get(fuente)
-        if count == -1:
+        if count == -2:
+            status = "la cosecha el puente (el VPS no llega; normal)"
+        elif count == -1:
             status = "Error"
         elif detalle and detalle.startswith("CAIDA"):
             status = "CAIDA"
