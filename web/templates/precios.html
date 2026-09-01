@@ -157,6 +157,23 @@ a.comprar:hover{opacity:.88}
     </p>
   </div>
 
+  {# CLOUDFLARE OFUSCA LOS CORREOS, Y AQUI ESO ESTORBA
+
+     Con "Email Address Obfuscation" activo, Cloudflare reescribe cada mailto:
+     como /cdn-cgi/l/email-protection y sustituye el texto por un script. Quien
+     lea el HTML sin ejecutar JavaScript -- un validador de pasarela, un
+     rastreador, alguien con JS bloqueado -- ve "[email protected]" en lugar de
+     la direccion.
+
+     Para una direccion de marketing daria igual. Para ESTA no: es la via por
+     la que se ejerce el derecho de acceso de la Ley 29733 y la que identifica
+     a quien cobra en la pagina de pago. Un contacto legal que depende de que
+     corra un script no es un contacto.
+
+     `<!--email_off-->` es el mecanismo que la propia Cloudflare documenta para
+     excluir un bloque. Se aplica SOLO aqui y no se apaga la funcion en toda la
+     cuenta: en el resto del sitio la ofuscacion sigue haciendo su trabajo
+     contra los recolectores de correos. #}
   {% if comercio %}
   <div class="tarjeta">
     <h2>Quién emite el cobro</h2>
@@ -164,7 +181,7 @@ a.comprar:hover{opacity:.88}
       {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b><br>{% endif %}
       {% if comercio.ruc %}RUC {{ comercio.ruc }}<br>{% endif %}
       {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
-      {% if comercio.email %}<a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a>{% endif %}
+      {% if comercio.email %}<!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off-->{% endif %}
       {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
     </p>
     {% include "_titularidad.html" %}

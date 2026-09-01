@@ -68,7 +68,7 @@
      con domicilio en <b>{{ comercio.direccion }}</b>{% endif %}.
      {% if comercio.email %}
        Para cualquier asunto relacionado con tus datos puedes escribir a
-       <b><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a></b>{% if comercio.telefono %},
+       <b><!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off--></b>{% if comercio.telefono %},
        o llamar al <b>{{ comercio.telefono }}</b>{% endif %}.
      {% else %}
        La dirección de contacto para asuntos de datos está pendiente de indicar.
@@ -178,7 +178,7 @@
 
   <h2>6. Tus derechos</h2>
   <p>La Ley 29733 te reconoce estos, y puedes ejercerlos escribiendo a
-     {% if comercio.email %}<b><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a></b>
+     {% if comercio.email %}<b><!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off--></b>
      {%- else %}la dirección de contacto del responsable{% endif %}:</p>
   <ul>
     <li><b>Acceso.</b> Saber qué datos tuyos tenemos.</li>

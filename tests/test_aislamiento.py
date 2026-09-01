@@ -892,6 +892,31 @@ async def test_la_marca_se_presta_pero_no_se_atribuye(cliente, monkeypatch):
             assert prohibido not in t.lower(), f"{ruta}: afirma titularidad"
 
 
+async def test_el_correo_de_contacto_escapa_de_la_ofuscacion(cliente, monkeypatch):
+    """Cloudflare reescribe los mailto:, y este no se puede dejar reescribir.
+
+    Con "Email Address Obfuscation" activo, quien lea el HTML sin ejecutar
+    JavaScript ve "[email protected]". Para una direccion de marketing daria
+    igual; para esta no: es por donde se ejerce el derecho de acceso de la Ley
+    29733 y la que identifica a quien cobra en la pagina de pago.
+
+    `<!--email_off-->` es el mecanismo que documenta Cloudflare. Se comprueba
+    que envuelve TODAS las apariciones, porque proteger tres de cuatro deja la
+    cuarta rota sin que nadie lo note.
+    """
+    monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")
+    monkeypatch.setenv("LICITAPRO_RUC", "20123456789")
+    monkeypatch.setenv("LICITAPRO_CONTACTO_EMAIL", "datos@ejemplo.pe")
+    monkeypatch.setenv("LICITAPRO_DIRECCION", "Av. de Prueba 123")
+
+    for ruta in ("/precios", "/comprar/pro", "/privacidad"):
+        t = (await cliente.get(ruta)).text
+        assert "datos@ejemplo.pe" in t, ruta
+        # Cada mailto tiene que quedar dentro de un bloque email_off.
+        assert t.count("<!--email_off-->") == t.count("mailto:datos@ejemplo.pe"), ruta
+        assert t.count("<!--email_off-->") == t.count("<!--/email_off-->"), ruta
+
+
 async def test_la_titularidad_sale_una_sola_vez_por_pagina(cliente, monkeypatch):
     """Salia DOS veces en las cuatro paginas que mas se miran.
 

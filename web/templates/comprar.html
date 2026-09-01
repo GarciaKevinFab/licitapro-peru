@@ -164,7 +164,7 @@ main{max-width:920px}
           {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b>{% endif %}
           {% if comercio.ruc %} · RUC {{ comercio.ruc }}{% endif %}<br>
           {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
-          {% if comercio.email %}<a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a>{% endif %}
+          {% if comercio.email %}<!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off-->{% endif %}
           {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
         </p>
         {% include "_titularidad.html" %}
