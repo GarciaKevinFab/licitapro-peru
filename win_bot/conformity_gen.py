@@ -6,7 +6,7 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-from shared.db import connection, get_empresa
+from shared.db import connection
 from shared.config import format_monto, format_fecha
 
 log = logging.getLogger("win.conformity")

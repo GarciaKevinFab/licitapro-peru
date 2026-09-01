@@ -21,7 +21,7 @@ import html
 import logging
 import asyncio
 import hashlib
-from datetime import datetime, date
+from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 from shared.db import (
@@ -701,7 +701,6 @@ async def _scrape_gore_cotizaciones_app(
             tipo_bien = textos[0]  # BIENES or SERVICIOS
             anio = textos[1]
             numero = textos[2]
-            rubro = textos[3]
             concepto = textos[4]
             fecha_raw = textos[5]
 

@@ -1,10 +1,9 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
 import os
 import logging
-import asyncio
 from datetime import date, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 

@@ -378,8 +378,6 @@ def _parse_pac_xlsx(xlsx_data: bytes, config: dict) -> list[dict]:
     """Parsea el XLSX del PAC (Plan Anual de Contrataciones)."""
     keywords = config.get("keywords", [])
     regiones = config.get("regiones", [])
-    monto_min = config.get("monto_min", 0) or 0
-    monto_max = config.get("monto_max", 999999999) or 999999999
 
     results = []
     seen = set()

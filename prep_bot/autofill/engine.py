@@ -133,7 +133,6 @@ async def autofill_propuesta(propuesta_id: int, empresa_id: int) -> dict:
 
 async def generar_carta_presentacion(datos: dict, licitacion: dict) -> str:
     """Genera carta de presentación usando template o desde cero."""
-    template_path = os.path.join(TEMPLATES_DIR, "carta_presentacion.docx")
     
     doc = Document()
     
@@ -173,7 +172,7 @@ async def generar_carta_presentacion(datos: dict, licitacion: dict) -> str:
     doc.add_paragraph("Atentamente,")
     doc.add_paragraph("")
     doc.add_paragraph("")
-    doc.add_paragraph(f"______________________________")
+    doc.add_paragraph("______________________________")
     doc.add_paragraph(f"{rep}")
     doc.add_paragraph(f"DNI: {dni}")
     doc.add_paragraph(f"{razon}")
@@ -221,7 +220,7 @@ async def generar_declaracion_jurada(datos: dict, licitacion: dict) -> str:
     doc.add_paragraph("")
     doc.add_paragraph(f"Lima, {date.today().strftime('%d de %B de %Y')}")
     doc.add_paragraph("")
-    doc.add_paragraph(f"______________________________")
+    doc.add_paragraph("______________________________")
     doc.add_paragraph(f"{rep}")
     doc.add_paragraph(f"DNI: {dni}")
     

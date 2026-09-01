@@ -173,7 +173,7 @@ async def sembrar_historico(usuario_id: int, canal: str) -> int:
     Devuelve cuantas se sembraron, para poder decirselo al usuario.
     """
     async with connection() as conn:
-        n = await conn.fetchval(
+        await conn.fetchval(
             """INSERT INTO notificaciones_enviadas (usuario_id, licitacion_id, canal)
                SELECT $1, l.id, $2 FROM licitaciones l
                 -- Hora de Lima, no UTC, y la MISMA regla de vigencia que

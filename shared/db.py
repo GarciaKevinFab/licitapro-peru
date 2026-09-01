@@ -2,7 +2,6 @@
 import os
 import json
 import logging
-from datetime import datetime, date
 from contextlib import asynccontextmanager
 import asyncpg
 from dotenv import load_dotenv

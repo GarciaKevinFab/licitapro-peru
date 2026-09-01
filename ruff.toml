@@ -1,0 +1,28 @@
+# Reglas de estilo, y las dos que este proyecto NO acata a proposito.
+#
+# Se anade a CI para que la deuda deje de acumularse: se llegaron a juntar 79
+# avisos porque el flujo corria pytest y no ruff, asi que nada lo miraba.
+
+line-length = 100
+exclude = [".venv-tarea", "migrations/versions", "graphify-out"]
+
+[lint]
+ignore = [
+  # E402 - import despues de codigo.
+  #
+  #   Aqui es DELIBERADO y esta razonado en cada sitio: web/app.py importa sus
+  #   routers despues de registrar los middlewares porque en Starlette el orden
+  #   de registro decide quien envuelve a quien, y tools/* mete la raiz en
+  #   sys.path antes de importar `shared`. Moverlos "para que el linter calle"
+  #   romperia el arranque.
+  "E402",
+
+  # E741 - nombres ambiguos (`l`, `I`, `O`).
+  #
+  #   Los nueve que quedan son variables de bucle de una linea en scrapers ya
+  #   escritos. Renombrarlas es tocar codigo que funciona por un aviso de
+  #   estilo, y el riesgo de ese cambio es mayor que el beneficio. Lo que si
+  #   importa -- imports muertos, variables sin usar, f-strings vacias -- si se
+  #   comprueba.
+  "E741",
+]

@@ -1,7 +1,6 @@
 """Scorer — Calcula score de viabilidad 0-100 para cada licitación."""
 import json
 import logging
-from datetime import date
 from shared.db import connection
 from shared.config import dias_restantes
 
@@ -80,7 +79,6 @@ async def _score_keywords(lic: dict, empresa_id: int) -> float:
 
     objeto = (lic.get("objeto", "") + " " + lic.get("entidad", "")).lower()
     matches = sum(1 for kw in all_kw if kw.lower() in objeto)
-    ratio = matches / len(all_kw) if all_kw else 0
 
     if matches >= 3:
         return 25

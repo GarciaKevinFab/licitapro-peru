@@ -2,7 +2,6 @@
 import os
 import html
 import logging
-import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -16,15 +15,13 @@ log = logging.getLogger("radar_bot")
 
 from shared.notificaciones import repartir
 from shared.db import (
-    get_pool, get_licitaciones_nuevas, marcar_notificada,
-    get_config, update_config, get_empresas_activas,
-    get_usuario_por_telegram, vincular_telegram, licitaciones_para_usuario,
+    get_pool, marcar_notificada,
+    get_config, update_config, get_usuario_por_telegram, vincular_telegram, licitaciones_para_usuario,
 )
 from shared.config import (
     format_monto, format_fecha, dias_restantes, prioridad_emoji,
     DEPARTAMENTOS, TIPOS_PROCEDIMIENTO, ADMIN_ID,
 )
-from radar_bot.scrapers.seace import scrape_seace
 from radar_bot.scrapers.orchestrator import run_all_scrapers, format_scraping_report
 
 

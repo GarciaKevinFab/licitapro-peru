@@ -3,10 +3,10 @@ import os
 import logging
 from datetime import date
 from docx import Document
-from docx.shared import Pt, Cm
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-from shared.db import connection, get_empresa
+from shared.db import connection
 from shared.config import format_monto, format_fecha
 from shared.firma_manager import obtener_firma, insertar_imagen_en_docx
 

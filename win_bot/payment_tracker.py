@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from shared.db import connection
-from shared.config import format_monto, format_fecha
+from shared.config import format_monto
 
 log = logging.getLogger("win.payments")
 

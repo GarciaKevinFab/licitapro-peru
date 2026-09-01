@@ -3,7 +3,6 @@ import logging
 import hashlib
 from datetime import datetime
 import httpx
-from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
 

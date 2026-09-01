@@ -1,7 +1,7 @@
 """Scraper para portales de Gobiernos Regionales (GORE)."""
 import logging
 from bs4 import BeautifulSoup
-from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_fecha, parse_monto
+from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_monto
 
 log = logging.getLogger("radar.gore")
 
@@ -57,7 +57,7 @@ class GOREPortalsScraper(BaseScraper):
                                     is_new = await upsert_licitacion(data)
                                     if is_new:
                                         nuevas.append(data)
-                            except Exception as e:
+                            except Exception:
                                 errores += 1
                     except Exception:
                         continue

@@ -90,6 +90,17 @@ jobs:
         # usuario pisa esa ruta en produccion.
         run: python tools/auditar_sql.py
 
+      # Ruff, ANTES de las pruebas: un import muerto o una variable sin usar
+      # se ven en un segundo y no hace falta levantar Postgres para verlos.
+      #
+      # Se anade porque el flujo corria pytest y nada mas, asi que los avisos
+      # se acumularon hasta 79 sin que nadie los mirara. Las dos reglas que
+      # este proyecto no acata estan justificadas en ruff.toml.
+      - name: Estilo (ruff)
+        run: |
+          python -m pip install ruff
+          ruff check .
+
       - name: Validar la configuracion de pytest
         # SIN `-p no:warnings`, y esa es toda la gracia. Una opcion de pytest.ini
         # que la libreria instalada no reconoce sale como aviso, no como error:

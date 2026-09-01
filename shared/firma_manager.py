@@ -6,7 +6,7 @@ y logo. Se usan automáticamente al generar documentos DOCX.
 import os
 import logging
 import shutil
-from shared.db import connection, get_empresa
+from shared.db import connection
 
 log = logging.getLogger("licitapro.firma")
 

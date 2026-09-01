@@ -3,7 +3,12 @@
 No adivina: le pasa cada consulta a Postgres via PREPARE. Si la columna o la
 tabla no existe, el motor lo dice. Es la unica forma de estar seguro.
 """
-import ast, asyncio, os, pathlib, re, sys
+import ast
+import asyncio
+import os
+import pathlib
+import re
+import sys
 
 RAIZ = pathlib.Path(os.getenv('AUDIT_ROOT', '.'))
 SQL_INICIO = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\b', re.IGNORECASE)

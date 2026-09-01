@@ -3,10 +3,10 @@ import os
 import logging
 from datetime import date
 from docx import Document
-from docx.shared import Pt, Cm, RGBColor
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-from shared.db import connection, kb_get, get_empresa
+from shared.db import connection, get_empresa
 from shared.config import format_monto, format_fecha
 from shared.firma_manager import obtener_firma, insertar_imagen_en_docx
 
@@ -152,7 +152,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
         doc.add_paragraph("_" * 40)
 
     doc.add_paragraph(f"{representante}")
-    doc.add_paragraph(f"Representante Legal")
+    doc.add_paragraph("Representante Legal")
     doc.add_paragraph(f"{razon}")
 
     sello_path = await obtener_firma(empresa_id, 'sello')

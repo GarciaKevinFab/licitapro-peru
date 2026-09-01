@@ -61,17 +61,17 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
 
     try:
         # 1. Carta de presentación
-        log.info(f"Generando carta de presentación...")
+        log.info("Generando carta de presentación...")
         path = await generar_carta_presentacion(propuesta_id, empresa_id, licitacion)
         documentos_generados.append(("01_Carta_Presentacion.docx", path))
 
         # 2. Declaración jurada
-        log.info(f"Generando declaración jurada...")
+        log.info("Generando declaración jurada...")
         path = await generar_declaracion_jurada(propuesta_id, empresa_id, licitacion)
         documentos_generados.append(("02_Declaracion_Jurada.docx", path))
 
         # 3. Experiencia del postor
-        log.info(f"Generando experiencia del postor...")
+        log.info("Generando experiencia del postor...")
         path = await generar_experiencia_postor(propuesta_id, empresa_id, licitacion)
         documentos_generados.append(("03_Experiencia_Postor.docx", path))
 
@@ -83,7 +83,7 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         # 5. Propuesta económica
         precio = prop.get("precio_ofertado") or prop.get("monto_referencial") or 0
         if precio:
-            log.info(f"Generando propuesta económica...")
+            log.info("Generando propuesta económica...")
             path = await generar_propuesta_economica(propuesta_id, empresa_id, licitacion, precio)
             documentos_generados.append(("05_Propuesta_Economica.docx", path))
 
@@ -135,15 +135,15 @@ def _generar_indice(prop, empresa, documentos: list[tuple]) -> str:
         "EXPEDIENTE DE PROPUESTA",
         "=" * 60,
         f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
-        f"",
+        "",
         f"Licitación: {prop.get('nomenclatura') or prop['licitacion_id']}",
         f"Entidad: {prop['entidad']}",
         f"Objeto: {prop['objeto'][:200]}",
         f"Monto referencial: {format_monto(prop['monto_referencial']) if prop.get('monto_referencial') else '—'}",
-        f"",
+        "",
         f"Empresa: {empresa['razon_social']}",
         f"RUC: {empresa['ruc']}",
-        f"",
+        "",
         "DOCUMENTOS INCLUIDOS:",
         "-" * 40,
     ]

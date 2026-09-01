@@ -14,13 +14,12 @@ QUE PASABA ANTES: NO SE GENERABA NUNCA
 import os
 import logging
 from docx import Document
-from docx.shared import Pt, Cm
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from shared import ia
-from shared.db import connection, get_empresa
+from shared.db import get_empresa
 from shared.config import ANTHROPIC_KEY, format_monto
-from shared.knowledge_base import obtener_datos_empresa_completos
 
 log = logging.getLogger("prep.autofill.proposal")
 

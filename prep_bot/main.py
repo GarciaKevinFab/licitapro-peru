@@ -1,7 +1,6 @@
 """Bot 2: LicitaPrep — Prepara propuestas y pregunta lo que falta."""
 import os
 import logging
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -17,7 +16,7 @@ from shared.db import (
     get_pool, get_preguntas_pendientes, responder_pregunta,
     kb_get, kb_set, get_empresa, get_empresas_activas, connection,
 )
-from shared.config import format_monto, format_fecha, ADMIN_ID
+from shared.config import format_monto, ADMIN_ID
 from shared.firma_manager import guardar_firma, obtener_todas_firmas
 
 
@@ -120,7 +119,7 @@ async def iniciar_autofill(propuesta_id: int, empresa_id: int, app):
         for i, preg in enumerate(pendientes[:5], 1):
             kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    f"📝 Responder",
+                    "📝 Responder",
                     callback_data=f"resp_{preg['id']}",
                 )
             ]])

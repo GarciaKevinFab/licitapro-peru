@@ -184,7 +184,7 @@ def format_fecha(fecha) -> str:
 def dias_restantes(fecha_cierre) -> int | None:
     if fecha_cierre is None:
         return None
-    from datetime import datetime, date
+    from datetime import date
     if hasattr(fecha_cierre, "date"):
         fecha_cierre = fecha_cierre.date()
     return (fecha_cierre - date.today()).days

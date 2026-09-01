@@ -19,8 +19,7 @@ QUE APORTA ESTE MODULO Y QUE NO
 """
 import os
 import logging
-from shared.db import connection, kb_get, get_empresa
-from shared.config import format_monto, format_fecha
+from shared.db import connection, get_empresa
 from prep_bot.document_gen import (
     generar_carta_presentacion,
     generar_declaracion_jurada,
