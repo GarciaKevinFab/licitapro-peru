@@ -892,6 +892,48 @@ async def test_la_marca_se_presta_pero_no_se_atribuye(cliente, monkeypatch):
             assert prohibido not in t.lower(), f"{ruta}: afirma titularidad"
 
 
+@pytest.mark.parametrize("escrito, esperado", [
+    # El caso real: fijo de Madre de Dios con el 0 interurbano delante.
+    ("(082) 573844",    "+5182573844"),
+    # El mismo sin adornos, y con separadores distintos.
+    ("082-573844",      "+5182573844"),
+    ("082 57 38 44",    "+5182573844"),
+    # Movil peruano, que no lleva cero.
+    ("987 654 321",     "+51987654321"),
+    # Ya internacional: se respeta, no se le pega otro +51.
+    ("+51 82 573844",   "+5182573844"),
+    ("+5182573844",     "+5182573844"),
+])
+def test_el_numero_para_marcar_sale_en_forma_internacional(escrito, esperado):
+    """El cero de delante hay que QUITARLO, no arrastrarlo.
+
+    "(082)" lleva el prefijo interurbano peruano, que solo vale marcando dentro
+    del pais. Pegado a +51 daria +51082..., un numero que no existe -- y el
+    fallo no avisa: el enlace existe, se toca y no pasa nada.
+    """
+    from web.comprar import _tel_uri
+    assert _tel_uri(escrito) == esperado
+
+
+async def test_el_telefono_se_puede_marcar_desde_el_movil(cliente, monkeypatch):
+    """Se ve el formato local y se marca el internacional.
+
+    Las dos cosas a la vez: en pantalla "(082) 573844", que es como lo reconoce
+    alguien de Madre de Dios; en el href, la forma que marca desde cualquier
+    telefono del mundo.
+    """
+    monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")
+    monkeypatch.setenv("LICITAPRO_RUC", "20123456789")
+    monkeypatch.setenv("LICITAPRO_CONTACTO_EMAIL", "datos@ejemplo.pe")
+    monkeypatch.setenv("LICITAPRO_DIRECCION", "Av. de Prueba 123")
+    monkeypatch.setenv("LICITAPRO_CONTACTO_TELEFONO", "(082) 573844")
+
+    for ruta in ("/precios", "/comprar/pro", "/privacidad"):
+        t = (await cliente.get(ruta)).text
+        assert 'href="tel:+5182573844"' in t, ruta
+        assert "(082) 573844" in t, ruta
+
+
 async def test_el_correo_de_contacto_escapa_de_la_ofuscacion(cliente, monkeypatch):
     """Cloudflare reescribe los mailto:, y este no se puede dejar reescribir.
 

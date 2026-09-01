@@ -85,6 +85,35 @@ def _desglose(total) -> dict:
     return {"base": base, "igv": total - base, "total": total}
 
 
+# Prefijo de Peru. El producto es peruano de arriba abajo -- SEACE, IGV, soles,
+# Indecopi --, asi que no hay nada que parametrizar aqui.
+_PREFIJO_PAIS = "+51"
+
+
+def _tel_uri(telefono: str) -> str:
+    """El numero mostrado, convertido en algo que un movil pueda marcar.
+
+    Un `tel:` con parentesis y espacios funciona en la mayoria de telefonos,
+    pero no en todos, y el que falla no avisa: simplemente no pasa nada al
+    tocarlo. Se normaliza a la forma internacional, que marca en cualquiera.
+
+    EL CERO DE DELANTE HAY QUE QUITARLO, NO ARRASTRARLO
+
+      "(082) 573844" lleva el 0 del prefijo interurbano peruano, que solo vale
+      marcando DENTRO del pais. Pegado a +51 da +510 82..., un numero que no
+      existe. Se descarta el cero y queda +5182573844.
+
+    Un numero que ya venga en internacional se respeta tal cual: quien lo
+    escriba asi sabe lo que hace.
+    """
+    limpio = "".join(c for c in telefono if c.isdigit() or c == "+")
+    if limpio.startswith("+"):
+        return limpio
+    if limpio.startswith("0"):
+        limpio = limpio[1:]
+    return _PREFIJO_PAIS + limpio if limpio else ""
+
+
 def _comercio() -> dict:
     """Identidad del titular del cobro, para el pie del checkout.
 
@@ -117,7 +146,13 @@ def _comercio() -> dict:
         "marca": os.getenv("LICITAPRO_MARCA", ""),
         "marca_certificado": os.getenv("LICITAPRO_MARCA_CERTIFICADO", ""),
     }
-    return {k: v.strip() for k, v in campos.items() if v.strip()}
+    datos = {k: v.strip() for k, v in campos.items() if v.strip()}
+    # El numero para marcar viaja junto al que se lee, y NO sustituye a ese:
+    # en pantalla se quiere "(082) 573844", que es como lo reconoce un local;
+    # en el enlace, la forma internacional, que es la que marca siempre.
+    if datos.get("telefono"):
+        datos["telefono_uri"] = _tel_uri(datos["telefono"])
+    return datos
 
 
 # Los cuatro datos que la Ley 29733 exige para identificar al responsable del

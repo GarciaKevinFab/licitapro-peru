@@ -182,7 +182,7 @@ a.comprar:hover{opacity:.88}
       {% if comercio.ruc %}RUC {{ comercio.ruc }}<br>{% endif %}
       {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
       {% if comercio.email %}<!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off-->{% endif %}
-      {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
+      {% if comercio.telefono %} · <a href="tel:{{ comercio.telefono_uri }}">{{ comercio.telefono }}</a>{% endif %}
     </p>
     {% include "_titularidad.html" %}
   </div>

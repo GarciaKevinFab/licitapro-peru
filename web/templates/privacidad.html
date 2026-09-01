@@ -69,7 +69,7 @@
      {% if comercio.email %}
        Para cualquier asunto relacionado con tus datos puedes escribir a
        <b><!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off--></b>{% if comercio.telefono %},
-       o llamar al <b>{{ comercio.telefono }}</b>{% endif %}.
+       o llamar al <b><a href="tel:{{ comercio.telefono_uri }}">{{ comercio.telefono }}</a></b>{% endif %}.
      {% else %}
        La dirección de contacto para asuntos de datos está pendiente de indicar.
      {% endif %}</p>
