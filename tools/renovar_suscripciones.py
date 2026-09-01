@@ -58,4 +58,26 @@ async def main() -> int:
     return 0
 
 
-sys.exit(asyncio.run(main()))
+# EL COBRO NO PUEDE DISPARARSE AL IMPORTAR, Y ANTES SI
+#
+# Esta linea estaba suelta a nivel de modulo. `win_bot` hace
+#
+#     from tools.renovar_suscripciones import main as renovar
+#
+# y ese import EJECUTABA la renovacion entera como efecto secundario, dentro
+# del bucle de eventos del bot. De ahi el error que llevaba en produccion:
+#
+#     RuntimeError: asyncio.run() cannot be called from a running event loop
+#
+# Consecuencia real: la renovacion automatica NUNCA ha corrido desde el bot.
+# Hoy no se nota porque Izipay esta en sandbox y no hay tarjetas guardadas que
+# cobrar; el dia que las haya, nadie renovaria y las cuentas irian cayendo al
+# plan gratuito una por una, en silencio.
+#
+# Y el fallo tenia una segunda cara peor. Si alguien lo hubiera "arreglado"
+# solo quitando el conflicto de bucles, el import habria cobrado a todo el
+# mundo y el `await renovar()` de la linea siguiente habria vuelto a cobrar.
+# El guardia de __main__ cierra las dos puertas a la vez: importar el modulo no
+# hace nada, y ejecutarlo a mano sigue funcionando igual que siempre.
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

@@ -104,3 +104,37 @@ def test_se_reconoce_una_credencial_de_prueba(monkeypatch, publica, api, esperad
     monkeypatch.setenv("IZIPAY_PUBLIC_KEY", publica)
     monkeypatch.setenv("IZIPAY_API_KEY", api)
     assert izipay.credenciales_de_prueba() is esperado
+
+
+# ─── El cobro no puede dispararse al importar ────────────
+
+def test_importar_el_renovador_no_cobra_a_nadie():
+    """El fallo que llevaba en produccion, y que solo se veia en un log.
+
+    `tools/renovar_suscripciones.py` terminaba con
+
+        sys.exit(asyncio.run(main()))
+
+    a nivel de modulo. `win_bot` lo importa para llamarlo, asi que el IMPORT
+    ejecutaba la renovacion entera dentro del bucle del bot y moria con
+    "asyncio.run() cannot be called from a running event loop".
+
+    Resultado: la renovacion automatica no ha corrido nunca desde el bot. Hoy
+    da igual -- Izipay esta en sandbox y no hay tarjetas guardadas --, pero el
+    dia que las haya, nadie renovaria y las cuentas caerian al plan gratuito de
+    una en una sin que nada avise.
+
+    Se comprueba leyendo el fichero y no importandolo: importarlo es
+    precisamente lo que no debe tener efectos, y una prueba que lo hiciera
+    cobraria de verdad si el guardia desapareciera.
+    """
+    import pathlib
+    fuente = (pathlib.Path(__file__).resolve().parent.parent
+              / "tools" / "renovar_suscripciones.py").read_text(encoding="utf-8")
+
+    for linea in fuente.splitlines():
+        if "asyncio.run(" in linea and not linea.lstrip().startswith("#"):
+            assert linea.startswith("    "), (
+                "asyncio.run() vuelve a estar a nivel de modulo: importar "
+                "tools/renovar_suscripciones cobraria a todos los clientes")
+    assert 'if __name__ == "__main__":' in fuente, "falta el guardia de __main__"
