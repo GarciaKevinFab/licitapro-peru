@@ -1,0 +1,188 @@
+{% extends "_base.html" %}
+{% block titulo %}Libro de Reclamaciones · LicitaPro Perú{% endblock %}
+{# La lleva en el cuerpo: que el pie no la repita. #}
+{% set titularidad_en_cuerpo = true %}
+
+{% block estilos %}
+/* ============================================================================
+   LIBRO DE RECLAMACIONES
+
+   No es una pagina de marketing: es un formulario obligatorio que alguien
+   rellena molesto, y a veces desde el movil. Por eso va a una columna, con los
+   campos grandes y sin nada que distraiga.
+
+   El aviso de arriba dice que esto NO sustituye a INDECOPI. Decirlo es
+   obligacion, y ademas es lo honesto: quien reclama tiene que saber que tiene
+   otra puerta si esta no le sirve.
+   ========================================================================== */
+main{max-width:760px}
+.campos{display:flex;flex-direction:column;gap:16px}
+.dos{display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:640px){ .dos{grid-template-columns:1fr 1fr} }
+textarea{min-height:110px}
+.marco{border:1px solid var(--line);border-radius:6px;padding:14px 16px;
+  background:var(--bg)}
+.marco legend{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding:0 6px}
+.opciones{display:flex;gap:18px;flex-wrap:wrap}
+.opcion{display:flex;align-items:center;gap:7px;font-size:14px}
+.opcion input{width:auto;margin:0}
+.aviso-legal{font-size:12.5px;color:var(--ink-3);line-height:1.65;margin:0}
+
+/* La hoja registrada: el numero es lo unico que importa de esa pantalla. */
+.hoja{text-align:center;padding:8px 0 4px}
+.hoja .num{font-family:"Barlow Condensed",sans-serif;font-weight:900;
+  font-size:clamp(2.6rem,7vw,3.8rem);letter-spacing:.01em;line-height:1;
+  color:var(--ac);margin:10px 0 6px}
+.hoja .sin-margen{margin:0}
+.hoja .plazo{font-size:14px;color:var(--ink-2)}
+.hoja .plazo b{font-variant-numeric:tabular-nums}
+{% endblock %}
+
+{% block cuerpo %}
+{% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main class="{% if not usuario %}pt-40{% endif %}">
+
+{% if hoja %}
+  {# ---------- ya registrada ---------- #}
+  <div class="tarjeta">
+    <div class="hoja">
+      <p class="sub sin-margen">Tu {{ hoja.tipo }} quedó registrado</p>
+      <div class="num">{{ hoja.codigo }}</div>
+      <p class="plazo">
+        Guarda este número: es el que necesitas si acudes a INDECOPI.<br>
+        Tenemos hasta el <b>{{ hoja.limite.strftime('%d/%m/%Y') }}</b> para
+        responderte, y lo haremos a <b>{{ hoja.email }}</b>.
+      </p>
+    </div>
+  </div>
+  <div class="tarjeta">
+    <p class="aviso-legal">
+      Te enviamos también una copia por correo. <b>Si no te llega, tu hoja
+      igualmente está registrada</b> con el número de arriba — el envío es un
+      aviso, no el registro. Ante cualquier duda escríbenos y búscala por ese
+      número.
+    </p>
+  </div>
+  <p class="ayuda"><a href="/">Volver al inicio</a></p>
+
+{% else %}
+  {# ---------- el formulario ---------- #}
+  <div class="tarjeta">
+    <h2 class="portada">Libro de Reclamaciones</h2>
+    <p class="sub">Conforme a la Ley 29571, Código de Protección y Defensa del
+       Consumidor, y al D.S. 101-2022-PCM.</p>
+    <p class="aviso-legal">
+      <b>Reclamo</b>: no estás conforme con el servicio contratado.
+      <b>Queja</b>: no estás conforme con la atención recibida.<br>
+      Responderemos en un plazo máximo de <b>{{ dias_habiles }} días hábiles</b>.
+      Presentar un reclamo aquí <b>no impide</b> acudir a INDECOPI ni a la vía
+      que corresponda.
+    </p>
+  </div>
+
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/reclamaciones">
+    <div class="tarjeta">
+      <h2>1. Quién reclama</h2>
+      <div class="campos">
+        <fieldset class="marco">
+          <legend>Tipo</legend>
+          <div class="opciones">
+            {% for t in tipos %}
+              <label class="opcion">
+                <input type="radio" name="tipo" value="{{ t }}" required
+                       {% if v.tipo == t %}checked{% endif %}>
+                {{ t|capitalize }}</label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <label class="campo"><span>Nombre completo o razón social *</span>
+          <input type="text" name="nombre" required value="{{ v.nombre or '' }}"></label>
+
+        <div class="dos">
+          <label class="campo"><span>Tipo de documento</span>
+            <select name="documento_tipo">
+              {% for d in documentos %}
+                <option value="{{ d }}" {% if v.documento_tipo == d %}selected{% endif %}>{{ d }}</option>
+              {% endfor %}
+            </select></label>
+          <label class="campo"><span>Número de documento *</span>
+            <input type="text" name="documento_numero" required
+                   value="{{ v.documento_numero or '' }}"></label>
+        </div>
+
+        <div class="dos">
+          <label class="campo"><span>Correo *</span>
+            <input type="email" name="email" required value="{{ v.email or '' }}">
+            <span class="ayuda">Aquí te enviamos la copia y la respuesta.</span></label>
+          <label class="campo"><span>Teléfono</span>
+            <input type="tel" name="telefono" value="{{ v.telefono or '' }}"></label>
+        </div>
+
+        <label class="campo"><span>Domicilio</span>
+          <input type="text" name="direccion" value="{{ v.direccion or '' }}"></label>
+
+        {# La ley contempla al menor de edad reclamando por medio de su
+           apoderado. Es raro en un producto de licitaciones, pero omitirlo
+           dejaria la hoja incompleta el dia que llegue el caso. #}
+        <fieldset class="marco">
+          <legend>Menor de edad</legend>
+          <label class="opcion">
+            <input type="checkbox" name="es_menor_edad" value="1"
+                   {% if menor %}checked{% endif %}>
+            Soy menor de edad y reclamo a través de mi apoderado</label>
+          <label class="campo mt-12"><span>Nombre del apoderado</span>
+            <input type="text" name="apoderado" value="{{ v.apoderado or '' }}"></label>
+        </fieldset>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>2. Qué se contrató</h2>
+      <div class="campos">
+        <fieldset class="marco">
+          <legend>Bien contratado</legend>
+          <div class="opciones">
+            <label class="opcion">
+              <input type="radio" name="bien_contratado" value="servicio"
+                     {% if v.bien_contratado != 'producto' %}checked{% endif %}> Servicio</label>
+            <label class="opcion">
+              <input type="radio" name="bien_contratado" value="producto"
+                     {% if v.bien_contratado == 'producto' %}checked{% endif %}> Producto</label>
+          </div>
+        </fieldset>
+        <div class="dos">
+          <label class="campo"><span>Descripción</span>
+            <input type="text" name="descripcion_bien"
+                   value="{{ v.descripcion_bien or '' }}"
+                   placeholder="Suscripción LicitaPro, plan Pro"></label>
+          <label class="campo"><span>Monto reclamado (S/)</span>
+            <input type="text" name="monto_reclamado" inputmode="decimal"
+                   value="{{ v.monto_reclamado or '' }}"></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>3. Qué pasó y qué esperas</h2>
+      <div class="campos">
+        <label class="campo"><span>Detalle *</span>
+          <textarea name="detalle" required
+                    placeholder="Cuéntanos qué ocurrió, con fechas si las tienes.">{{ v.detalle or '' }}</textarea></label>
+        <label class="campo"><span>Tu pedido *</span>
+          <textarea name="pedido" required
+                    placeholder="¿Qué esperas que hagamos?">{{ v.pedido or '' }}</textarea></label>
+      </div>
+      <button type="submit" class="w-total-alto mt-18">Registrar</button>
+      <p class="ayuda mt-12">Al registrar verás el número de tu hoja en
+         pantalla, y te llegará una copia por correo.</p>
+    </div>
+  </form>
+{% endif %}
+
+  {% include "_titularidad.html" %}
+</main>
+{% endblock %}

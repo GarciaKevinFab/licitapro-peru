@@ -303,6 +303,10 @@ RUTAS_LIBRES = (
     #      justamente a pagar: redirigirle a "tu suscripcion esta suspendida"
     #      seria devolverle al sitio del que acaba de salir.
     "/precios", "/comprar",
+    # El Libro de Reclamaciones NUNCA puede quedar detras del cobro: la Ley
+    # 29571 da derecho a reclamar a cualquiera, y el caso mas probable es
+    # justo alguien a quien le cortamos el servicio.
+    "/reclamaciones",
     # Las paginas legales se leen con la suscripcion suspendida o sin cuenta:
     # el derecho a saber que hacemos con tus datos y a pedir que los borremos
     # no depende de estar al dia con el pago.
