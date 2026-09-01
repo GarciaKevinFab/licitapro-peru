@@ -892,6 +892,25 @@ async def test_la_marca_se_presta_pero_no_se_atribuye(cliente, monkeypatch):
             assert prohibido not in t.lower(), f"{ruta}: afirma titularidad"
 
 
+async def test_la_titularidad_sale_una_sola_vez_por_pagina(cliente, monkeypatch):
+    """Salia DOS veces en las cuatro paginas que mas se miran.
+
+    El parcial estaba en el cuerpo de /precios, /comprar, /terminos y
+    /privacidad, y ademas en el pie que `_base.html` pone en todas. Repetir la
+    identificacion legal a diez lineas de distancia no es redundancia inocente:
+    parece plantilla mal montada justo en la pagina donde alguien decide si te
+    da una pasarela de pago.
+    """
+    monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")
+    monkeypatch.setenv("LICITAPRO_RUC", "20123456789")
+    monkeypatch.setenv("LICITAPRO_MARCA", "Marca De Prueba")
+
+    for ruta in ("/", "/precios", "/comprar/pro", "/terminos", "/privacidad", "/entrar"):
+        t = (await cliente.get(ruta)).text
+        veces = t.count("es un servicio de")
+        assert veces == 1, f"{ruta}: la titularidad sale {veces} veces"
+
+
 async def test_sin_marca_configurada_la_linea_no_deja_hueco(cliente, monkeypatch):
     """Lo que falta no se pinta a medias: o la frase entera, o nada."""
     monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")

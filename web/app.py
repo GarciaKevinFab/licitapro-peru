@@ -268,6 +268,18 @@ def estatico(nombre: str) -> str:
 
 templates.env.globals["estatico"] = estatico
 
+# QUIEN PRESTA EL SERVICIO, EN TODAS LAS PANTALLAS SIN PASARLO RUTA POR RUTA
+#
+#   Pasarlo en el contexto de cada vista significa acordarse en las 30 que hay
+#   y en la 31 que venga. Ya fallo: /entrar quedaba sin la linea porque su ruta
+#   no lo pasaba, y eso no da error -- el `{% if %}` simplemente no pinta nada.
+#
+#   Va como FUNCION y no como valor ya resuelto para que se lea del entorno en
+#   cada render. Resuelto al arrancar, un cambio en el .env exigiria reiniciar
+#   para verse, y las pruebas que lo manipulan no podrian.
+from web.comprar import _comercio as _identidad_comercio  # noqa: E402
+templates.env.globals["identidad"] = _identidad_comercio
+
 app.include_router(router_auth)
 app.include_router(router_config)
 app.include_router(router_empresas)

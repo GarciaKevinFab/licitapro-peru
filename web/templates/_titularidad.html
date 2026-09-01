@@ -24,10 +24,18 @@
      republicarlo en un pie de pagina, y para identificar a quien cobra basta
      la razon social con su RUC.
 
-   Todo sale del entorno y lo que falte no se pinta: sin `comercio`, o sin
-   marca configurada, este bloque no existe. No deja un hueco ni un guion.
+   NO DEPENDE DE QUE LA RUTA LE PASE NADA
+
+     Lee `identidad()`, un global de Jinja registrado en web/app.py. Pasarlo en
+     el contexto de cada vista significaba acordarse en las treinta que hay, y
+     ya fallo una vez: /entrar se quedaba sin la linea y no daba error, porque
+     un `{% if %}` sobre una variable ausente simplemente no pinta nada.
+
+   Lo que falte no se pinta: sin razon social o sin marca configurada, este
+   bloque no existe. No deja un hueco ni un guion.
    ============================================================================ #}
-{% if comercio and comercio.razon_social %}
+{% set comercio = identidad() %}
+{% if comercio.razon_social %}
   <p class="titularidad">
     LicitaPro es un servicio de <b>{{ comercio.razon_social }}</b>{% if comercio.ruc %},
     RUC {{ comercio.ruc }}{% endif %}{% if comercio.marca %}, prestado bajo la marca

@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Contratar {{ plan.nombre }} · LicitaPro Perú{% endblock %}
+{# La lleva en el cuerpo: que el pie no la repita. #}
+{% set titularidad_en_cuerpo = true %}
 
 {% block estilos %}
 /* ============================================================================

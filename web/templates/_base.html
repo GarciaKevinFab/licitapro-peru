@@ -324,7 +324,10 @@ table.datos td.cobrar.hay{color:var(--warn)}
 <body>
 {% block cuerpo %}{% endblock %}
 <footer class="pie-app">
-  {% include "_titularidad.html" %}
+  {# En el pie SOLO si la pagina no la lleva ya en su cuerpo. Sin esta guarda
+     salia dos veces en /precios, /comprar, /terminos y /privacidad, que son
+     justo las cuatro donde mas se mira. #}
+  {% if not titularidad_en_cuerpo %}{% include "_titularidad.html" %}{% endif %}
   <span class="marca-pie">
     <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
         <g fill="currentColor" opacity=".4">
