@@ -402,8 +402,11 @@ async def portada(request: Request):
     """
     if await usuario_actual(request):
         return RedirectResponse("/panel", status_code=303)
+    from web.comprar import _comercio
     return templates.TemplateResponse("landing.html", {
         "request": request,
+        # Para el pie: quien presta el servicio y bajo que marca.
+        "comercio": _comercio(),
         # Los planes se leen de la base y no se repiten a mano en la plantilla:
         # estaban escritos a fuego y dejaron de coincidir en cuanto se anadio el
         # plan gratuito. Una pagina publica que promete otra cosa que el sistema
@@ -445,9 +448,11 @@ async def privacidad(request: Request):
 
 @app.get("/terminos", response_class=HTMLResponse)
 async def terminos(request: Request):
+    from web.comprar import _comercio
     return templates.TemplateResponse("terminos.html", {
         "request": request,
         "usuario": await usuario_actual(request),
+        "comercio": _comercio(),
         "hoy": _hoy_en_letras(),
     })
 

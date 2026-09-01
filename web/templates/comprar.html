@@ -59,6 +59,8 @@ main{max-width:920px}
 .comercio{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin:16px 0 0;
   padding-top:14px;border-top:1px solid var(--line-soft)}
 .comercio b{color:var(--ink-2);font-weight:500}
+.titularidad{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin:8px 0 0}
+.titularidad b{color:var(--ink-2);font-weight:500}
 {% endblock %}
 
 {% block cuerpo %}
@@ -163,6 +165,7 @@ main{max-width:920px}
           {% if comercio.email %}<a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a>{% endif %}
           {% if comercio.telefono %} · {{ comercio.telefono }}{% endif %}
         </p>
+        {% include "_titularidad.html" %}
       {% endif %}
     </div>
 

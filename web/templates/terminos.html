@@ -11,6 +11,9 @@
 .legal p{margin:0 0 12px;line-height:1.62}
 .legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
 .legal li{margin-bottom:6px}
+.legal .titularidad{margin:0 0 26px;padding:13px 15px;background:var(--panel-2);
+  border-radius:5px;font-size:13px;line-height:1.6;color:var(--ink-2)}
+.legal .titularidad b{color:var(--ink);font-weight:600}
 .legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
   font-size:13px;color:var(--ink-3)}
 {% endblock %}
@@ -25,6 +28,8 @@
 
   <p>Al crear una cuenta en LicitaPro Perú aceptas estos términos. Si no estás
      de acuerdo con alguno, no uses el servicio.</p>
+
+  {% include "_titularidad.html" %}
 
   <h2>1. Qué es LicitaPro</h2>
   <p>Una herramienta que reúne las convocatorias que publica el Estado peruano,

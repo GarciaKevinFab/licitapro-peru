@@ -18,6 +18,9 @@
   text-transform:uppercase;color:var(--ink-3);font-weight:500}
 .revisar{background:var(--warn-soft);border:1px solid var(--warn);border-radius:5px;
   padding:15px 17px;margin-bottom:26px;font-size:13.5px;color:var(--warn);line-height:1.55}
+.legal .titularidad{margin:14px 0 0;padding:13px 15px;background:var(--panel-2);
+  border-radius:5px;font-size:13px;line-height:1.6;color:var(--ink-2)}
+.legal .titularidad b{color:var(--ink);font-weight:600}
 .legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
   font-size:13px;color:var(--ink-3)}
 .marco-tabla{overflow-x:auto}
@@ -68,6 +71,8 @@
      {% else %}
        La dirección de contacto para asuntos de datos está pendiente de indicar.
      {% endif %}</p>
+
+  {% include "_titularidad.html" %}
 
   <h2>2. Qué datos tratamos y por qué</h2>
   <div class="marco-tabla">

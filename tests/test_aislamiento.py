@@ -866,6 +866,46 @@ async def test_el_aviso_de_privacidad_se_apaga_solo_al_completar_la_identidad(cl
     assert _IDENTIDAD["LICITAPRO_CONTACTO_EMAIL"] in t
 
 
+async def test_la_marca_se_presta_pero_no_se_atribuye(cliente, monkeypatch):
+    """La frase que no se puede escribir mal, en las seis paginas que la llevan.
+
+    Los certificados de Indecopi 00165236 y 00162741 estan a nombre de dos
+    personas naturales, NO de la sociedad. El sitio puede decir que presta el
+    servicio bajo esa marca; no puede decir que es su titular.
+
+    No es un matiz de redactor: quien valida un comercio comprueba el registro,
+    y ahi la titularidad afirmada de mas se cae sola. Se fija aqui porque es el
+    tipo de frase que alguien "mejora" un martes sin saber lo que hay detras.
+    """
+    monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")
+    monkeypatch.setenv("LICITAPRO_RUC", "20123456789")
+    monkeypatch.setenv("LICITAPRO_MARCA", "Marca De Prueba")
+    monkeypatch.setenv("LICITAPRO_MARCA_CERTIFICADO", "00000001")
+
+    for ruta in ("/", "/precios", "/comprar/pro", "/terminos", "/privacidad"):
+        t = (await cliente.get(ruta)).text
+        assert "prestado bajo la marca" in t, ruta
+        assert "Marca De Prueba" in t, ruta
+        # Lo que NUNCA puede aparecer.
+        for prohibido in ("titular de la marca", "marca propia",
+                          "somos titulares", "marca de nuestra propiedad"):
+            assert prohibido not in t.lower(), f"{ruta}: afirma titularidad"
+
+
+async def test_sin_marca_configurada_la_linea_no_deja_hueco(cliente, monkeypatch):
+    """Lo que falta no se pinta a medias: o la frase entera, o nada."""
+    monkeypatch.setenv("LICITAPRO_RAZON_SOCIAL", "EJEMPLO DE PRUEBA S.A.C.")
+    monkeypatch.setenv("LICITAPRO_RUC", "20123456789")
+    monkeypatch.delenv("LICITAPRO_MARCA", raising=False)
+    monkeypatch.delenv("LICITAPRO_MARCA_CERTIFICADO", raising=False)
+
+    t = (await cliente.get("/terminos")).text
+    assert "EJEMPLO DE PRUEBA S.A.C." in t
+    assert "prestado bajo la marca" not in t
+    assert "Indecopi" in t          # la clausula de jurisdiccion, que sigue
+    assert "clase 42" not in t      # pero no un certificado sin marca
+
+
 async def test_el_checkout_y_la_privacidad_nombran_al_mismo_responsable(cliente, monkeypatch):
     """Una politica que no coincide con el pie del cobro es peor que no tenerla.
 

@@ -1,0 +1,37 @@
+{# ============================================================================
+   QUIEN PRESTA EL SERVICIO, Y BAJO QUE MARCA
+
+   Una sola linea y un solo sitio. La incluyen el pie de la aplicacion, el de
+   la portada, las dos paginas de compra y las dos legales: seis lugares donde
+   antes no habia nada, y que escritos a mano iban a discrepar en cuanto
+   alguien tocara uno.
+
+   NO DICE "TITULAR DE LA MARCA", Y ES DELIBERADO
+
+     Porque no lo es. Los certificados de Indecopi 00165236 ("Star Insights
+     IT") y 00162741 ("la letra S y logotipo"), los dos de clase 42, estan a
+     nombre de dos personas naturales, no de la sociedad. Lo que si es cierto
+     -- y lo unico que los certificados respaldan -- es que el servicio se
+     presta BAJO esa marca.
+
+     La diferencia no es cosmetica: quien valida un comercio comprueba el
+     registro, y una titularidad afirmada de mas se desmiente en treinta
+     segundos desde la web de Indecopi.
+
+   NO SALEN LOS NOMBRES DE LOS TITULARES
+
+     Son personas fisicas. Que el dato sea publico en el registro no obliga a
+     republicarlo en un pie de pagina, y para identificar a quien cobra basta
+     la razon social con su RUC.
+
+   Todo sale del entorno y lo que falte no se pinta: sin `comercio`, o sin
+   marca configurada, este bloque no existe. No deja un hueco ni un guion.
+   ============================================================================ #}
+{% if comercio and comercio.razon_social %}
+  <p class="titularidad">
+    LicitaPro es un servicio de <b>{{ comercio.razon_social }}</b>{% if comercio.ruc %},
+    RUC {{ comercio.ruc }}{% endif %}{% if comercio.marca %}, prestado bajo la marca
+    <b>{{ comercio.marca }}</b>, registrada en Indecopi{% if comercio.marca_certificado %}
+    (Certificado N.&deg; {{ comercio.marca_certificado }}, clase 42){% endif %}{% endif %}.
+  </p>
+{% endif %}

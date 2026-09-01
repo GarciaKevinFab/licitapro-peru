@@ -411,6 +411,9 @@ body::after{
   border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;
   justify-content:space-between;gap:12px}
 .pie .abajo span{font-size:13px;color:var(--txt-3)}
+.pie .titularidad{margin:calc(var(--paso) * 2.1) 0 0;font-size:12.5px;
+  line-height:1.65;color:var(--txt-3);max-width:82ch}
+.pie .titularidad b{color:var(--txt-2);font-weight:500}
 .sep{border:0;border-top:1px solid var(--hair);margin:0}
 
 /* ---------- ACCESIBILIDAD ----------
@@ -829,6 +832,7 @@ body::after{
         </ul>
       </div>
     </div>
+    {% include "_titularidad.html" %}
     <div class="abajo">
       <span>© 2026 LicitaPro Perú</span>
       <span>Hecho en Perú</span>

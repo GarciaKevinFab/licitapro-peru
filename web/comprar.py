@@ -103,6 +103,19 @@ def _comercio() -> dict:
         "email": os.getenv("LICITAPRO_CONTACTO_EMAIL", ""),
         "telefono": os.getenv("LICITAPRO_CONTACTO_TELEFONO", ""),
         "direccion": os.getenv("LICITAPRO_DIRECCION", ""),
+        # LA MARCA NO ES DE LA EMPRESA, Y LA REDACCION LO RESPETA
+        #
+        #   Los certificados 00165236 ("Star Insights IT") y 00162741 (la letra
+        #   S y logotipo), ambos de clase 42, estan a nombre de DOS PERSONAS
+        #   NATURALES, no de la S.A.C. Por eso en ningun sitio se dice "titular
+        #   de la marca": se dice que el servicio se presta BAJO esa marca, que
+        #   es lo unico que los certificados respaldan.
+        #
+        #   Afirmar una titularidad que el registro no dice es exactamente lo
+        #   que revienta cuando alguien va a Indecopi a comprobarlo -- y quien
+        #   valida un comercio comprueba.
+        "marca": os.getenv("LICITAPRO_MARCA", ""),
+        "marca_certificado": os.getenv("LICITAPRO_MARCA_CERTIFICADO", ""),
     }
     return {k: v.strip() for k, v in campos.items() if v.strip()}
 
