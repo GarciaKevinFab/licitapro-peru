@@ -61,7 +61,7 @@
 
   /* RITMO: todo el espaciado sale de aqui. Una variable fluida significa que
      el ritmo no se rompe entre movil y escritorio: se escala entero. */
-  --paso:clamp(18px, 2.2vw, 30px);
+  --paso:clamp(20px, 2.5vw, 36px);
   --seccion:clamp(112px, 15vh, 210px);
   --maxw:1140px;
   --gutter:clamp(22px, 5vw, 56px);
@@ -101,8 +101,8 @@ h1,h2{
   font-family:"Barlow Condensed",ui-sans-serif,system-ui,sans-serif;
   font-weight:900;letter-spacing:-.012em;line-height:.9;
 }
-h1{font-size:clamp(2.5rem,5.7vw,4.6rem)}
-h2{font-size:clamp(2rem,4.3vw,3.4rem)}
+h1{font-size:clamp(3rem,7vw,6.2rem);letter-spacing:-.022em}
+h2{font-size:clamp(2.3rem,5vw,4.1rem);letter-spacing:-.018em}
 h3{font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;
   font-size:clamp(1.15rem,1.7vw,1.4rem);letter-spacing:-.02em;line-height:1.2}
 .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
@@ -237,7 +237,7 @@ body::after{
 .linea:nth-child(3) > span{animation-delay:.18s}
 @keyframes subir{to{transform:none}}
 .apagado{color:var(--txt-3)}
-.bajada{max-width:46ch;margin:calc(var(--paso) * 1.5) 0 0;color:var(--txt-2);font-size:clamp(1.06rem,1.45vw,1.32rem)}
+.bajada{max-width:48ch;margin:calc(var(--paso) * 1.5) 0 0;color:var(--txt-2);font-size:clamp(1.12rem,1.6vw,1.45rem);line-height:1.5}
 .acciones{display:flex;flex-wrap:wrap;gap:14px;margin-top:calc(var(--paso) * 1.7)}
 .letra-chica{margin-top:calc(var(--paso) * 1.15);font-size:13.5px;color:var(--txt-3);display:flex;align-items:center;gap:9px}
 .letra-chica .punto{width:5px;height:5px;border-radius:50%;background:var(--mint);flex:none}
@@ -269,7 +269,7 @@ body::after{
 .cifra .sub{margin-top:8px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
 
 /* ---------- PASOS ---------- */
-.pasos{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+.pasos{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:24px;overflow:hidden}
 @media (min-width:880px){ .pasos{grid-template-columns:repeat(3,1fr)} }
 .paso{background:var(--bg-2);padding:calc(var(--paso) * 1.7) calc(var(--paso) * 1.4);transition:background .45s var(--suave);position:relative}
 .paso:hover{background:var(--panel)}
@@ -298,7 +298,7 @@ body::after{
 /* ---------- ALERTAS ---------- */
 .alertwrap{display:grid;gap:calc(var(--paso) * .9)}
 @media (min-width:900px){ .alertwrap{grid-template-columns:repeat(3,1fr)} }
-.alerta{background:var(--panel);border:1px solid var(--hair);border-radius:16px;padding:calc(var(--paso) * 1.25);display:flex;flex-direction:column;gap:calc(var(--paso) * .6);transition:transform .45s var(--ease),border-color .45s var(--suave),box-shadow .45s var(--ease)}
+.alerta{background:var(--panel);border:1px solid var(--hair);border-radius:20px;padding:calc(var(--paso) * 1.25);display:flex;flex-direction:column;gap:calc(var(--paso) * .6);transition:transform .45s var(--ease),border-color .45s var(--suave),box-shadow .45s var(--ease)}
 .alerta:hover{transform:translateY(-4px);border-color:var(--line);box-shadow:0 22px 48px -28px rgba(0,0,0,.9)}
 .alerta .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .alerta .sc{font-family:Sora,sans-serif;font-weight:700;font-size:1.85rem;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
@@ -324,7 +324,7 @@ body::after{
 @media (min-width:820px){
   .plans{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
 }
-.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:20px;padding:calc(var(--paso) * 1.5);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
+.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:26px;padding:calc(var(--paso) * 1.5);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
 .plan:hover{transform:translateY(-4px);border-color:var(--line)}
 /* El destacado no grita con otro color: se separa con borde de acento y halo.
    Cambiarle el fondo lo sacaria del conjunto. */

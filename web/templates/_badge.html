@@ -103,11 +103,20 @@
 }
 
 /* En pantallas angostas se achica: sobre 375 px de ancho, una pastilla de
-   220 px se come la pantalla y tapa el contenido del cliente. */
+   220 px se come la pantalla y tapa el contenido del cliente.
+
+   Achicarla no bastaba. Aun reducida medía ~180 px y, al ir fija en la esquina
+   inferior, seguia tapando: en la portada se comia la linea "14 dias de plan
+   Pro. Sin tarjeta.", que es justo la letra pequena que resuelve la duda de
+   quien esta a punto de registrarse.
+
+   Se queda en el isotipo. La firma sigue estando -y los lectores de pantalla
+   la leen igual, porque el aria-label del enlace la lleva entera-, pero ocupa
+   lo que un boton y deja ver lo que hay detras. */
 @media (max-width:30rem){
-  .sb-badge{padding:.3rem .45rem; gap:.4rem; border-radius:.6rem}
-  .sb-badge b{font-size:.6875rem}
-  .sb-logo{height:1.05rem}
+  .sb-badge{padding:.35rem; gap:0; border-radius:.7rem; opacity:.82}
+  .sb-badge .sb-txt{display:none}
+  .sb-logo{height:1.15rem}
   .sb-dot{display:none}
 }
 
