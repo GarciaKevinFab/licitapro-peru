@@ -203,18 +203,31 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
                   "copia enviada: %s", codigo, e)
         return
 
-    cuerpo = f"""
-    <p>Registramos tu {datos['tipo']} en nuestro Libro de Reclamaciones.</p>
-    <p><b>Número de hoja: {codigo}</b><br>
-       Guárdalo: es el que necesitas si acudes a INDECOPI.</p>
-    <p>Tenemos hasta el <b>{limite.strftime('%d/%m/%Y')}</b> para responderte,
-       y lo haremos a esta misma dirección.</p>
-    <p style="color:#666;font-size:13px">Lo que nos contaste:<br>
-       {datos['detalle'][:800]}</p>
-    """
+    from shared import plantillas_correo
+
+    # Los mismos datos alimentan la copia del consumidor y el aviso interno:
+    # escritos dos veces, acaban diciendo cosas distintas de la misma hoja.
+    datos_hoja = [
+        ("Número de hoja", codigo),
+        ("Tipo", str(datos["tipo"]).capitalize()),
+        ("Qué pasó", datos["detalle"][:800]),
+        ("Qué pides", datos["pedido"]),
+        ("Plazo para responderte", limite.strftime("%d/%m/%Y")),
+    ]
+    texto, cuerpo = plantillas_correo.componer(
+        titulo="Registramos tu %s" % datos["tipo"],
+        preencabezado="Hoja %s · te respondemos antes del %s"
+                      % (codigo, limite.strftime("%d/%m/%Y")),
+        intro=["Recibimos tu %s y quedó registrada en nuestro Libro de "
+               "Reclamaciones. Guarda el número de hoja: es el que necesitas "
+               "si acudes a INDECOPI." % datos["tipo"]],
+        filas=datos_hoja,
+        cierre=["Te responderemos a esta misma dirección dentro del plazo."],
+    )
     try:
         await enviar_email(datos["email"],
-                           f"Tu {datos['tipo']} {codigo} · LicitaPro", cuerpo)
+                           f"Tu {datos['tipo']} {codigo} · LicitaPro",
+                           cuerpo, texto)
     except Exception as e:
         log.error("No se pudo enviar la copia de %s a %s: %s", codigo,
                   datos["email"], e)
@@ -223,14 +236,21 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
                or os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip()
     if not interno:
         return
+    texto_int, cuerpo_int = plantillas_correo.componer(
+        titulo="Nueva %s en el Libro" % datos["tipo"],
+        preencabezado="%s · %s" % (codigo, datos["nombre"]),
+        intro=["Entró una %s nueva por la web. El plazo para responder ya "
+               "corre." % datos["tipo"]],
+        filas=datos_hoja + [
+            ("Quién reclama", "%s (%s %s)" % (datos["nombre"],
+                                              datos["documento_tipo"],
+                                              datos["documento_numero"])),
+            ("Contacto", "%s %s" % (datos["email"], datos["telefono"])),
+        ],
+    )
     try:
-        await enviar_email(
-            interno, f"[{codigo}] {datos['tipo']} nuevo en el Libro",
-            f"<p><b>{codigo}</b> · {datos['tipo']} de {datos['nombre']} "
-            f"({datos['documento_tipo']} {datos['documento_numero']})</p>"
-            f"<p>Contacto: {datos['email']} {datos['telefono']}</p>"
-            f"<p><b>Qué pasó:</b><br>{datos['detalle']}</p>"
-            f"<p><b>Qué pide:</b><br>{datos['pedido']}</p>"
-            f"<p>Plazo para responder: {limite.strftime('%d/%m/%Y')}</p>")
+        await enviar_email(interno,
+                           f"[{codigo}] {datos['tipo']} nuevo en el Libro",
+                           cuerpo_int, texto_int)
     except Exception as e:
         log.error("No se pudo avisar internamente de %s: %s", codigo, e)
