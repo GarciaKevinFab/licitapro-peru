@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Empresas · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Empresas' %}
+{% set sub_pagina = 'Con estos datos se llenan los anexos y las declaraciones juradas. Cuanto más completos estén, menos te preguntará el sistema después.' %}
 {% block estilos %}
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
   text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
@@ -18,15 +20,14 @@
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
 
 {% endblock %}
-{% block cuerpo %}
-{% with activo='empresas' %}{% include "_nav.html" %}{% endwith %}
-<main>
+{% block nav %}{% with activo='empresas' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  {% if empresas %}<div class="cab-acc"><a class="btn" href="/empresas/nueva">Agregar empresa</a></div>{% endif %}
+{% endblock %}
+{% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
   <div class="tarjeta">
-    <h2>Tus empresas</h2>
-    <p class="sub">Con estos datos se llenan los anexos y las declaraciones juradas.
-       Cuanto más completos estén, menos te preguntará el sistema después.</p>
     {% if not empresas %}
       <div class="vacio">
         <p><strong>Todavía no has cargado ninguna empresa.</strong></p>
@@ -59,10 +60,6 @@
         </tbody>
       </table>
       </div>
-      <div class="acciones mt-18">
-        <a class="btn" href="/empresas/nueva">Agregar empresa</a>
-      </div>
     {% endif %}
   </div>
-</main>
 {% endblock %}

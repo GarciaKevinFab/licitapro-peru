@@ -287,7 +287,10 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
    plantillas y usada en dos sitios de _nav.html. */
 .mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);
   font-size:13.5px;text-transform:none;letter-spacing:normal;
-  font-family:inherit;padding:11px 15px;border-radius:var(--r)}
+  font-family:inherit;padding:11px 15px;border-radius:var(--r);white-space:normal}
+/* Nombres de variables y de archivos dentro de un aviso: que partan antes de
+   sacar la pagina de su ancho en el telefono. */
+code{overflow-wrap:anywhere}
 
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
@@ -355,6 +358,9 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
 .w-auto{width:auto}
 .en-linea{display:inline}
 .fila-check{display:flex;align-items:center;gap:6px;font-size:13px}
+/* Casilla con su texto: alineados al centro y con alto de control. */
+.check{display:flex;align-items:center;gap:9px;font-size:13.5px;min-height:36px;cursor:pointer}
+@media (max-width:640px){ .check{min-height:44px} }
 .col-15{display:flex;flex-direction:column;gap:15px}
 /* ---------- ENTRADA DE LAS TARJETAS ----------
    AL REVES QUE EN LA PORTADA, Y A PROPOSITO.

@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Contratos · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Contratos' %}
+{% set sub_pagina = 'Lo que ganaste: estado, plazos y lo que falta por cobrar.' %}
 {% block estilos %}
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
   text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
@@ -18,13 +20,14 @@
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
 
 {% endblock %}
-{% block cuerpo %}
-{% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
-<main>
+{% block nav %}{% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  {% if candidatas %}<div class="cab-acc"><a class="btn" href="#registrar">Registrar una buena pro</a></div>{% endif %}
+{% endblock %}
+{% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
   <div class="tarjeta">
-    <h2>Contratos</h2>
     {% if not contratos %}
       <div class="vacio">
         <p><strong>Todavía no tienes contratos registrados.</strong></p>
@@ -56,7 +59,7 @@
     {% endif %}
   </div>
 
-  <div class="tarjeta">
+  <div class="tarjeta" id="registrar">
     <h2>Registrar una buena pro</h2>
     <p class="sub">Al registrarla se crea el contrato y su calendario de plazos.</p>
     {% if not candidatas %}
@@ -76,5 +79,4 @@
       </form>
     {% endif %}
   </div>
-</main>
 {% endblock %}
