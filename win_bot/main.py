@@ -28,70 +28,15 @@ from win_bot.payment_tracker import registrar_pago
 
 # ─── Email sender ────────────────────────────────────────
 async def enviar_email_buena_pro(contrato, licitacion):
-    """Envía email de notificación cuando se gana la buena pro."""
-    import aiosmtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    """Avisa de una buena pro ganada.
 
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_pass = os.getenv("SMTP_PASSWORD")
-    destinatario = os.getenv("EMAIL_DESTINATARIO")
-
-    if not smtp_user or not smtp_pass:
-        log.warning("SMTP not configured, skipping email")
-        return False
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🏆 BUENA PRO GANADA — {licitacion['nomenclatura'] or licitacion['id']}"
-    msg["From"] = smtp_user
-    msg["To"] = destinatario
-
-    monto = format_monto(contrato["monto_adjudicado"]) if contrato["monto_adjudicado"] else "—"
-    
-    html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background: linear-gradient(135deg, #1D9E75, #0F6E56); padding: 20px; border-radius: 12px 12px 0 0;">
-        <h1 style="color: white; margin: 0;">🏆 ¡Buena Pro Ganada!</h1>
-    </div>
-    <div style="padding: 20px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 12px 12px;">
-        <table style="width: 100%; border-collapse: collapse;">
-            <tr><td style="padding: 8px; color: #666;">Licitación</td>
-                <td style="padding: 8px; font-weight: bold;">{licitacion['nomenclatura'] or licitacion['id']}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Entidad</td>
-                <td style="padding: 8px;">{licitacion['entidad']}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Objeto</td>
-                <td style="padding: 8px;">{licitacion['objeto'][:200]}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Monto Adjudicado</td>
-                <td style="padding: 8px; font-weight: bold; color: #1D9E75;">{monto}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Fecha Adjudicación</td>
-                <td style="padding: 8px;">{format_fecha(contrato['fecha_adjudicacion'])}</td></tr>
-        </table>
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid #eee;">
-        <h3 style="color: #D85A30;">⏰ Próximos Plazos</h3>
-        <p>• Firma de contrato: dentro de 8 días hábiles</p>
-        <p>• Presentar carta fianza: junto con firma</p>
-        <p style="color: #666; font-size: 12px; margin-top: 20px;">
-            Enviado automáticamente por LicitaPro Perú
-        </p>
-    </div>
-    </body></html>
+    Delega en shared.email_sender. Antes esta funcion tenia su PROPIA copia de
+    la plantilla y su propio codigo SMTP, ya divergidos de los de shared
+    -distinto manejo de TLS, distinto texto-. Dos implementaciones del mismo
+    correo garantizan que una de las dos este mal, y no avisan de cual.
     """
-    msg.attach(MIMEText(html, "html"))
-
-    try:
-        await aiosmtplib.send(
-            msg, hostname=smtp_host, port=smtp_port,
-            username=smtp_user, password=smtp_pass,
-            **({'use_tls': True, 'start_tls': False} if smtp_port == 465 else {'use_tls': False, 'start_tls': True}),
-        )
-        log.info(f"Email enviado a {destinatario}")
-        return True
-    except Exception as e:
-        log.error(f"Error enviando email: {e}")
-        return False
-
+    from shared.email_sender import notificar_buena_pro
+    return await notificar_buena_pro(contrato, licitacion)
 
 # ─── Monitor for wins ────────────────────────────────────
 async def check_adjudicaciones(app):

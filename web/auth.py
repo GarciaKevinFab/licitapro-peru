@@ -218,17 +218,25 @@ async def pedir_recuperar(request: Request, email: str = Form(...)):
 
 async def _enviar_correo_recuperacion(destinatario: str, enlace: str) -> bool:
     from shared.email_sender import enviar_email
-    cuerpo = f"""
-    <p>Pediste restablecer la contraseña de tu cuenta en LicitaPro.</p>
-    <p><a href="{enlace}">Elegir una contraseña nueva</a></p>
-    <p>El enlace vence en una hora y solo se puede usar una vez.</p>
-    <p style="color:#666;font-size:13px">Si no fuiste tú, ignora este correo:
-       tu contraseña actual sigue funcionando.</p>
-    """
+    from shared import plantillas_correo
+    texto, cuerpo = plantillas_correo.componer(
+        titulo="Restablece tu contraseña",
+        preencabezado="Enlace para elegir una contraseña nueva. "
+                      "Vence en una hora.",
+        intro=["Pediste restablecer la contraseña de tu cuenta en LicitaPro."],
+        boton={"texto": "Elegir una contraseña nueva", "url": enlace},
+        cierre=["Si el botón no funciona, copia este enlace en tu navegador:",
+                enlace],
+        aviso="El enlace vence en una hora y solo se puede usar una vez. Si no "
+              "fuiste tú, ignora este correo: tu contraseña actual sigue "
+              "funcionando.",
+    )
     try:
-        return await enviar_email(destinatario, "Restablecer tu contraseña", cuerpo)
+        return await enviar_email(destinatario, "Restablecer tu contraseña",
+                                  cuerpo, texto)
     except Exception as e:
-        log.error("Fallo al enviar el correo de recuperacion: %s", e, exc_info=True)
+        log.error("Fallo al enviar el correo de recuperacion: %s", e,
+                  exc_info=True)
         return False
 
 

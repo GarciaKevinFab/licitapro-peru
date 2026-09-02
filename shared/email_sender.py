@@ -7,6 +7,7 @@ from email.utils import formatdate, make_msgid
 import aiosmtplib
 
 from shared.config import format_monto, format_fecha
+from shared import plantillas_correo
 
 log = logging.getLogger("licitapro.email")
 
@@ -34,7 +35,8 @@ def _modo_tls(puerto: int) -> dict:
     return {"use_tls": True, "start_tls": False} if puerto == 465 else {"use_tls": False, "start_tls": True}
 
 
-async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
+async def enviar_email(destinatario: str, asunto: str, html_body: str,
+                       texto: str = "") -> bool:
     """Envía un email HTML vía SMTP."""
     if not SMTP_USER or not SMTP_PASS:
         log.warning("SMTP no configurado, saltando envío de email")
@@ -59,7 +61,12 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
     #   coincida con el From tambien puntua mal.
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=EMAIL_FROM.split("@")[-1] if "@" in EMAIL_FROM else None)
-    msg.attach(MIMEText(html_body, "html"))
+    # EL TEXTO PLANO VA PRIMERO. En multipart/alternative el cliente
+    # elige la ULTIMA parte que sabe pintar, asi que el HTML tiene que
+    # ir al final o todo el mundo veria la version en texto.
+    if texto:
+        msg.attach(MIMEText(texto, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
         await aiosmtplib.send(
@@ -75,82 +82,86 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str) -> bool:
 
 
 async def notificar_buena_pro(contrato: dict, licitacion: dict) -> bool:
-    """Email cuando se gana la buena pro."""
-    monto = format_monto(contrato["monto_adjudicado"]) if contrato.get("monto_adjudicado") else "—"
-    html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background: linear-gradient(135deg, #1D9E75, #0F6E56); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">&#127942; Buena Pro Ganada</h1>
-    </div>
-    <div style="padding: 24px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 12px 12px;">
-        <table style="width: 100%; border-collapse: collapse;">
-            <tr><td style="padding: 10px; color: #888; width: 140px;">Licitacion</td>
-                <td style="padding: 10px; font-weight: bold;">{licitacion.get('nomenclatura') or licitacion['id']}</td></tr>
-            <tr style="background: #f9f9f9;"><td style="padding: 10px; color: #888;">Entidad</td>
-                <td style="padding: 10px;">{licitacion['entidad']}</td></tr>
-            <tr><td style="padding: 10px; color: #888;">Objeto</td>
-                <td style="padding: 10px;">{licitacion['objeto'][:200]}</td></tr>
-            <tr style="background: #f9f9f9;"><td style="padding: 10px; color: #888;">Monto Adjudicado</td>
-                <td style="padding: 10px; font-weight: bold; color: #1D9E75; font-size: 18px;">{monto}</td></tr>
-            <tr><td style="padding: 10px; color: #888;">Adjudicacion</td>
-                <td style="padding: 10px;">{format_fecha(contrato.get('fecha_adjudicacion'))}</td></tr>
-        </table>
-        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-        <h3 style="color: #D85A30; margin: 0 0 12px;">Proximos Pasos</h3>
-        <ul style="color: #555; line-height: 1.8;">
-            <li>Firma de contrato: dentro de 8 dias habiles</li>
-            <li>Presentar carta fianza (10%): junto con firma</li>
-            <li>Preparar documentos de ejecucion</li>
-        </ul>
-        <p style="color: #999; font-size: 11px; margin-top: 24px; text-align: center;">
-            Enviado automaticamente por LicitaPro Peru
-        </p>
-    </div>
-    </body></html>
-    """
-    return await enviar_email(EMAIL_DEST, f"BUENA PRO GANADA - {licitacion.get('nomenclatura') or licitacion['id']}", html)
+    """Aviso de buena pro ganada."""
+    monto = (format_monto(contrato["monto_adjudicado"])
+             if contrato.get("monto_adjudicado") else "—")
+    nomenclatura = licitacion.get("nomenclatura") or licitacion["id"]
+    texto, html = plantillas_correo.componer(
+        titulo="Ganaste la buena pro",
+        preencabezado="%s · %s" % (nomenclatura, monto),
+        intro=["La entidad adjudicó a tu favor. Desde aquí empiezan a correr "
+               "los plazos, y son cortos."],
+        filas=[
+            ("Licitación", nomenclatura),
+            ("Entidad", licitacion["entidad"]),
+            ("Objeto", licitacion["objeto"][:200]),
+            ("Monto adjudicado", monto, True),
+            ("Fecha de adjudicación",
+             format_fecha(contrato.get("fecha_adjudicacion"))),
+        ],
+        pasos=["Firma del contrato: dentro de 8 días hábiles",
+               "Carta fianza del 10%: se presenta junto con la firma",
+               "Preparar los documentos de ejecución"],
+    )
+    return await enviar_email(EMAIL_DEST,
+                              "Buena pro ganada — %s" % nomenclatura,
+                              html, texto)
 
 
 async def notificar_plazo_proximo(plazo: dict, contrato: dict) -> bool:
-    """Email de alerta de plazo próximo a vencer."""
+    """Alerta de plazo por vencer.
+
+    El color acompana al numero, nunca lo sustituye: el titulo dice cuantos
+    dias quedan. Quien no distingue esos tonos lee exactamente lo mismo.
+    """
     from datetime import date
     dias = (plazo["fecha_limite"] - date.today()).days
-    urgencia_color = "#D85A30" if dias <= 1 else "#E6A817" if dias <= 3 else "#1D9E75"
+    if dias <= 1:
+        acento = plantillas_correo.ROJO
+    elif dias <= 3:
+        acento = plantillas_correo.AMBAR
+    else:
+        acento = plantillas_correo.MENTA
 
-    html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background: {urgencia_color}; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
-        <h2 style="color: white; margin: 0;">Plazo en {dias} dia(s)</h2>
-    </div>
-    <div style="padding: 20px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 12px 12px;">
-        <p><strong>{plazo['descripcion']}</strong></p>
-        <p>Fecha limite: {format_fecha(plazo['fecha_limite'])}</p>
-        <p>Contrato: {contrato.get('numero_contrato', '—')}</p>
-        <p style="color: #999; font-size: 11px; margin-top: 20px; text-align: center;">
-            LicitaPro Peru — Alerta automatica
-        </p>
-    </div>
-    </body></html>
-    """
-    return await enviar_email(EMAIL_DEST, f"PLAZO PROXIMO ({dias}d) - {plazo['descripcion']}", html)
+    if dias < 0:
+        cuando = "Plazo vencido hace %d día(s)" % abs(dias)
+    elif dias == 0:
+        cuando = "El plazo vence hoy"
+    elif dias == 1:
+        cuando = "El plazo vence mañana"
+    else:
+        cuando = "El plazo vence en %d días" % dias
+
+    texto, html = plantillas_correo.componer(
+        titulo=cuando,
+        acento=acento,
+        preencabezado="%s · %s" % (plazo["descripcion"],
+                                   format_fecha(plazo["fecha_limite"])),
+        intro=[plazo["descripcion"]],
+        filas=[
+            ("Fecha límite", format_fecha(plazo["fecha_limite"]), True),
+            ("Contrato", contrato.get("numero_contrato") or "—"),
+        ],
+    )
+    return await enviar_email(EMAIL_DEST,
+                              "%s — %s" % (cuando, plazo["descripcion"]),
+                              html, texto)
 
 
 async def notificar_pago_recibido(pago: dict, contrato: dict) -> bool:
-    """Email cuando se registra un pago."""
-    html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background: #1D9E75; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
-        <h2 style="color: white; margin: 0;">Pago Recibido</h2>
-    </div>
-    <div style="padding: 20px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 12px 12px;">
-        <p><strong>Monto:</strong> {format_monto(pago['monto'])}</p>
-        <p><strong>Concepto:</strong> {pago.get('concepto', '—')}</p>
-        <p><strong>Contrato:</strong> {contrato.get('numero_contrato', '—')}</p>
-        <p><strong>Factura:</strong> {pago.get('factura_numero', '—')}</p>
-        <p style="color: #999; font-size: 11px; margin-top: 20px; text-align: center;">
-            LicitaPro Peru
-        </p>
-    </div>
-    </body></html>
-    """
-    return await enviar_email(EMAIL_DEST, f"PAGO RECIBIDO - {format_monto(pago['monto'])}", html)
+    """Aviso de pago registrado."""
+    monto = format_monto(pago["monto"])
+    texto, html = plantillas_correo.componer(
+        titulo="Pago recibido",
+        preencabezado="%s · %s" % (monto,
+                                   contrato.get("numero_contrato") or "—"),
+        intro=["La entidad registró un pago a tu favor."],
+        filas=[
+            ("Monto", monto, True),
+            ("Concepto", pago.get("concepto") or "—"),
+            ("Contrato", contrato.get("numero_contrato") or "—"),
+            ("Factura", pago.get("factura_numero") or "—"),
+        ],
+    )
+    return await enviar_email(EMAIL_DEST, "Pago recibido — %s" % monto,
+                              html, texto)
