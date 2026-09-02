@@ -123,6 +123,36 @@ nav.menu a.activo::after{
 }
 .sesion .quien{max-width:17ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:900px){ .sesion .quien{display:none} }
+
+/* La cabecera en movil.
+   Con `flex-wrap` y sin mas, los tres bloques -marca, menu y sesion- caian
+   donde podian: la marca a la izquierda, "Licitaciones" arriba a la derecha,
+   "Configuracion" debajo y el usuario en una cuarta linea. Se leia como cuatro
+   trozos sueltos, no como una barra.
+
+   En movil se ordena: marca y sesion en la primera fila, el menu debajo
+   ocupando todo el ancho y con scroll horizontal propio si hiciera falta. */
+@media (max-width:640px){
+  header{padding:0 14px;row-gap:0}
+  /* Los avisos de la barra ("prueba: 14 dias", "conecta Telegram") se van en
+     movil. Con ellos, la fila de sesion no cabia y el boton Salir quedaba
+     cortado por el borde. No se pierde nada: el de Telegram lleva a
+     Configuracion, que esta en el menu de al lado, y el de la prueba a
+     Suscripcion, tambien en el menu. En una pantalla de 375 px, un aviso que
+     empuja al boton de salir fuera de la vista cuesta mas de lo que avisa. */
+  header .sesion .aviso{display:none}
+  header .sesion{margin-left:auto;gap:8px}
+  header .brand{order:1;margin-right:auto}
+  header .sesion{order:2}
+  header nav.menu{
+    order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;
+    gap:4px;padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  header nav.menu::-webkit-scrollbar{display:none}
+  header nav.menu a{white-space:nowrap;min-height:44px;display:inline-flex;align-items:center}
+}
 .sesion button.sec{padding:6px 12px;font-size:12.5px}
 
 main{max-width:1400px;margin:0 auto;padding:26px 22px 72px}
