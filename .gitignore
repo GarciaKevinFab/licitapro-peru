@@ -2,6 +2,16 @@
 .env
 *.env
 
+# Los respaldos con marca de tiempo NO los cubre ninguno de los dos patrones de
+# arriba: `.env.respaldo-20260901-053747` ni es exactamente `.env` ni termina en
+# `.env`. Y llevan dentro, en claro, la clave del buzon de correo.
+#
+# Ahora mismo hay cinco de esos archivos en el servidor de produccion. Estan sin
+# trackear, asi que no han llegado al repositorio, pero bastaba un `git add -A`
+# distraido para publicarlos.
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
