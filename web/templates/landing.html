@@ -313,7 +313,21 @@ body::after{
 .alerta .meta b{color:var(--txt-2);font-weight:500}
 
 /* ---------- PLANES ---------- */
-.plans{display:grid;gap:calc(var(--paso) * .9);align-items:stretch}
+/* Los planes van mas anchos que el resto de la pagina.
+   Medido antes: contenedor de 1140 px, cuatro tarjetas de 233 y 54 px de
+   padding cada una -el relleno se comia el 46% y dejaba 125 px utiles para el
+   texto-. Resultado: 17 de los 21 puntos partian en dos o tres lineas, y
+   "1 departamento" ocupaba dos. Con menos padding y mas ancho, el texto cabe. */
+.plans{display:grid;gap:calc(var(--paso) * .9);align-items:stretch;width:100%}
+/* Los planes se salen del ancho del texto, hacia los dos lados.
+   El contenedor general mide 1140 px y ahi cuatro tarjetas quedan a 233, de
+   los que el padding se llevaba casi la mitad. Con 160 px mas, cada tarjeta
+   pasa de 233 a ~273 y el texto deja de partirse en cada linea.
+   Solo cuando hay sitio: por debajo de 1460 px de ventana vuelve al ancho
+   normal, para no sacar las tarjetas de la pantalla. */
+@media (min-width:1460px){
+  .plans{width:calc(100% + 160px);margin-inline:-80px}
+}
 /* TRES COLUMNAS FIJAS CON CUATRO PLANES DEJAN UNO HUERFANO
 
    Estaba escrito `repeat(3,1fr)` cuando los planes eran tres. Al anadir el
@@ -324,7 +338,7 @@ body::after{
 @media (min-width:820px){
   .plans{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
 }
-.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:26px;padding:calc(var(--paso) * 1.5);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
+.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:26px;padding:calc(var(--paso) * .95) calc(var(--paso) * .85);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
 .plan:hover{transform:translateY(-4px);border-color:var(--line)}
 /* El destacado no grita con otro color: se separa con borde de acento y halo.
    Cambiarle el fondo lo sacaria del conjunto. */
@@ -334,7 +348,7 @@ body::after{
 .plan .pr{font-family:"Barlow Condensed",sans-serif;font-weight:900;letter-spacing:-.01em;font-size:clamp(2.5rem,3.8vw,3.2rem);line-height:1;margin:calc(var(--paso) * .8) 0 calc(var(--paso) * 1.2)}
 .plan .pr small{font-family:"DM Sans",sans-serif;font-size:.95rem;font-weight:300;color:var(--txt-3);letter-spacing:normal}
 .plan ul{list-style:none;margin:0 0 calc(var(--paso) * 1.4);padding:0;display:flex;flex-direction:column;gap:11px;flex:1}
-.plan li{position:relative;padding-left:25px;font-size:.96rem;color:var(--txt-2)}
+.plan li{position:relative;padding-left:23px;font-size:.94rem;line-height:1.45;color:var(--txt-2);text-wrap:pretty}
 .plan li::before{content:"";position:absolute;left:0;top:.55em;width:11px;height:6px;border-left:1.5px solid var(--mint);border-bottom:1.5px solid var(--mint);transform:rotate(-45deg)}
 .plan li.sin{color:var(--txt-3)}
 .plan li.sin::before{border:none;left:2px;top:.62em;width:9px;height:1.5px;background:var(--txt-3);transform:none}
