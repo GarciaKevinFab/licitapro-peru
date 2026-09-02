@@ -18,7 +18,8 @@ main{max-width:860px}
 .acciones{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
 .pasos{margin:14px 0 18px;padding-left:20px;color:var(--ink-2);font-size:13px}
 .pasos li{margin-bottom:5px}
-table.cred{width:100%;border-collapse:collapse;font-size:13.5px}
+.tabla-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-inline:-2px}
+table.cred{width:100%;min-width:420px;border-collapse:collapse;font-size:13.5px}
 table.cred th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
 table.cred td{padding:11px 10px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:middle}
@@ -40,19 +41,17 @@ table.cred tr:last-child td{border-bottom:none}
 {% endblock %}
 
 {% block cuerpo %}
-<header>
-  <a class="brand" href="/panel"><span class="pip"></span> LicitaPro · Panel</a>
-  <nav class="menu">
-    <a href="/panel">Licitaciones</a>
-    <a href="/configuracion" class="activo">Configuración</a>
-  </nav>
-  <span class="sesion">
-    {{ usuario.nombre or usuario.email }}
-    <form class="en-linea" method="post" action="/salir">
-      <button type="submit" class="sec">Salir</button>
-    </form>
-  </span>
-</header>
+{# La cabecera COMPARTIDA, como el resto de las pantallas del panel.
+   Esta plantilla llevaba una copia propia, y la copia se habia quedado atras:
+   no tenia la inicial del usuario ni el <span class="quien">, asi que la regla
+   que oculta el nombre en pantallas estrechas no lo alcanzaba y el nombre
+   entero empujaba la barra a tres filas -155 px de alto en un movil, sobre una
+   cabecera que ademas es fija-.
+
+   Tampoco mostraba los avisos de suscripcion ni el de "conecta Telegram", que
+   si aparecen en las demas. Duplicar la barra costaba eso: dos productos
+   distintos segun la pantalla en la que estuvieras. #}
+{% with activo='config' %}{% include "_nav.html" %}{% endwith %}
 
 <main>
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
@@ -161,6 +160,10 @@ table.cred tr:last-child td{border-bottom:none}
        desde aquí: solo puedes reemplazarlas. Es a propósito — si esta pantalla pudiera
        mostrarlas, cualquiera con acceso a tu sesión también podría.</p>
 
+    {# La tabla va dentro de un contenedor con scroll propio: mide 489 px y
+       sobre 375 desbordaba la PAGINA entera, no solo la tabla. Es el patron
+       que la guia recomienda para tablas densas, y el que ya usa el panel. #}
+    <div class="tabla-scroll">
     <table class="cred">
       <thead>
         <tr><th>Credencial</th><th>Estado</th><th>Reemplazar</th><th></th></tr>
@@ -180,7 +183,8 @@ table.cred tr:last-child td{border-bottom:none}
           <td>
             <form method="post" action="/configuracion/credencial" class="fila-cred">
               <input type="hidden" name="tipo" value="{{ tipo }}">
-              <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required>
+              <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required
+                     aria-label="Nuevo valor de {{ etiqueta }}">
               <button type="submit">Guardar</button>
             </form>
           </td>
@@ -196,6 +200,7 @@ table.cred tr:last-child td{border-bottom:none}
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </section>
 
   <section class="tarjeta">
