@@ -409,8 +409,23 @@ body::after{
 .pie a:hover{color:var(--mint)}
 .pie .abajo{margin-top:calc(var(--paso) * 2.3);padding-top:calc(var(--paso) * 1.15);
   border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;
-  justify-content:space-between;gap:12px}
+  justify-content:space-between;align-items:center;gap:16px}
 .pie .abajo span{font-size:13px;color:var(--txt-3)}
+
+/* El distintivo del Libro. Es un boton y no un enlace de texto porque en Peru
+   el consumidor lo busca CON LA VISTA: es el sello que dice que el comercio
+   cumple la Ley 29571, y una linea mas en una columna no lo sustituye. */
+.pie .pie-libro{display:inline-flex;align-items:center;gap:12px;
+  border:1px solid var(--hair);border-radius:14px;background:var(--bg-2);
+  padding:9px 15px;transition:border-color .25s var(--suave),background .25s var(--suave)}
+.pie .pie-libro:hover{border-color:var(--mint);background:var(--panel)}
+.pie .pie-libro .icono{width:30px;height:30px;border-radius:9px;flex:none;
+  display:grid;place-items:center;font-size:15px;
+  background:rgba(52,224,180,.14);color:var(--mint)}
+.pie .pie-libro .arriba{display:block;font-family:"JetBrains Mono",monospace;
+  font-size:9.5px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--txt-3)}
+.pie .pie-libro .abajo-txt{display:block;font-size:13.5px;font-weight:600;color:var(--txt-2)}
 .pie .titularidad{margin:calc(var(--paso) * 2.1) 0 0;font-size:12.5px;
   line-height:1.65;color:var(--txt-3);max-width:82ch}
 .pie .titularidad b{color:var(--txt-2);font-weight:500}
@@ -825,18 +840,25 @@ body::after{
         </ul>
       </div>
       <div>
-        <h4>Legal</h4>
+        <h4>Legal y contacto</h4>
         <ul>
           <li><a href="/privacidad">Privacidad</a></li>
           <li><a href="/terminos">Términos del servicio</a></li>
           <li><a href="/reclamaciones">Libro de Reclamaciones</a></li>
+          <li><a href="mailto:soporte@sisac.pe">soporte@sisac.pe</a></li>
         </ul>
       </div>
     </div>
     {% include "_titularidad.html" %}
     <div class="abajo">
-      <span>© 2026 LicitaPro Perú</span>
-      <span>Hecho en Perú</span>
+      <span>© 2026 LicitaPro Perú &middot; Hecho en Perú</span>
+      <a class="pie-libro" href="/reclamaciones">
+        <span class="icono" aria-hidden="true">&#9998;</span>
+        <span>
+          <span class="arriba">Libro de</span>
+          <span class="abajo-txt">Reclamaciones</span>
+        </span>
+      </a>
     </div>
   </div>
 </footer>
