@@ -55,7 +55,7 @@
 :root{
   --bg:#06080B; --bg-2:#0B0F14; --panel:#0E141A;
   --line:#1A242C; --hair:#141C23;
-  --txt:#F2F6F8; --txt-2:#9FB0BA; --txt-3:#67777F;
+  --txt:#F2F6F8; --txt-2:#9FB0BA; --txt-3:#7B8C95;
   --mint:#34E0B4; --mint-2:#1D9B7C; --mint-glow:rgba(52,224,180,.14);
   --amber:#FFB259; --red:#FF6B60;
 
@@ -419,7 +419,12 @@ body::after{
 .pie h4{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;
   letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);margin:0 0 15px}
 .pie ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
-.pie a{font-size:14px;color:var(--txt-2);transition:color .25s var(--suave)}
+/* 44 px de alto: los enlaces del pie median 18, menos de la mitad del
+   objetivo tactil. */
+.pie a{font-size:14px;color:var(--txt-2);transition:color .25s var(--suave);
+  display:inline-flex;align-items:center;min-height:44px}
+.pie ul{gap:0}
+.nav a,.nav-links a{display:inline-flex;align-items:center;min-height:44px}
 .pie a:hover{color:var(--mint)}
 .pie .abajo{margin-top:calc(var(--paso) * 2.3);padding-top:calc(var(--paso) * 1.15);
   border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;
