@@ -46,6 +46,12 @@
   --warn:#8A5A00; --warn-soft:#F7EEDC;
   --ok:#2F6B3F; --ok-soft:#E1EDE4;
   --btn-txt:#FFFFFF;
+  /* Movimiento y forma, una sola vez. Una curva para todo lo que responde a la
+     mano y un radio por tipo de pieza: 5 px en botones y controles, 6 en
+     tarjetas, 3 en chips. Cuando cada plantilla elegia el suyo, habia siete. */
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --dur:150ms;
+  --r:5px; --r-card:6px; --r-chip:3px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -70,10 +76,15 @@
   --btn-txt:#06211B;
 }
 *{box-sizing:border-box}
+html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ac) 30%,var(--line)) transparent}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5}
+  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
 .mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 a{color:var(--ac)}
+::selection{background:var(--ac-soft);color:var(--ink)}
+h1,h2,h3{text-wrap:balance}
+p,li,dd{text-wrap:pretty}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
 
 /* ---------- CABECERA DE LA APLICACION ----------
@@ -105,15 +116,20 @@ header{
 nav.menu{display:flex;align-items:center;gap:2px;font-size:13.5px;flex:1;flex-wrap:wrap}
 nav.menu a{
   color:var(--ink-2);text-decoration:none;position:relative;
-  padding:15px 11px;transition:color .2s ease;
+  padding:15px 11px;transition:color var(--dur) ease;
 }
 nav.menu a:hover{color:var(--ink)}
 nav.menu a.activo{color:var(--ac);font-weight:500}
-/* La barra inferior es la senal principal; el color, la secundaria. */
-nav.menu a.activo::after{
+/* La barra inferior es la senal principal; el color, la secundaria. Al pasar
+   por encima crece desde el centro en 150 ms; en la activa esta siempre. */
+nav.menu a::after{
   content:"";position:absolute;left:11px;right:11px;bottom:-1px;height:2px;
-  background:var(--ac);border-radius:2px 2px 0 0;
+  background:var(--ink-3);border-radius:2px 2px 0 0;
+  transform:scaleX(0);transform-origin:center;
+  transition:transform var(--dur) var(--ease-out),background var(--dur) ease;
 }
+nav.menu a:hover::after{transform:scaleX(1)}
+nav.menu a.activo::after{transform:scaleX(1);background:var(--ac)}
 
 .sesion{display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--ink-3);
   padding-block:10px;padding-left:20px;border-left:1px solid var(--line)}
@@ -201,26 +217,64 @@ nav.menu a.activo::after{
   summary{min-height:44px}
   .sb-credito,.sb-credito *{min-height:0}
 }
-.sesion button.sec{padding:6px 12px;font-size:12.5px}
+.sesion button.sec{min-height:32px;padding:4px 12px;font-size:12.5px}
 
 main{max-width:1400px;margin:0 auto;padding:26px 22px 72px}
 
-button,.btn{background:var(--ac);color:var(--btn-txt);border:none;border-radius:4px;
-  padding:8px 16px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;
-  text-decoration:none;display:inline-block}
-button.sec,.btn.sec{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
-button.peligro{background:transparent;color:var(--urg);border:1px solid var(--line)}
+/* ---------- BOTONES ----------
+   Tres variantes y una sola forma: 36 px de alto (44 en movil), radio --r y
+   la misma transicion de 150 ms. Primario relleno, secundario con borde,
+   peligro con borde del color de urgencia. Al pulsar encogen un 3%: es la
+   respuesta que dice "te oi" antes de que llegue la del servidor. */
+button,.btn{background:var(--ac);color:var(--btn-txt);border:1px solid var(--ac);border-radius:var(--r);
+  min-height:36px;padding:6px 16px;font:inherit;font-size:13.5px;font-weight:500;line-height:1.25;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  transition:background var(--dur) ease,color var(--dur) ease,border-color var(--dur) ease,
+    transform var(--dur) var(--ease-out),box-shadow var(--dur) ease}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--ac) 86%,var(--ink));border-color:color-mix(in srgb,var(--ac) 86%,var(--ink))}
+button:active,.btn:active{transform:scale(.97)}
+button.sec,.btn.sec{background:transparent;color:var(--ink-2);border-color:var(--line)}
+button.sec:hover,.btn.sec:hover{background:var(--panel-2);color:var(--ink);border-color:var(--ink-3)}
+button.peligro,.btn.peligro{background:transparent;color:var(--urg);border-color:var(--urg)}
+button.peligro:hover,.btn.peligro:hover{background:var(--urg-soft);border-color:var(--urg)}
+button:disabled,button[aria-busy="true"]{opacity:.6;cursor:progress;transform:none}
 input[type=text],input[type=email],input[type=password],input[type=search],
-input[type=number],select,textarea{
-  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;
-  padding:8px 10px;font:inherit;font-size:13.5px;width:100%}
+input[type=number],input[type=date],input[type=tel],select,textarea{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:var(--r);
+  padding:8px 10px;font:inherit;font-size:13.5px;width:100%;min-height:36px;
+  transition:border-color var(--dur) ease,background var(--dur) ease}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac)}
+input[type=checkbox],input[type=radio]{accent-color:var(--ac);width:16px;height:16px;margin:0}
 textarea{min-height:74px;resize:vertical;line-height:1.45}
 label.campo{display:flex;flex-direction:column;gap:5px}
 label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--ink-3);font-weight:500}
 .ayuda{font-size:12px;color:var(--ink-3);margin:4px 0 0}
+/* Error de un campo: debajo del control, en el color de urgencia, y el borde
+   del control lo acompana. Lo pone el servidor (`class="campo mal"`) o el
+   script al validar antes de enviar. */
+.campo .error{font-size:12px;color:var(--urg);margin:4px 0 0}
+.campo.mal input,.campo.mal select,.campo.mal textarea{border-color:var(--urg)}
 
-.mensaje{border-radius:5px;padding:11px 15px;margin-bottom:16px;font-size:13.5px}
+/* ---------- CABECERA DE PAGINA ----------
+   Cada pantalla del panel arrancaba con una tarjeta sin titulo: se sabia donde
+   estabas por el menu y nada mas. Ahora un h1, una linea que dice para que
+   sirve la pantalla y, a la derecha, la accion principal. */
+.cab-pag{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 24px;
+  flex-wrap:wrap;margin:0 0 20px}
+.cab-pag h1{font-family:Sora,sans-serif;font-size:23px;font-weight:600;letter-spacing:-.02em;
+  line-height:1.15;margin:0}
+.cab-pag .cab-sub{margin:5px 0 0;font-size:13.5px;color:var(--ink-3);max-width:64ch}
+.cab-pag .cab-acc{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-left:auto}
+@media (max-width:640px){
+  .cab-pag{margin-bottom:16px}
+  .cab-pag h1{font-size:21px}
+  .cab-pag .cab-acc{width:100%;margin-left:0}
+  .cab-pag .cab-acc .btn,.cab-pag .cab-acc button,.cab-pag .cab-acc form{flex:1 1 auto}
+  .cab-pag .cab-acc form .btn,.cab-pag .cab-acc form button{width:100%}
+}
+
+.mensaje{border-radius:var(--r);padding:11px 15px;margin-bottom:16px;font-size:13.5px}
 .mensaje.ok{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
 .mensaje.mal{background:var(--urg-soft);color:var(--urg);border:1px solid var(--urg)}
 /* La tipografia se repite aqui porque `.aviso` son DOS cosas con el mismo
@@ -233,14 +287,16 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
    plantillas y usada en dos sitios de _nav.html. */
 .mensaje.aviso{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);
   font-size:13.5px;text-transform:none;letter-spacing:normal;
-  font-family:inherit;padding:11px 15px;border-radius:5px}
+  font-family:inherit;padding:11px 15px;border-radius:var(--r)}
 
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
-  padding:3px 7px;border-radius:3px;white-space:nowrap}
+  padding:3px 7px;border-radius:var(--r-chip);white-space:nowrap}
 .aviso.urg{background:var(--urg-soft);color:var(--urg)}
-.tarjeta{background:var(--panel);border:1px solid var(--line);border-radius:5px;
-  padding:20px 22px;margin-bottom:18px}
+.tarjeta{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);
+  padding:20px 22px;margin-bottom:18px;
+  box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 4%,transparent)}
+@media (max-width:640px){ .tarjeta{padding:16px 16px} }
 .tarjeta h2.portada{font-family:"Barlow Condensed",sans-serif;font-weight:900;
   font-size:clamp(2rem,4.6vw,2.9rem);line-height:.95;letter-spacing:-.012em;margin:0 0 8px}
 .tarjeta h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0 0 4px;
@@ -313,10 +369,18 @@ label.campo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
    cuarenta veces al dia: lo que la primera vez parece elegante, a la cuarenta
    es una espera. */
 .rv-app{opacity:0;transform:translate3d(0,10px,0);
-  transition:opacity .45s cubic-bezier(.22,1,.36,1),transform .45s cubic-bezier(.22,1,.36,1)}
+  transition:opacity .45s var(--ease-out),transform .45s var(--ease-out)}
 .rv-app.in{opacity:1;transform:none}
+/* El escalonado va por clase y no por style= desde el script: asi ni el
+   CSSOM toca el atributo y la CSP puede quedarse sin 'unsafe-inline'. */
+.rv-app.rv-d1{transition-delay:45ms}
+.rv-app.rv-d2{transition-delay:90ms}
+.rv-app.rv-d3{transition-delay:135ms}
+.rv-app.rv-d4{transition-delay:180ms}
 @media (prefers-reduced-motion:reduce){
   .rv-app,.rv-app.in{opacity:1;transform:none;transition:none}
+  button,.btn,button:active,.btn:active{transition:none;transform:none}
+  nav.menu a::after{transition:none}
 }
 
 
@@ -338,7 +402,11 @@ table.datos td{padding:11px 12px 11px 0;border-bottom:1px solid var(--line-soft)
 table.datos tr:last-child td{border-bottom:none}
 table.datos td.num,table.datos th.num{text-align:right;font-family:"JetBrains Mono",monospace;
   font-variant-numeric:tabular-nums}
-.tabla-caja{overflow-x:auto}
+.tabla-caja{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* Las tablas del panel llevan filas de dos lineas (entidad + objeto) y botones
+   por fila: en el telefono, mejor que se deslicen dentro de su caja a que
+   aplasten las columnas. */
+@media (max-width:640px){ .tabla-caja table.datos{min-width:560px} }
 
 /* ---------- MOVIMIENTO EN LAS TABLAS ----------
    Vive AQUI y no en cada plantilla porque diez de ellas dibujan `table.datos`.
@@ -360,7 +428,7 @@ table.datos tbody tr:hover{background:var(--panel-2)}
    posicionan distinto segun el navegador. */
 table.datos tbody tr td:first-child{
   box-shadow:inset 0 0 0 0 var(--ac);
-  transition:box-shadow .22s cubic-bezier(.22,1,.36,1);
+  transition:box-shadow .22s var(--ease-out);
 }
 table.datos tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 0 var(--ac)}
 
@@ -368,7 +436,7 @@ table.datos tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 0 var(--ac)}
    escalonar todas obliga a esperar a la ultima para ver la tabla entera; las
    de abajo entran sin retraso y nadie lo nota, porque estan fuera de pantalla. */
 @keyframes filaEntra{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
-table.datos tbody tr{animation:filaEntra .38s cubic-bezier(.22,1,.36,1) backwards}
+table.datos tbody tr{animation:filaEntra .38s var(--ease-out) backwards}
 table.datos tbody tr:nth-child(1){animation-delay:.02s}
 table.datos tbody tr:nth-child(2){animation-delay:.05s}
 table.datos tbody tr:nth-child(3){animation-delay:.08s}
@@ -400,7 +468,26 @@ table.datos td.cobrar.hay{color:var(--warn)}
 </style>
 </head>
 <body>
-{% block cuerpo %}{% endblock %}
+{# Las plantillas del panel definen `nav`, `titulo_pagina` (con {% set %} al
+   principio del archivo), `acciones_pagina` y `contenido`. Las que aun
+   sobreescriben `cuerpo` entero siguen funcionando igual que antes. #}
+{% block cuerpo %}
+{% block nav %}{% endblock %}
+<main>
+  {% block cabecera_pagina %}
+  {% if titulo_pagina %}
+  <div class="cab-pag">
+    <div>
+      <h1>{{ titulo_pagina }}</h1>
+      {% if sub_pagina %}<p class="cab-sub">{{ sub_pagina }}</p>{% endif %}
+    </div>
+    {% block acciones_pagina %}{% endblock %}
+  </div>
+  {% endif %}
+  {% endblock %}
+  {% block contenido %}{% endblock %}
+</main>
+{% endblock %}
 <footer class="pie-app">
   {# En el pie SOLO si la pagina no la lleva ya en su cuerpo. Sin esta guarda
      salia dos veces en /precios, /comprar, /terminos y /privacidad, que son

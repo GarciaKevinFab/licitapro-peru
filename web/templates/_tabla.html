@@ -1,3 +1,10 @@
+{# La cuenta de arriba (cabecera de pagina) sigue al filtro: cuando este
+   fragmento llega por HTMX, este <p> reemplaza al de la pagina por su id
+   (intercambio fuera de banda). En la carga inicial no se emite, porque ahi
+   lo escribe dashboard.html con la misma variable. #}
+{% if request.headers.get('HX-Request') %}
+  <p class="cab-sub" id="cuenta-lic" hx-swap-oob="true"><b>{{ licitaciones|length }}</b> ordenadas por puntaje</p>
+{% endif %}
 {% if not licitaciones %}
   <div class="vacio">
     <p><strong>Ninguna licitación coincide.</strong></p>
@@ -44,8 +51,8 @@
           {% endif %}
         {% else %}<span class="nd">sin fecha</span>{% endif %}
       </td>
-      <td><span class="tipo">{{ l.tipo or '—' }}</span></td>
-      <td class="reg">{{ l.departamento or '—' }}</td>
+      <td class="tipo-c"><span class="tipo">{{ l.tipo or '—' }}</span></td>
+      <td class="reg{% if not l.departamento %} sin-dato{% endif %}">{{ l.departamento or '—' }}</td>
       <td class="obj">
         <span class="ent">{{ l.entidad }}</span>
         <a class="desc" href="/licitacion/{{ l.id }}">{{ l.objeto }}</a>
@@ -74,7 +81,7 @@
         {% if l.monto_referencial %}S/ {{ '{:,.0f}'.format(l.monto_referencial) }}
         {% else %}<span class="nd">no publicado</span>{% endif %}
       </td>
-      <td>
+      <td class="bases">
         {% if l.bases_urls %}
           <a href="{{ l.bases_urls[0] }}" target="_blank" rel="noopener">PDF</a>
         {% elif l.url %}

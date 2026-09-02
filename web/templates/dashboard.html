@@ -22,10 +22,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style nonce="{{ request.state.csp_nonce }}">
-/* --ink-3 es el gris de los rotulos pequenos: las cabeceras de la tabla
-   del panel, los pies de tarjeta. Daba 3.57:1 sobre el fondo claro y
-   4.24:1 sobre el oscuro, y un texto normal necesita 4.5. Al ser de
-   11 px, era justo donde menos podia permitirselo. Ahora 5.0 y 5.3. */
+/* ====================================================================
+   ESTA PLANTILLA NO HEREDA DE _base.html
+   --------------------------------------------------------------------
+   Lleva su propia copia de los tokens, la cabecera, los botones y las
+   reglas de movil. Mientras siga siendo un documento aparte, los dos
+   archivos hay que tocarlos a la vez: lo que cambie alli en cabecera,
+   botones o controles, cambia aqui.
+   ==================================================================== */
 :root{
   --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
   --ink:#12181C; --ink-2:#46555E; --ink-3:#5F6E76;
@@ -34,6 +38,9 @@
   --urg:#B3261E; --urg-soft:#F9E4E2;
   --warn:#8A5A00; --warn-soft:#F7EEDC;
   --btn-txt:#FFFFFF;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --dur:150ms;
+  --r:5px; --r-card:6px; --r-chip:3px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -56,51 +63,133 @@
   --btn-txt:#06211B;
 }
 *{box-sizing:border-box}
+html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ac) 30%,var(--line)) transparent}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5}
+  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
 .mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 a{color:var(--ac)}
+::selection{background:var(--ac-soft);color:var(--ink)}
+h1,h2,h3{text-wrap:balance}
+p,li,dd{text-wrap:pretty}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
 
-header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;
-  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.02em;
-  display:flex;align-items:center;gap:9px}
-.brand .pip{width:8px;height:8px;border-radius:50%;background:var(--ac)}
-.ult{font-size:12px;color:var(--ink-3)}
-main{max-width:1400px;margin:0 auto;padding:20px 22px 60px}
+/* ---------- CABECERA (copia de _base.html) ---------- */
+header{
+  position:sticky;top:0;z-index:40;
+  background:color-mix(in srgb, var(--panel) 82%, transparent);
+  backdrop-filter:blur(16px) saturate(150%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);
+  border-bottom:1px solid var(--line);
+  padding:0 22px;
+  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+}
+.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.022em;
+  display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;
+  padding-block:13px;margin-right:4px}
+.brand .ico{width:19px;height:19px;color:var(--ac);flex:none}
+.brand .pe{color:var(--ink-3);font-weight:400}
+nav.menu{display:flex;align-items:center;gap:2px;font-size:13.5px;flex:1;flex-wrap:wrap}
+nav.menu a{color:var(--ink-2);text-decoration:none;position:relative;
+  padding:15px 11px;transition:color var(--dur) ease}
+nav.menu a:hover{color:var(--ink)}
+nav.menu a.activo{color:var(--ac);font-weight:500}
+nav.menu a::after{
+  content:"";position:absolute;left:11px;right:11px;bottom:-1px;height:2px;
+  background:var(--ink-3);border-radius:2px 2px 0 0;
+  transform:scaleX(0);transform-origin:center;
+  transition:transform var(--dur) var(--ease-out),background var(--dur) ease;
+}
+nav.menu a:hover::after{transform:scaleX(1)}
+nav.menu a.activo::after{transform:scaleX(1);background:var(--ac)}
+.sesion{display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--ink-3);
+  padding-block:10px;padding-left:20px;border-left:1px solid var(--line)}
+.sesion .yo{width:27px;height:27px;border-radius:50%;flex:none;
+  background:var(--ac-soft);color:var(--ac);
+  display:flex;align-items:center;justify-content:center;
+  font-family:Sora,sans-serif;font-weight:600;font-size:12px;text-transform:uppercase}
+.sesion .quien{max-width:17ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:900px){ .sesion .quien{display:none} }
+.sesion button.sec{min-height:32px;padding:4px 12px;font-size:12.5px}
+.en-linea{display:inline}
+.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
+  padding:3px 7px;border-radius:var(--r-chip);white-space:nowrap}
+.aviso.urg{background:var(--urg-soft);color:var(--urg)}
 
+main{max-width:1400px;margin:0 auto;padding:22px 22px 60px}
+
+/* ---------- BOTONES Y CONTROLES (copia de _base.html) ---------- */
+button,.btn{background:var(--ac);color:var(--btn-txt);border:1px solid var(--ac);border-radius:var(--r);
+  min-height:36px;padding:6px 16px;font:inherit;font-size:13.5px;font-weight:500;line-height:1.25;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  transition:background var(--dur) ease,color var(--dur) ease,border-color var(--dur) ease,
+    transform var(--dur) var(--ease-out),box-shadow var(--dur) ease}
+button:hover,.btn:hover{background:color-mix(in srgb,var(--ac) 86%,var(--ink));border-color:color-mix(in srgb,var(--ac) 86%,var(--ink))}
+button:active,.btn:active{transform:scale(.97)}
+button.sec,.btn.sec{background:transparent;color:var(--ink-2);border-color:var(--line)}
+button.sec:hover,.btn.sec:hover{background:var(--panel-2);color:var(--ink);border-color:var(--ink-3)}
+input[type=search],input[type=number],select{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:var(--r);
+  padding:7px 10px;font:inherit;font-size:13.5px;min-width:130px;min-height:36px;
+  transition:border-color var(--dur) ease}
+input[type=search]{min-width:250px}
+input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac)}
+input[type=checkbox]{accent-color:var(--ac);width:16px;height:16px;margin:0}
+
+/* ---------- CABECERA DE PAGINA ----------
+   El titulo y la cuenta. La cuenta la escribe _tabla.html: al cargar, dentro
+   de esta pagina; al filtrar por HTMX, como intercambio fuera de banda
+   (hx-swap-oob) sobre el mismo id, para que el numero de arriba siga al
+   filtro sin duplicar la fuente del dato. */
+.cab-pag{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 24px;
+  flex-wrap:wrap;margin:0 0 18px}
+.cab-pag h1{font-family:Sora,sans-serif;font-size:23px;font-weight:600;letter-spacing:-.02em;
+  line-height:1.15;margin:0}
+.cab-pag .cab-sub{margin:5px 0 0;font-size:13.5px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.cab-pag .cab-sub b{font-weight:500;color:var(--ink-2)}
+.ult{font-size:12px;color:var(--ink-3)}
+
+/* ---------- CIFRAS ---------- */
 .tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
-  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin-bottom:20px}
-.t{background:var(--panel);padding:13px 16px}
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;margin-bottom:18px;
+  perspective:1100px}
+.t{background:var(--panel);padding:13px 16px;
+  transform-style:preserve-3d;
+  transition:transform .35s var(--ease-out),box-shadow .35s var(--ease-out)}
+/* Un grado de inclinacion y no ocho: esto se abre cuarenta veces al dia. */
+.t:hover{transform:translateY(-3px) rotateX(1.2deg) scale(1.008);
+  box-shadow:0 14px 30px -18px color-mix(in srgb,var(--ink) 45%,transparent)}
 .t .n{font-family:Sora,sans-serif;font-weight:600;font-size:1.7rem;line-height:1.1;
   letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .t .l{font-size:11.5px;color:var(--ink-3);margin-top:3px;letter-spacing:.02em}
 .t.alerta .n{color:var(--urg)}
 .t.dato .n{color:var(--ac)}
+/* La de urgentes lleva un filo de color arriba: es la unica de las cuatro que
+   pide una accion HOY, y merece distinguirse sin gritar. */
+.t.alerta{position:relative;overflow:hidden}
+.t.alerta::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--urg)}
 
+/* ---------- FILTROS ---------- */
 form.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:end;
-  background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:13px 16px;margin-bottom:16px}
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:13px 16px;margin-bottom:16px}
 .campo{display:flex;flex-direction:column;gap:5px}
 .campo label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
-input[type=search],input[type=number],select{
-  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;
-  padding:7px 10px;font:inherit;font-size:13.5px;min-width:130px}
-input[type=search]{min-width:250px}
-.check{display:flex;align-items:center;gap:7px;font-size:13.5px;padding-bottom:7px}
-button{background:var(--ac);color:var(--btn-txt);border:none;border-radius:4px;padding:8px 16px;
-  font:inherit;font-size:13.5px;font-weight:500;cursor:pointer}
-button.sec{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+.check{display:flex;align-items:center;gap:8px;font-size:13.5px;min-height:36px}
 
-.tabla-caja{background:var(--panel);border:1px solid var(--line);border-radius:5px;overflow-x:auto}
+/* ---------- TABLA ---------- */
+.tabla-caja{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);overflow-x:auto;
+  -webkit-overflow-scrolling:touch}
 table{border-collapse:collapse;width:100%;min-width:900px}
-caption{text-align:left;padding:12px 16px;font-size:11.5px;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line-soft);
-  font-family:"JetBrains Mono",monospace}
+/* La caption se queda para los lectores de pantalla; a la vista, la cuenta
+   ya esta en la cabecera de la pagina y repetirla a 60 px es ruido. */
+caption{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
 thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
   font-weight:600;background:var(--panel-2);border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .18s ease}
 tbody tr:hover{background:var(--panel-2)}
 td.num,th.num{text-align:right}
 
@@ -110,8 +199,9 @@ td.num,th.num{text-align:right}
 .sfill{display:block;height:100%;background:var(--ac);border-radius:2px}
 .nd{color:var(--ink-3);font-size:12.5px}
 
-.cierre .fecha{font-family:"JetBrains Mono",monospace;font-size:13px;margin-right:6px}
-.chip{font-family:"JetBrains Mono",monospace;font-size:10.5px;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.cierre .fecha{font-family:"JetBrains Mono",monospace;font-size:13px;margin-right:6px;font-variant-numeric:tabular-nums}
+.chip{font-family:"JetBrains Mono",monospace;font-size:10.5px;padding:2px 6px;border-radius:var(--r-chip);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
 .chip.urg{background:var(--urg-soft);color:var(--urg)}
 .chip.pronto{background:var(--warn-soft);color:var(--warn)}
 .chip.ok{background:var(--ac-soft);color:var(--ac)}
@@ -121,29 +211,40 @@ td.num,th.num{text-align:right}
 
 td.obj{max-width:560px}
 .obj .ent{display:block;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3)}
-.obj .desc{display:block;margin-top:2px;color:var(--ink);text-decoration:none}
+.obj .desc{display:block;margin-top:2px;color:var(--ink);text-decoration:none;
+  transition:color var(--dur) ease}
 .obj .desc:hover{color:var(--ac);text-decoration:underline;text-underline-offset:2px}
 .obj details{margin-top:6px}
 .obj summary{font-size:12px;color:var(--ac);cursor:pointer;width:max-content}
 .desglose{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
-.desglose div{background:var(--panel-2);border-radius:3px;padding:3px 8px;display:flex;gap:6px;align-items:baseline}
+.desglose div{background:var(--panel-2);border-radius:var(--r-chip);padding:3px 8px;display:flex;gap:6px;align-items:baseline}
 .desglose dt{font-size:11px;color:var(--ink-3);margin:0}
-.desglose dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600}
-.monto{white-space:nowrap;font-size:13px}
+.desglose dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.monto{white-space:nowrap;font-size:13px;font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+.marca{display:inline-block;margin-top:4px;font-size:11.5px;padding:1px 7px;border-radius:var(--r-chip);
+  background:var(--panel-2);color:var(--ink-2)}
+.marca.n2{background:var(--warn-soft);color:var(--warn)}
+.marca.n3{background:var(--urg-soft);color:var(--urg)}
 .vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
 .vacio p{margin:0 auto 8px;max-width:56ch}
-nav.menu{display:flex;align-items:center;gap:18px;font-size:13.5px}
-nav.menu a{color:var(--ink-2);text-decoration:none}
-nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
-.sesion{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-3)}
-.sesion button{padding:5px 11px;font-size:12px}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:3px;cursor:help}
 .htmx-request .tabla-caja{opacity:.55;transition:opacity .15s}
 
+/* Entrada escalonada de las diez primeras filas, igual que en _base.html. */
+@keyframes filaEntra{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
+tbody tr{animation:filaEntra .38s var(--ease-out) backwards}
+tbody tr:nth-child(1){animation-delay:.02s}
+tbody tr:nth-child(2){animation-delay:.05s}
+tbody tr:nth-child(3){animation-delay:.08s}
+tbody tr:nth-child(4){animation-delay:.11s}
+tbody tr:nth-child(5){animation-delay:.14s}
+tbody tr:nth-child(6){animation-delay:.17s}
+tbody tr:nth-child(7){animation-delay:.20s}
+tbody tr:nth-child(8){animation-delay:.23s}
+tbody tr:nth-child(9){animation-delay:.26s}
+tbody tr:nth-child(10){animation-delay:.29s}
+
 /* ---------- primeros pasos ---------- */
-.arranque{background:var(--panel);border:1px solid var(--ac);border-radius:6px;
+.arranque{background:var(--panel);border:1px solid var(--ac);border-radius:var(--r-card);
   padding:20px 22px;margin-bottom:22px;display:flex;flex-direction:column;gap:6px}
 .arr-cab{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .arr-cab h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0;
@@ -188,134 +289,100 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 .sfill.p95{width:95%}
 .sfill.p100{width:100%}
 
-/* ---------- PROFUNDIDAD EN LAS CIFRAS ----------
-   Esta es la primera pantalla del dia. Lo que se busca aqui no es sorprender:
-   es que los cuatro numeros se lean antes que nada.
-
-   Por eso el 3D esta en las TARJETAS y no en el fondo. Al pasar el cursor la
-   pieza se acerca un grado y se levanta: dice "esto se puede mirar" sin anadir
-   un pixel de adorno. Y por eso gira un grado y no ocho — esto se abre
-   cuarenta veces al dia, y lo que la primera vez parece elegante, a la
-   cuarenta estorba. */
-.tarjetas{perspective:1100px}
-.t{
-  transform-style:preserve-3d;
-  transition:transform .35s cubic-bezier(.22,1,.36,1),
-             box-shadow .35s cubic-bezier(.22,1,.36,1);
-}
-.t:hover{
-  transform:translateY(-3px) rotateX(1.2deg) scale(1.008);
-  box-shadow:0 14px 30px -18px rgba(0,0,0,.45);
-}
-/* La de urgentes lleva un filo de color arriba: es la unica de las cuatro que
-   pide una accion HOY, y merece distinguirse sin gritar. */
-.t.alerta{position:relative;overflow:hidden}
-.t.alerta::before{
-  content:"";position:absolute;top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,transparent,var(--urg),transparent);
-}
-/* Cifras tabulares para que el numero no empuje el texto mientras cuenta. */
-.t .n{font-variant-numeric:tabular-nums}
-
 @media (prefers-reduced-motion:reduce){
   .t,.t:hover{transform:none;transition:none}
+  tbody tr{animation:none}
+  button,.btn,button:active,.btn:active{transition:none;transform:none}
+  nav.menu a::after{transition:none}
 }
 
 /* ====================================================================
    EL PANEL EN EL TELEFONO
    --------------------------------------------------------------------
-   Esta plantilla no hereda de _base.html: lleva su propia copia de los
-   estilos, y por eso se quedo fuera de todo lo que se corrigio alli. El
-   resultado, medido a 375 px: la pagina entera media 616 px de ancho y se
-   desplazaba de lado, con la marca saliendose de la vista, porque la fila
-   del menu -594 px- empujaba al resto. Y de los 30 controles de la
-   pantalla, ninguno llegaba a los 44 px que pide una zona tactil: los
-   enlaces del menu median 20 px de alto, el "ver" de cada fila 21x18 y la
-   casilla de seleccion 13x13.
+   Medido a 390 px antes de esto: la tabla, con su ancho minimo de 900,
+   obligaba a desplazarse de lado dentro de la caja y cada fila mostraba
+   solo puntaje, fecha, tipo y region. El objeto -lo unico que dice si
+   la licitacion interesa- quedaba fuera de la vista, a 600 px a la
+   derecha. Una tabla de siete columnas no cabe en un telefono, y
+   encogerla no la arregla: la reescribe.
 
-   Lo que sigue es lo mismo que ya tiene _base.html, escrito aqui porque
-   esta plantilla no puede alcanzarlo. Mientras el panel siga siendo un
-   documento aparte, los dos archivos hay que tocarlos a la vez.
+   Por debajo de 640 px cada fila pasa a ser una TARJETA con el mismo
+   marcado: la fila se convierte en un contenedor flexible, las celdas
+   en bloques, y el orden lo pone CSS. Arriba: puntaje con su barra,
+   entidad y objeto, chip de cierre. Abajo, en una linea: tipo, region,
+   monto y el enlace a las bases. Una sola fuente de datos, ningun
+   marcado duplicado.
    ==================================================================== */
 @media (max-width:640px){
   header{padding:0 14px;row-gap:0}
-
-  /* Los dos avisos de la barra ("prueba: 14 dias", "conecta Telegram")
-     ocupaban tanto que dejaban el boton de Salir cortado por el borde. No
-     se pierde nada: los dos llevan a sitios que estan en el menu de al
-     lado. */
   header .sesion .aviso{display:none}
   header .sesion{order:2;margin-left:auto;gap:8px}
-  header .brand{order:1;margin-right:auto}
-
-  /* El menu pasa a una fila propia que se desliza. Antes crecia a lo ancho
-     y arrastraba con el la pagina entera. */
+  header .brand{order:1;margin-right:auto;min-height:44px;display:inline-flex;align-items:center}
   header nav.menu{
     order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;
     overflow-x:auto;-webkit-overflow-scrolling:touch;
     gap:4px;padding-bottom:2px;padding-right:14px;scrollbar-width:none;
   }
   header nav.menu::-webkit-scrollbar{display:none}
-  header nav.menu a{
-    white-space:nowrap;min-height:44px;padding:0 8px;
-    display:inline-flex;align-items:center;
-  }
+  header nav.menu a{white-space:nowrap;min-height:44px;padding:0 8px;
+    display:inline-flex;align-items:center}
+  header nav.menu a::after{left:8px;right:8px}
 
-  /* Todo lo que se pulsa, a 44. Incluidas las acciones de cada fila de la
-     tabla -"ver", "PDF"-, que median 18 px de alto: en una tabla apretada
-     y con el dedo, eso es acertar la fila de al lado. */
-  .tabla-caja td a,
-  .tabla-caja td button,
-  .sesion button,
-  .sesion .btn,
-  main button,
-  main .btn{padding-block:11px}
-  .tabla-caja td a{padding:0 6px}
+  main{padding:16px 14px 56px}
 
-  /* La casilla de seleccion venia con el tamano que le da el navegador,
-     13x13. Se agranda sin deformarla. */
-  input[type=checkbox],input[type=radio]{
-    width:22px;height:22px;margin:11px 6px;
-  }
+  /* Las cuatro cifras, en dos por fila y algo mas pequenas. */
+  .tarjetas{grid-template-columns:1fr 1fr}
+  .t .n{font-size:1.5rem}
 
-  /* La marca de la cabecera media 23 px de alto; es el enlace de vuelta al
-     panel y se pulsa a menudo. */
-  header .brand{min-height:44px;display:inline-flex;align-items:center}
+  /* Filtros en dos columnas: la busqueda ocupa la fila entera, region y
+     puntaje se reparten la siguiente, y los botones la ultima. */
+  form.filtros{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;align-items:end;padding:14px}
+  form.filtros .campo:first-child{grid-column:1 / -1}
+  form.filtros input[type=search],form.filtros input[type=number],form.filtros select{min-width:0;width:100%;min-height:44px}
+  form.filtros .check{min-height:44px}
+  form.filtros button{min-height:44px;width:100%}
+  input[type=checkbox]{width:22px;height:22px}
 
-  /* "ver" y "PDF" ya median 44 de alto pero 33 y 38 de ancho: un objetivo
-     es un rectangulo, no una altura. */
-  .tabla-caja td a{padding:0 10px;min-width:44px}
-
-  /* Los filtros -la region y el monto- se quedaban en 35 y 36 px. */
-  main select,
-  main input[type=number],
-  main input[type=text],
-  main input[type=search]{min-height:44px}
-
-  /* LOS PRIMEROS PASOS, EN VERTICAL
-     La lista se dibuja en tres columnas: marca, texto y boton. A 375 px el
-     boton se lleva la mitad del ancho y deja al texto una columna de 150 px
-     donde "Con su RUC, representante legal y rubros" cae en cinco lineas
-     partidas. En el telefono el boton baja a su propia fila, alineado con
-     el texto, y la descripcion recupera el ancho entero. */
+  /* Los primeros pasos, en vertical: el boton baja a su propia fila. */
   .arr-pasos li{grid-template-columns:auto 1fr;row-gap:9px;align-items:start}
   .arr-pasos li > a{grid-column:2;justify-self:start}
   .arr-marca{margin-top:3px}
-  /* SUELO TACTIL, AL FINAL Y SIN EXCEPCIONES
-     Los ajustes de relleno de arriba dejaban las cosas en 42 o 43.75 px:
-     cerca, pero por debajo. Cerca no cuenta, y perseguir el relleno de cada
-     variante era volver a fallar en la siguiente. Esta regla va la ultima
-     del bloque para que gane por orden y pone el suelo de una vez.
-     La firma del pie y los interruptores quedan fuera: no son objetivos
-     que se busquen con el dedo, y estirarlos los deforma. */
-  button,
-  a.btn,
-  a.desc,
-  [role="button"],
-  .sesion .sec,
-  .tabla-caja td a,
-  summary{min-height:44px}
-  .sb-credito,.sb-credito *{min-height:0}
+
+  /* --- la tabla, en tarjetas --- */
+  table{min-width:0}
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  tbody tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 12px;
+    padding:14px 14px 12px;border-bottom:1px solid var(--line-soft)}
+  tbody tr:last-child{border-bottom:none}
+  tbody tr:hover{background:transparent}
+  td{display:block;padding:0;border:0}
+  /* Arriba: puntaje | entidad + objeto | cierre. */
+  td:first-child{order:1;flex:none;width:52px}
+  .score{align-items:flex-start;min-width:0}
+  td.obj{order:2;flex:1 1 0;min-width:0;max-width:none}
+  .obj .desc{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+    line-height:1.4;padding:0}
+  .obj summary{min-height:40px;display:flex;align-items:center}
+  td.cierre{order:3;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-left:auto}
+  .cierre .fecha{margin-right:0;font-size:12.5px}
+  /* Salto de linea: el pseudo-elemento ocupa el ancho entero y empuja lo que
+     sigue a la fila de abajo. Con `tr` en flex ya no es una fila de tabla,
+     asi que ::after se comporta como en cualquier caja. */
+  tbody tr::after{content:"";order:4;flex-basis:100%;height:0;margin-top:-4px}
+  /* Abajo: tipo · region · monto, y el enlace a las bases pegado a la
+     derecha como boton pequeno, para que no salte de linea. */
+  td.tipo-c,td.reg,td.monto{order:5;flex:none;font-size:12.5px;color:var(--ink-2);
+    display:inline-flex;align-items:center;min-height:28px}
+  td.reg::before,td.monto::before{content:"·";color:var(--ink-3);margin-right:12px}
+  td.monto{text-align:left}
+  /* Una region sin dato no merece un guion en la tarjeta. */
+  td.reg.sin-dato{display:none}
+  td.bases{order:6;margin-left:auto;display:flex;align-items:center;min-height:28px}
+  td.bases a{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;
+    margin:-8px -10px -8px 0;padding:0 10px;font-size:12.5px;font-weight:500;text-decoration:none;
+    border:1px solid var(--line);border-radius:var(--r)}
+  td.bases .nd{display:none}
+  .vacio{padding:26px 16px}
 }
 </style>
 </head>
@@ -324,6 +391,13 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 {% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
 
 <main>
+  <div class="cab-pag">
+    <div>
+      <h1>Licitaciones</h1>
+      <p class="cab-sub" id="cuenta-lic"><b>{{ licitaciones|length }}</b> ordenadas por puntaje</p>
+    </div>
+  </div>
+
   {% if primeros_pasos %}
   <section class="arranque">
     <div class="arr-cab">

@@ -53,9 +53,12 @@
     .filter((el) => el.getBoundingClientRect().top > innerHeight * 0.9);
   if (!tarjetas.length) return;
 
+  // El retardo va por clase (.rv-d1 .. .rv-d4, definidas en _base.html) y no
+  // escribiendo style: asi el script no toca nunca el atributo de estilo.
   tarjetas.forEach((el, i) => {
     el.classList.add("rv-app");
-    el.style.transitionDelay = Math.min(i, 4) * 45 + "ms";
+    const d = Math.min(i, 4);
+    if (d) el.classList.add("rv-d" + d);
   });
 
   const obs = new IntersectionObserver((entradas) => {
@@ -131,5 +134,74 @@
     if (!nodo || nodo.nodeType !== 3) return;
     const falso = { textContent: nodo.nodeValue };
     subirCifra(falso, (v) => { nodo.nodeValue = String(v); });
+  });
+})();
+
+
+/* ------------------------------------------------- formularios de acceso
+   Dos cosas que el navegador no hace solo:
+
+   1. ERROR EN LINEA. Con `data-validar` en el <form>, el globo nativo de
+      "Completa este campo" se sustituye por una linea roja debajo del control
+      y el borde del campo en el mismo color. El texto sale del propio
+      navegador (validationMessage), asi que ya viene en el idioma del usuario.
+
+   2. ESTADO DE ENVIO. Con `data-cargando="Entrando…"` en el <form>, al enviar
+      el boton se deshabilita y cambia de texto. Evita el doble clic que crea
+      dos cuentas o manda dos correos, y le dice a la persona que algo pasa
+      mientras el servidor responde. Se deshabilita en el siguiente tick y no
+      en el propio evento: un boton deshabilitado DURANTE el submit cancela el
+      envio en algunos navegadores. */
+(() => {
+  "use strict";
+
+  const campoDe = (el) => el.closest(".campo");
+
+  const marcar = (el, texto) => {
+    const campo = campoDe(el);
+    if (!campo) return;
+    campo.classList.add("mal");
+    el.setAttribute("aria-invalid", "true");
+    let p = campo.querySelector(".error");
+    if (!p) { p = document.createElement("p"); p.className = "error"; campo.appendChild(p); }
+    p.textContent = texto;
+  };
+
+  const limpiar = (el) => {
+    const campo = campoDe(el);
+    if (!campo) return;
+    campo.classList.remove("mal");
+    el.removeAttribute("aria-invalid");
+    const p = campo.querySelector(".error");
+    if (p) p.remove();
+  };
+
+  document.addEventListener("invalid", (ev) => {
+    const el = ev.target;
+    if (!el.form || !el.form.hasAttribute("data-validar")) return;
+    ev.preventDefault();
+    marcar(el, el.dataset.error || el.validationMessage);
+    if (!el.form.querySelector("[aria-invalid]:focus")) el.focus();
+  }, true);
+
+  document.addEventListener("input", (ev) => {
+    const el = ev.target;
+    if (el.form && el.form.hasAttribute("data-validar") && el.checkValidity()) limpiar(el);
+  });
+
+  document.addEventListener("submit", (ev) => {
+    const form = ev.target;
+    if (!form.hasAttribute("data-cargando")) return;
+    if (ev.defaultPrevented) return;
+    if (form.dataset.enviando) { ev.preventDefault(); return; }
+    form.dataset.enviando = "1";
+    const boton = form.querySelector('button[type="submit"], button:not([type])');
+    if (!boton) return;
+    const texto = form.dataset.cargando;
+    setTimeout(() => {
+      boton.setAttribute("aria-busy", "true");
+      boton.disabled = true;
+      if (texto) boton.textContent = texto;
+    }, 0);
   });
 })();
