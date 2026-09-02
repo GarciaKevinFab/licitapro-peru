@@ -126,7 +126,7 @@ main{max-width:900px}
           {% if p.precio_mensual and p.precio_mensual > 0 %}
             <form method="post" action="/suscripcion/elegir">
               <input type="hidden" name="plan" value="{{ p.codigo }}">
-              <select name="periodo">
+              <select name="periodo" aria-label="Periodo de pago del plan {{ p.nombre }}">
                 <option value="mensual">Mensual</option>
                 {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
               </select>

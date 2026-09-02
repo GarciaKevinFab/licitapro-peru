@@ -33,9 +33,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@800;900&family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style nonce="{{ request.state.csp_nonce }}">
+/* --ink-3 es el gris de los rotulos pequenos: las cabeceras de la tabla
+   del panel, los pies de tarjeta. Daba 3.57:1 sobre el fondo claro y
+   4.24:1 sobre el oscuro, y un texto normal necesita 4.5. Al ser de
+   11 px, era justo donde menos podia permitirselo. Ahora 5.0 y 5.3. */
 :root{
   --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
-  --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
+  --ink:#12181C; --ink-2:#46555E; --ink-3:#5F6E76;
   --line:#DCE3E7; --line-soft:#E8EDF0;
   --ac:#0F7A63; --ac-soft:#E2F1EC;
   --urg:#B3261E; --urg-soft:#F9E4E2;
@@ -46,7 +50,7 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
     --line:#27333A; --line-soft:#1F2A30;
     --ac:#4ECBA8; --ac-soft:#123029;
     --urg:#F08B82; --urg-soft:#3A1F1D;
@@ -57,7 +61,7 @@
 }
 :root[data-theme="dark"]{
   --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
   --line:#27333A; --line-soft:#1F2A30;
   --ac:#4ECBA8; --ac-soft:#123029;
   --urg:#F08B82; --urg-soft:#3A1F1D;
@@ -147,11 +151,55 @@ nav.menu a.activo::after{
   header nav.menu{
     order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;
     overflow-x:auto;-webkit-overflow-scrolling:touch;
-    gap:4px;padding-bottom:2px;
+    gap:4px;padding-bottom:2px;padding-right:14px;
     scrollbar-width:none;
   }
   header nav.menu::-webkit-scrollbar{display:none}
   header nav.menu a{white-space:nowrap;min-height:44px;display:inline-flex;align-items:center}
+
+  /* El boton de Salir median 51x33 y los cuatro enlaces del pie -Inicio,
+     Precios, Terminos, Privacidad- 20 px de alto. Los del pie son los que
+     llevan a los textos legales: si hay un sitio donde no puede costar
+     acertar, es ese. */
+  .sesion button.sec{min-height:44px;display:inline-flex;align-items:center}
+  .pie-app .enlaces{gap:4px 18px}
+  /* Alto y ancho: "Inicio" llegaba a 44 de alto pero medía 31 de ancho. El
+     margen negativo devuelve el texto a su sitio para que la fila no se
+     descoloque. */
+  .pie-app .enlaces a{
+    min-height:44px;min-width:44px;display:inline-flex;align-items:center;
+    justify-content:center;padding-inline:7px;margin-inline:-7px;
+  }
+
+  /* Los botones y los enlaces con forma de boton -"Facturado y cobrado",
+     "Licitaciones que te encajan"- se quedaban en 38 px. Se corrige con el
+     relleno y no con min-height porque muchos son `display:block` y ahi el
+     texto se quedaria pegado arriba en vez de centrarse. */
+  main button,
+  main .btn{padding-block:11px}
+
+  /* Todo control de formulario, a 44. */
+  main select,
+  main textarea,
+  main input[type=text],main input[type=email],main input[type=password],
+  main input[type=search],main input[type=number],main input[type=date]{
+    min-height:44px;
+  }
+  /* SUELO TACTIL, AL FINAL Y SIN EXCEPCIONES
+     Los ajustes de relleno de arriba dejaban las cosas en 42 o 43.75 px:
+     cerca, pero por debajo. Cerca no cuenta, y perseguir el relleno de cada
+     variante era volver a fallar en la siguiente. Esta regla va la ultima
+     del bloque para que gane por orden y pone el suelo de una vez.
+     La firma del pie y los interruptores quedan fuera: no son objetivos
+     que se busquen con el dedo, y estirarlos los deforma. */
+  button,
+  a.btn,
+  a.desc,
+  [role="button"],
+  .sesion .sec,
+  .tabla-caja td a,
+  summary{min-height:44px}
+  .sb-credito,.sb-credito *{min-height:0}
 }
 .sesion button.sec{padding:6px 12px;font-size:12.5px}
 

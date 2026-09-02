@@ -183,7 +183,8 @@ table.cred tr:last-child td{border-bottom:none}
           <td>
             <form method="post" action="/configuracion/credencial" class="fila-cred">
               <input type="hidden" name="tipo" value="{{ tipo }}">
-              <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required>
+              <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required
+                     aria-label="Nuevo valor de {{ etiqueta }}">
               <button type="submit">Guardar</button>
             </form>
           </td>

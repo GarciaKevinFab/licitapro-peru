@@ -22,9 +22,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style nonce="{{ request.state.csp_nonce }}">
+/* --ink-3 es el gris de los rotulos pequenos: las cabeceras de la tabla
+   del panel, los pies de tarjeta. Daba 3.57:1 sobre el fondo claro y
+   4.24:1 sobre el oscuro, y un texto normal necesita 4.5. Al ser de
+   11 px, era justo donde menos podia permitirselo. Ahora 5.0 y 5.3. */
 :root{
   --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
-  --ink:#12181C; --ink-2:#46555E; --ink-3:#7A8A93;
+  --ink:#12181C; --ink-2:#46555E; --ink-3:#5F6E76;
   --line:#DCE3E7; --line-soft:#E8EDF0;
   --ac:#0F7A63; --ac-soft:#E2F1EC;
   --urg:#B3261E; --urg-soft:#F9E4E2;
@@ -34,7 +38,7 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
     --line:#27333A; --line-soft:#1F2A30;
     --ac:#4ECBA8; --ac-soft:#123029;
     --urg:#F08B82; --urg-soft:#3A1F1D;
@@ -44,7 +48,7 @@
 }
 :root[data-theme="dark"]{
   --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#78888F;
+  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
   --line:#27333A; --line-soft:#1F2A30;
   --ac:#4ECBA8; --ac-soft:#123029;
   --urg:#F08B82; --urg-soft:#3A1F1D;
@@ -215,6 +219,103 @@ nav.menu a:hover,nav.menu a.activo{color:var(--ac)}
 
 @media (prefers-reduced-motion:reduce){
   .t,.t:hover{transform:none;transition:none}
+}
+
+/* ====================================================================
+   EL PANEL EN EL TELEFONO
+   --------------------------------------------------------------------
+   Esta plantilla no hereda de _base.html: lleva su propia copia de los
+   estilos, y por eso se quedo fuera de todo lo que se corrigio alli. El
+   resultado, medido a 375 px: la pagina entera media 616 px de ancho y se
+   desplazaba de lado, con la marca saliendose de la vista, porque la fila
+   del menu -594 px- empujaba al resto. Y de los 30 controles de la
+   pantalla, ninguno llegaba a los 44 px que pide una zona tactil: los
+   enlaces del menu median 20 px de alto, el "ver" de cada fila 21x18 y la
+   casilla de seleccion 13x13.
+
+   Lo que sigue es lo mismo que ya tiene _base.html, escrito aqui porque
+   esta plantilla no puede alcanzarlo. Mientras el panel siga siendo un
+   documento aparte, los dos archivos hay que tocarlos a la vez.
+   ==================================================================== */
+@media (max-width:640px){
+  header{padding:0 14px;row-gap:0}
+
+  /* Los dos avisos de la barra ("prueba: 14 dias", "conecta Telegram")
+     ocupaban tanto que dejaban el boton de Salir cortado por el borde. No
+     se pierde nada: los dos llevan a sitios que estan en el menu de al
+     lado. */
+  header .sesion .aviso{display:none}
+  header .sesion{order:2;margin-left:auto;gap:8px}
+  header .brand{order:1;margin-right:auto}
+
+  /* El menu pasa a una fila propia que se desliza. Antes crecia a lo ancho
+     y arrastraba con el la pagina entera. */
+  header nav.menu{
+    order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;
+    gap:4px;padding-bottom:2px;padding-right:14px;scrollbar-width:none;
+  }
+  header nav.menu::-webkit-scrollbar{display:none}
+  header nav.menu a{
+    white-space:nowrap;min-height:44px;padding:0 8px;
+    display:inline-flex;align-items:center;
+  }
+
+  /* Todo lo que se pulsa, a 44. Incluidas las acciones de cada fila de la
+     tabla -"ver", "PDF"-, que median 18 px de alto: en una tabla apretada
+     y con el dedo, eso es acertar la fila de al lado. */
+  .tabla-caja td a,
+  .tabla-caja td button,
+  .sesion button,
+  .sesion .btn,
+  main button,
+  main .btn{padding-block:11px}
+  .tabla-caja td a{padding:0 6px}
+
+  /* La casilla de seleccion venia con el tamano que le da el navegador,
+     13x13. Se agranda sin deformarla. */
+  input[type=checkbox],input[type=radio]{
+    width:22px;height:22px;margin:11px 6px;
+  }
+
+  /* La marca de la cabecera media 23 px de alto; es el enlace de vuelta al
+     panel y se pulsa a menudo. */
+  header .brand{min-height:44px;display:inline-flex;align-items:center}
+
+  /* "ver" y "PDF" ya median 44 de alto pero 33 y 38 de ancho: un objetivo
+     es un rectangulo, no una altura. */
+  .tabla-caja td a{padding:0 10px;min-width:44px}
+
+  /* Los filtros -la region y el monto- se quedaban en 35 y 36 px. */
+  main select,
+  main input[type=number],
+  main input[type=text],
+  main input[type=search]{min-height:44px}
+
+  /* LOS PRIMEROS PASOS, EN VERTICAL
+     La lista se dibuja en tres columnas: marca, texto y boton. A 375 px el
+     boton se lleva la mitad del ancho y deja al texto una columna de 150 px
+     donde "Con su RUC, representante legal y rubros" cae en cinco lineas
+     partidas. En el telefono el boton baja a su propia fila, alineado con
+     el texto, y la descripcion recupera el ancho entero. */
+  .arr-pasos li{grid-template-columns:auto 1fr;row-gap:9px;align-items:start}
+  .arr-pasos li > a{grid-column:2;justify-self:start}
+  .arr-marca{margin-top:3px}
+  /* SUELO TACTIL, AL FINAL Y SIN EXCEPCIONES
+     Los ajustes de relleno de arriba dejaban las cosas en 42 o 43.75 px:
+     cerca, pero por debajo. Cerca no cuenta, y perseguir el relleno de cada
+     variante era volver a fallar en la siguiente. Esta regla va la ultima
+     del bloque para que gane por orden y pone el suelo de una vez.
+     La firma del pie y los interruptores quedan fuera: no son objetivos
+     que se busquen con el dedo, y estirarlos los deforma. */
+  button,
+  a.btn,
+  a.desc,
+  [role="button"],
+  .sesion .sec,
+  .tabla-caja td a,
+  summary{min-height:44px}
+  .sb-credito,.sb-credito *{min-height:0}
 }
 </style>
 </head>
