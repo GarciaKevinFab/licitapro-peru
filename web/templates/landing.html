@@ -180,14 +180,16 @@ body::after{
 #nav{
   position:fixed;top:0;left:0;right:0;z-index:50;
   display:flex;align-items:center;justify-content:space-between;gap:var(--paso);
-  padding:18px var(--gutter);border-bottom:1px solid transparent;
-  transition:background .45s var(--suave),border-color .45s var(--suave),padding .45s var(--suave);
+  padding:15px var(--gutter);border-bottom:1px solid transparent;
+  transition:background .45s var(--suave),border-color .45s var(--suave);
 }
+/* Al pegarse solo cambian fondo y borde: animar el padding relanza el diseno
+   de toda la barra en cada fotograma, y 3 px de diferencia no lo pagan. */
 #nav.stuck{
   background:rgba(6,8,11,.72);
   backdrop-filter:blur(22px) saturate(160%);
   -webkit-backdrop-filter:blur(22px) saturate(160%);
-  border-bottom-color:var(--hair);padding-block:13px;
+  border-bottom-color:var(--hair);
 }
 .brand{display:flex;align-items:center;gap:10px;font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.025em}
 .brand .ico{width:22px;height:22px;color:var(--mint);flex:none}
@@ -206,7 +208,9 @@ body::after{
 }
 /* Sobre fondo oscuro se ACLARA al pasar por encima: oscurecer se lee como
    "desactivado", aclarar se lee como "se enciende". */
-.btn:hover{background:#4FF0C6;transform:translateY(-2px);box-shadow:0 12px 32px -12px rgba(52,224,180,.55)}
+/* La elevacion la dice el desplazamiento y una sombra neutra, no un halo de
+   color: el resplandor menta bajo cada boton era el "efecto" de serie. */
+.btn:hover{background:#4FF0C6;transform:translateY(-2px);box-shadow:0 10px 24px -12px rgba(0,0,0,.65)}
 /* Al pulsar encoge un 3 %: la respuesta que dice "te oi" antes de que
    llegue la del servidor. */
 .btn:active{transform:translateY(0) scale(.97);transition-duration:.15s}
@@ -331,17 +335,20 @@ body::after{
 .bar-row{display:grid;grid-template-columns:minmax(96px,.85fr) 1fr auto;align-items:center;gap:clamp(12px,1.6vw,20px);padding-block:calc(var(--paso) * .55);border-bottom:1px solid var(--hair)}
 .bar-row .k{font-size:.93rem;color:var(--txt-2)}
 .bar-track{height:3px;background:var(--hair);border-radius:99px;overflow:hidden}
-.bar-fill{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--mint-2),var(--mint));transition:width 1.5s var(--ease)}
-/* El ancho de cada barra es una clase (p0..p100, de cinco en cinco) que se
+/* La barra se llena con transform (scaleX desde la izquierda), no animando
+   width: el compositor lo resuelve solo, sin recalcular el diseno. */
+.bar-fill{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,var(--mint-2),var(--mint));
+  transform:scaleX(0);transform-origin:left center;transition:transform 1.5s var(--ease)}
+/* El largo de cada barra es una clase (p5..p100, de cinco en cinco) que se
    activa cuando el bloque recibe .lleno. Antes lo escribia el script en
    style.width; en una barra de 3 px la diferencia entre 53 y 55 no existe. */
-.lleno .bar-fill.p5{width:5%} .lleno .bar-fill.p10{width:10%} .lleno .bar-fill.p15{width:15%}
-.lleno .bar-fill.p20{width:20%} .lleno .bar-fill.p25{width:25%} .lleno .bar-fill.p30{width:30%}
-.lleno .bar-fill.p35{width:35%} .lleno .bar-fill.p40{width:40%} .lleno .bar-fill.p45{width:45%}
-.lleno .bar-fill.p50{width:50%} .lleno .bar-fill.p55{width:55%} .lleno .bar-fill.p60{width:60%}
-.lleno .bar-fill.p65{width:65%} .lleno .bar-fill.p70{width:70%} .lleno .bar-fill.p75{width:75%}
-.lleno .bar-fill.p80{width:80%} .lleno .bar-fill.p85{width:85%} .lleno .bar-fill.p90{width:90%}
-.lleno .bar-fill.p95{width:95%} .lleno .bar-fill.p100{width:100%}
+.lleno .bar-fill.p5{transform:scaleX(.05)} .lleno .bar-fill.p10{transform:scaleX(.1)} .lleno .bar-fill.p15{transform:scaleX(.15)}
+.lleno .bar-fill.p20{transform:scaleX(.2)} .lleno .bar-fill.p25{transform:scaleX(.25)} .lleno .bar-fill.p30{transform:scaleX(.3)}
+.lleno .bar-fill.p35{transform:scaleX(.35)} .lleno .bar-fill.p40{transform:scaleX(.4)} .lleno .bar-fill.p45{transform:scaleX(.45)}
+.lleno .bar-fill.p50{transform:scaleX(.5)} .lleno .bar-fill.p55{transform:scaleX(.55)} .lleno .bar-fill.p60{transform:scaleX(.6)}
+.lleno .bar-fill.p65{transform:scaleX(.65)} .lleno .bar-fill.p70{transform:scaleX(.7)} .lleno .bar-fill.p75{transform:scaleX(.75)}
+.lleno .bar-fill.p80{transform:scaleX(.8)} .lleno .bar-fill.p85{transform:scaleX(.85)} .lleno .bar-fill.p90{transform:scaleX(.9)}
+.lleno .bar-fill.p95{transform:scaleX(.95)} .lleno .bar-fill.p100{transform:scaleX(1)}
 .bar-row .v{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--txt-3);min-width:52px;text-align:right}
 .scorenote{margin:calc(var(--paso) * 1.2) 0 0;color:var(--txt-3);font-size:.93rem;max-width:46ch}
 
