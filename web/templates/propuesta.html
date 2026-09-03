@@ -3,14 +3,14 @@
 {% block estilos %}
 .dos-firmas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));
   gap:16px;margin-top:16px}
-.via{border:1px solid var(--line);border-radius:5px;padding:17px 18px;
+.via{border:1px solid var(--line);border-radius:var(--r);padding:17px 18px;
   display:flex;flex-direction:column;gap:9px}
 .via h3{font-family:Sora,sans-serif;font-size:.95rem;font-weight:600;margin:0}
 .via p{font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
 .via .btn{align-self:flex-start;margin-top:auto}
 
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .pill.urg{background:var(--urg-soft);color:var(--urg)}
 .pill.pend{background:var(--warn-soft);color:var(--warn)}
@@ -21,7 +21,7 @@
 .ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:3px}
+  padding:3px 7px;border-radius:var(--r-chip)}
 .sesion button{padding:5px 11px;font-size:12px}
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
 
@@ -32,7 +32,7 @@ main{max-width:900px}
 .metas div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);margin-bottom:2px}
 .metas div b{font-family:"JetBrains Mono",monospace;font-weight:600}
-.pregunta{border:1px solid var(--line);border-radius:5px;padding:15px 17px;margin-bottom:12px;
+.pregunta{border:1px solid var(--line);border-radius:var(--r);padding:15px 17px;margin-bottom:12px;
   background:var(--bg)}
 .pregunta.lista{opacity:.65}
 .pregunta p.q{margin:0 0 4px;font-weight:500}
@@ -62,7 +62,7 @@ main{max-width:900px}
 }
 .avance .hecho{
   display:block;height:100%;border-radius:99px;background:var(--ac);
-  transition:width .9s cubic-bezier(.22,1,.36,1);
+  transition:width .9s var(--ease-out);
 }
 .avance .txt{
   display:flex;justify-content:space-between;gap:12px;
@@ -183,8 +183,8 @@ main{max-width:900px}
    transicion en vez de aparecer apagadas de golpe. */
 @keyframes preguntaEntra{from{opacity:0;transform:translate3d(0,8px,0)}to{opacity:1;transform:none}}
 .pregunta{
-  animation:preguntaEntra .4s cubic-bezier(.22,1,.36,1) backwards;
-  transition:opacity .3s ease, border-color .3s ease, transform .3s cubic-bezier(.22,1,.36,1);
+  animation:preguntaEntra .4s var(--ease-out) backwards;
+  transition:opacity .3s ease, border-color .3s ease, transform .3s var(--ease-out);
 }
 .pregunta:nth-of-type(1){animation-delay:.04s}
 .pregunta:nth-of-type(2){animation-delay:.08s}

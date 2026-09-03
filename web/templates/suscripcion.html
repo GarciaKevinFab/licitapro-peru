@@ -20,7 +20,7 @@ table.datos td{vertical-align:middle}
 .plan li.sin{color:var(--ink-3)}
 
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .pill.urg{background:var(--urg-soft);color:var(--urg)}
 .pill.pend{background:var(--warn-soft);color:var(--warn)}
@@ -28,13 +28,13 @@ table.datos td{vertical-align:middle}
 .acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:3px}
+  padding:3px 7px;border-radius:var(--r-chip)}
 .sesion button{padding:5px 11px;font-size:12px}
 .ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
 
 main{max-width:900px}
 .planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
-.plan{border:1px solid var(--line);border-radius:6px;padding:20px;background:var(--bg);
+.plan{border:1px solid var(--line);border-radius:var(--r-card);padding:20px;background:var(--bg);
   display:flex;flex-direction:column;gap:6px}
 .plan.actual{border-color:var(--ac);background:var(--ac-soft)}
 .plan h3{font-family:Sora,sans-serif;font-size:1rem;margin:0}
