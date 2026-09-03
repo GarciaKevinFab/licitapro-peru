@@ -1,156 +1,87 @@
 {% extends "_base.html" %}
 {% block titulo %}Restablecer contraseña · LicitaPro
 {% endblock %}
+{% set badge_tema = 'sb-oscuro' %}
 
-{% block estilos %}
-/* La misma pieza que /entrar: mismo titular, misma tarjeta, mismos campos y
-   el mismo boton. Antes esta pantalla tenia su propia version -titulo a
-   1.4rem, tarjeta de 6px y boton de 10px- y al pasar de una a otra cambiaba
-   todo un poco, que es justo lo que hace que un sitio parezca cosido. */
-.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;
-  padding:clamp(28px,6vh,64px) clamp(20px,5vw,40px);position:relative}
-.acceso::before{
-  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:radial-gradient(52% 40% at 24% 8%,
-    color-mix(in srgb, var(--ac) 13%, transparent), transparent 68%);
-}
-.caja{width:100%;max-width:420px}
-.marca{
-  display:flex;align-items:center;justify-content:center;gap:9px;
-  font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.022em;
-  margin-bottom:24px;color:var(--ink);text-decoration:none;
-}
-.marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
-.marca .pe{color:var(--ink-3);font-weight:400}
-.caja h1{
-  font-family:Sora,sans-serif;font-size:clamp(1.75rem,2.6vw,2.1rem);font-weight:600;
-  margin:0 0 7px;letter-spacing:-.03em;text-align:center;line-height:1.05;
-}
-.lead{text-align:center;color:var(--ink-3);font-size:14px;margin:0 0 26px}
-.lead b{color:var(--ink-2);font-weight:500}
-
-form.acc{
-  display:flex;flex-direction:column;gap:16px;
-  background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--r-card);padding:28px;
-  box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 5%,transparent),
-             0 18px 44px -30px color-mix(in srgb,var(--ink) 45%,transparent);
-}
-form.acc .mensaje{margin:0}
-form.acc input[type=email],
-form.acc input[type=password]{
-  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);
-  padding:12px 14px;font-size:15px;min-height:46px;
-  transition:border-color var(--dur) ease, box-shadow var(--dur) ease, background var(--dur) ease;
-}
-form.acc input:focus-visible{
-  outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac);
-  background:var(--panel);box-shadow:0 0 0 5px var(--ac-soft);
-}
-form.acc .campo.mal input{border-color:var(--urg)}
-form.acc .campo.mal input:focus-visible{outline-color:var(--urg);box-shadow:0 0 0 5px var(--urg-soft)}
-form.acc label.campo>span{font-size:10.5px;letter-spacing:.09em}
-form.acc button{width:100%;min-height:48px;padding:12px 16px;font-size:15px;font-weight:600;margin-top:4px}
-
-.alterna{text-align:center;font-size:13.5px;color:var(--ink-3);margin-top:20px;line-height:1.9}
-.alterna a{font-weight:500}
-.centro{text-align:center}
-.centro .btn{min-width:200px;min-height:46px}
-/* Marca de "hecho": un circulo del color de exito con la palomita dibujada en
-   SVG. Antes era un caracter de texto a 2rem, que cada fuente pinta distinto. */
-.icono{width:48px;height:48px;border-radius:50%;background:var(--ok-soft);color:var(--ok);
-  display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
-.icono svg{width:22px;height:22px}
-
-@keyframes entra{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
-.marca,.caja h1,.lead,form.acc,.alterna,.icono,.centro,.caja .mensaje{
-  animation:entra .6s var(--ease-out) backwards;
-}
-.caja h1{animation-delay:.05s}
-.lead{animation-delay:.09s}
-form.acc,.caja .mensaje,.centro{animation-delay:.13s}
-.alterna{animation-delay:.19s}
-
-.volver{
-  position:absolute;top:clamp(18px,3vh,30px);left:clamp(18px,4vw,34px);
-  display:inline-flex;align-items:center;gap:7px;min-height:44px;
-  font-size:13.5px;color:var(--ink-3);text-decoration:none;
-  padding:7px 12px 7px 9px;border-radius:var(--r);
-  transition:color var(--dur) ease,background var(--dur) ease;
-}
-.volver:hover{color:var(--ac);background:var(--ac-soft)}
-.volver .fl{transition:transform .25s var(--ease-out)}
-.volver:hover .fl{transform:translateX(-3px)}
-
-@media (prefers-reduced-motion:reduce){
-  .marca,.caja h1,.lead,form.acc,.alterna,.icono,.centro,.caja .mensaje{animation:none}
-  .volver:hover .fl{transform:none}
-  form.acc input,.volver{transition:none}
-}
-{% endblock %}
+{# La misma concha que /entrar (_acceso_panel.html + _acceso_estilos.html) con
+   los cuatro estados del restablecimiento dentro de la tarjeta. #}
+{% block estilos %}{% include "_acceso_estilos.html" %}{% endblock %}
 
 {% block cuerpo %}
 <div class="acceso">
-  <a class="volver" href="/"><span class="fl">&larr;</span> Volver al inicio</a>
+  {% include "_acceso_panel.html" %}
 
-  <div class="caja">
-    <a class="marca" href="/">
-      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
-        <g fill="currentColor" opacity=".4">
-          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
-        </g>
-        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
-        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
-      </svg>
-      LicitaPro <span class="pe">Perú</span>
-    </a>
+  <div class="lf">
+    <div class="caja">
+      <a class="marca-m" href="/">
+        <span class="logo">
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+            <g fill="currentColor" opacity=".4">
+              <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+            </g>
+            <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+            <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+          </svg>
+          LicitaPro <span class="pe">Perú</span>
+        </span>
+        <span class="linea-m">Licitaciones del Estado peruano</span>
+      </a>
 
-    {% if paso == 'pedir' %}
-      <h1>Restablecer contraseña</h1>
-      <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
+      <div class="tarjeta-acc">
+        {% if paso == 'pedir' %}
+          <h1>Restablecer contraseña</h1>
+          <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
 
-      {% if aviso %}
-        <div class="mensaje ok" role="status">{{ aviso }}</div>
-        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
+          {% if aviso %}
+            <div class="mensaje ok" role="status">{{ aviso }}</div>
+          {% else %}
+            <form class="acc" method="post" action="/recuperar" data-validar data-cargando="Enviando…">
+              <label class="campo"><span>Correo de tu cuenta</span>
+                <input type="email" name="email" required autocomplete="email" autofocus
+                       placeholder="tu@empresa.pe"></label>
+              <button type="submit">Enviarme el enlace</button>
+            </form>
+          {% endif %}
+
+        {% elif paso == 'cambiar' %}
+          <h1>Elige una contraseña nueva</h1>
+          <p class="lead">Para <b>{{ email }}</b></p>
+
+          <form class="acc" method="post" action="/recuperar/{{ token }}" data-validar data-cargando="Guardando…">
+            {% if error %}<div class="mensaje mal" role="alert">{{ error }}</div>{% endif %}
+            <label class="campo{% if error %} mal{% endif %}"><span>Contraseña nueva</span>
+              <input type="password" name="password" required minlength="10"
+                     autocomplete="new-password" autofocus{% if error %} aria-invalid="true"{% endif %}>
+              <p class="ayuda">Mínimo 10 caracteres.</p></label>
+            <button type="submit">Guardar contraseña</button>
+          </form>
+
+        {% elif paso == 'listo' %}
+          <div class="icono-ok" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>
+          </div>
+          <h1>Contraseña actualizada</h1>
+          <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
+          <a class="btn" href="/entrar">Entrar</a>
+
+        {% else %}
+          <h1>Ese enlace ya no sirve</h1>
+          <p class="lead">Los enlaces vencen a la hora y solo se pueden usar una vez.
+             Si ya cambiaste tu contraseña, entra con la nueva.</p>
+          <a class="btn" href="/recuperar">Pedir otro enlace</a>
+        {% endif %}
+      </div>
+
+      {% if paso == 'pedir' and not aviso %}
+        <p class="alterna">¿Te acordaste? <a class="fuerte" href="/entrar">Entrar</a></p>
       {% else %}
-        <form class="acc" method="post" action="/recuperar" data-validar data-cargando="Enviando…">
-          <label class="campo"><span>Correo de tu cuenta</span>
-            <input type="email" name="email" required autocomplete="email" autofocus></label>
-          <button type="submit">Enviarme el enlace</button>
-        </form>
-        <p class="alterna">¿Te acordaste? <a href="/entrar">Entrar</a></p>
+        <p class="alterna"><a class="fuerte" href="/entrar">Volver a entrar</a></p>
       {% endif %}
+      <p class="alterna"><a class="volver" href="/"><span class="fl">&larr;</span>Volver al inicio</a></p>
 
-    {% elif paso == 'cambiar' %}
-      <h1>Elige una contraseña nueva</h1>
-      <p class="lead">Para <b>{{ email }}</b></p>
-
-      <form class="acc" method="post" action="/recuperar/{{ token }}" data-validar data-cargando="Guardando…">
-        {% if error %}<div class="mensaje mal" role="alert">{{ error }}</div>{% endif %}
-        <label class="campo{% if error %} mal{% endif %}"><span>Contraseña nueva</span>
-          <input type="password" name="password" required minlength="10"
-                 autocomplete="new-password" autofocus{% if error %} aria-invalid="true"{% endif %}>
-          <p class="ayuda">Mínimo 10 caracteres.</p></label>
-        <button type="submit">Guardar contraseña</button>
-      </form>
-
-    {% elif paso == 'listo' %}
-      <div class="icono" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>
-      </div>
-      <h1>Contraseña actualizada</h1>
-      <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
-      <div class="centro"><a class="btn" href="/entrar">Entrar</a></div>
-
-    {% else %}
-      <h1>Ese enlace ya no sirve</h1>
-      <p class="lead">Los enlaces vencen a la hora y solo se pueden usar una vez.
-         Si ya cambiaste tu contraseña, entra con la nueva.</p>
-      <div class="centro">
-        <a class="btn" href="/recuperar">Pedir otro enlace</a>
-        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
-      </div>
-    {% endif %}
+      <p class="pie-m">&copy; 2026 LicitaPro Perú &middot;
+        <a href="/privacidad">Privacidad</a> &middot; <a href="/terminos">Términos</a></p>
+    </div>
   </div>
 </div>
 {% endblock %}
