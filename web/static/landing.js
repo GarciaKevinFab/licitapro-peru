@@ -127,23 +127,25 @@
 
   /* ------------------------------------------------------ dial y barras
      El anillo se dibuja moviendo stroke-dashoffset, no redibujando el arco:
-     una sola propiedad animable, sin recalcular la geometria del SVG. */
+     una sola propiedad animable, sin recalcular la geometria del SVG.
+
+     NADA DE style.* DESDE AQUI. El valor final del anillo (.anillo.lleno) y el
+     ancho de cada barra (.bar-fill.pNN, activo bajo #bars.lleno) viven en la
+     hoja de estilos: el script solo anade una clase. Escribir el atributo de
+     estilo desde JS es lo que obligaria a admitir 'unsafe-inline' en la CSP. */
   const PUNTAJE = 71;
-  const CIRCUNFERENCIA = 527.8;   // 2 * PI * r, con r = 84
 
   const dial = document.getElementById("ring");
   const dialval = document.getElementById("dialval");
   const barras = document.getElementById("bars");
 
   const dibujarPuntaje = () => {
-    if (dial) dial.style.strokeDashoffset = String(CIRCUNFERENCIA * (1 - PUNTAJE / 100));
+    if (dial) dial.classList.add("lleno");
     if (dialval) {
       if (menosMovimiento) dialval.textContent = String(PUNTAJE);
       else contar(dialval, PUNTAJE, false, "");
     }
-    document.querySelectorAll(".bar-fill").forEach((b) => {
-      b.style.width = (b.dataset.pct || 0) + "%";
-    });
+    if (barras) barras.classList.add("lleno");
   };
 
   if (menosMovimiento) {
@@ -248,13 +250,24 @@
   // tenga que barrer sesenta veces por segundo.
   const proyectados = [];
 
+  // Opacidad del canvas por clase (op0..op10 en el CSS) y solo cuando cambia
+  // de escalon: sin escribir style.opacity y sin tocar el DOM sesenta veces
+  // por segundo cuando no hace falta.
+  let escalon = -1;
+  const opacar = (op) => {
+    const n = Math.round(op * 10);
+    if (n === escalon) return;
+    escalon = n;
+    cv.className = n > 0 ? "op" + n : "";
+  };
+
   const dibujar = (tiempo) => {
     ctx.clearRect(0, 0, W, H);
     const p = avance();
 
     // Se desvanece antes de los pasos, donde estorbaria a la lectura.
     const op = Math.max(0, 1 - Math.max(0, p - 0.72) / 0.28) * 0.95;
-    cv.style.opacity = String(op);
+    opacar(op);
     if (op <= 0.01) return;
 
     const ang  = -0.55 + p * 2.5;
@@ -333,7 +346,7 @@
 
   if (menosMovimiento) {
     // Sin bucle continuo: se dibuja quieto y se redibuja solo al desplazarse.
-    cv.style.transition = "none";
+    // (La transicion de opacidad ya la anula el CSS bajo prefers-reduced-motion.)
     dibujar(0);
     addEventListener("scroll", () => dibujar(0), { passive: true });
   } else {

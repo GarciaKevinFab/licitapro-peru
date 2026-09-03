@@ -149,6 +149,14 @@ body::after{
   z-index:0;pointer-events:none;opacity:0;
   transition:opacity .8s var(--suave);
 }
+/* La opacidad del canvas va por clase y en diez escalones, no escribiendo
+   style.opacity desde el script: asi el JS no toca nunca el atributo de estilo
+   y la CSP puede quedarse sin 'unsafe-inline'. La transicion de arriba funde
+   un escalon con el siguiente y el desvanecido se ve continuo. */
+#territorio.op1{opacity:.1} #territorio.op2{opacity:.2} #territorio.op3{opacity:.3}
+#territorio.op4{opacity:.4} #territorio.op5{opacity:.5} #territorio.op6{opacity:.6}
+#territorio.op7{opacity:.7} #territorio.op8{opacity:.8} #territorio.op9{opacity:.9}
+#territorio.op10{opacity:.95}
 .shell{position:relative;z-index:1}
 
 /* ---------- PROFUNDIDAD EN LAS TARJETAS ----------
@@ -285,6 +293,8 @@ body::after{
 .gauge{position:relative;width:min(270px,74vw);margin-inline:auto}
 .gauge svg{width:100%;height:auto;overflow:visible}
 .anillo{transition:stroke-dashoffset 1.9s var(--ease);filter:drop-shadow(0 0 14px rgba(52,224,180,.35))}
+/* 71 de 100: 527.8 * (1 - .71). El script solo anade la clase. */
+.anillo.lleno{stroke-dashoffset:153.06}
 .gauge .val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:Sora,sans-serif;font-weight:700;font-size:3.4rem;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
 .gauge .cap{position:absolute;left:0;right:0;bottom:15%;text-align:center;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.19em;text-transform:uppercase;color:var(--txt-3)}
 .obj{margin:calc(var(--paso) * 1.1) 0 0;text-align:center;color:var(--txt-2);font-size:.95rem}
@@ -292,6 +302,16 @@ body::after{
 .bar-row .k{font-size:.93rem;color:var(--txt-2)}
 .bar-track{height:3px;background:var(--hair);border-radius:99px;overflow:hidden}
 .bar-fill{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--mint-2),var(--mint));transition:width 1.5s var(--ease)}
+/* El ancho de cada barra es una clase (p0..p100, de cinco en cinco) que se
+   activa cuando el bloque recibe .lleno. Antes lo escribia el script en
+   style.width; en una barra de 3 px la diferencia entre 53 y 55 no existe. */
+.lleno .bar-fill.p5{width:5%} .lleno .bar-fill.p10{width:10%} .lleno .bar-fill.p15{width:15%}
+.lleno .bar-fill.p20{width:20%} .lleno .bar-fill.p25{width:25%} .lleno .bar-fill.p30{width:30%}
+.lleno .bar-fill.p35{width:35%} .lleno .bar-fill.p40{width:40%} .lleno .bar-fill.p45{width:45%}
+.lleno .bar-fill.p50{width:50%} .lleno .bar-fill.p55{width:55%} .lleno .bar-fill.p60{width:60%}
+.lleno .bar-fill.p65{width:65%} .lleno .bar-fill.p70{width:70%} .lleno .bar-fill.p75{width:75%}
+.lleno .bar-fill.p80{width:80%} .lleno .bar-fill.p85{width:85%} .lleno .bar-fill.p90{width:90%}
+.lleno .bar-fill.p95{width:95%} .lleno .bar-fill.p100{width:100%}
 .bar-row .v{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--txt-3);min-width:52px;text-align:right}
 .scorenote{margin:calc(var(--paso) * 1.2) 0 0;color:var(--txt-3);font-size:.93rem;max-width:46ch}
 
@@ -605,12 +625,12 @@ body::after{
       <p class="obj">Mantenimiento y rehabilitación estructural — Gobierno Regional</p>
     </div>
     <div class="rv d2" id="bars">
-      <div class="bar-row"><span class="k">Palabras clave</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">25/25</span></div>
-      <div class="bar-row"><span class="k">Región</span><span class="bar-track"><span class="bar-fill" data-pct="100"></span></span><span class="v">15/15</span></div>
-      <div class="bar-row"><span class="k">Experiencia</span><span class="bar-track"><span class="bar-fill" data-pct="70"></span></span><span class="v">14/20</span></div>
-      <div class="bar-row"><span class="k">Tiempo restante</span><span class="bar-track"><span class="bar-fill" data-pct="53"></span></span><span class="v">8/15</span></div>
-      <div class="bar-row"><span class="k">Monto</span><span class="bar-track"><span class="bar-fill" data-pct="33"></span></span><span class="v">5/15</span></div>
-      <div class="bar-row"><span class="k">Procedimiento</span><span class="bar-track"><span class="bar-fill" data-pct="40"></span></span><span class="v">4/10</span></div>
+      <div class="bar-row"><span class="k">Palabras clave</span><span class="bar-track"><span class="bar-fill p100"></span></span><span class="v">25/25</span></div>
+      <div class="bar-row"><span class="k">Región</span><span class="bar-track"><span class="bar-fill p100"></span></span><span class="v">15/15</span></div>
+      <div class="bar-row"><span class="k">Experiencia</span><span class="bar-track"><span class="bar-fill p70"></span></span><span class="v">14/20</span></div>
+      <div class="bar-row"><span class="k">Tiempo restante</span><span class="bar-track"><span class="bar-fill p55"></span></span><span class="v">8/15</span></div>
+      <div class="bar-row"><span class="k">Monto</span><span class="bar-track"><span class="bar-fill p35"></span></span><span class="v">5/15</span></div>
+      <div class="bar-row"><span class="k">Procedimiento</span><span class="bar-track"><span class="bar-fill p40"></span></span><span class="v">4/10</span></div>
       <p class="scorenote">Ajustas los pesos desde tu panel. Si te interesan más los contratos chicos y rápidos que los grandes, el puntaje se mueve contigo.</p>
     </div>
   </div>
