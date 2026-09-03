@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Informes · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Informes' %}
+{% set sub_pagina = 'Lo que has presentado, ganado y cobrado.' %}
 {% block estilos %}
 main{max-width:980px}
 .acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
@@ -10,16 +12,28 @@ main{max-width:980px}
 .cifras div b{font-family:"JetBrains Mono",monospace;font-size:24px;font-weight:600;
   letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .pill.urg{background:var(--urg-soft);color:var(--urg)}
 .pill.pend{background:var(--warn-soft);color:var(--warn)}
 .pill.neutro{background:var(--panel-2);color:var(--ink-3)}
 .vacio{padding:30px 20px;text-align:center;color:var(--ink-2)}
+.nota-csv{margin:-8px 0 20px;max-width:70ch}
 {% endblock %}
-{% block cuerpo %}
-{% with activo='informes' %}{% include "_nav.html" %}{% endwith %}
-<main>
+{% block nav %}{% with activo='informes' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  <div class="cab-acc">
+    <a class="btn sec" href="/informes/licitaciones.csv">Licitaciones que te encajan</a>
+    <a class="btn sec" href="/informes/cobros.csv">Facturado y cobrado</a>
+  </div>
+{% endblock %}
+{% block cabecera_pagina %}
+  {{ super() }}
+  <p class="ayuda nota-csv">Los dos botones descargan CSV con punto y coma y codificación
+     UTF-8 con BOM, que es lo que Excel en español abre sin romper las tildes ni meter
+     todo en una columna.</p>
+{% endblock %}
+{% block contenido %}
 
   {% if vencimientos %}
   <div class="tarjeta">
@@ -133,15 +147,4 @@ main{max-width:980px}
   </div>
   {% endif %}
 
-  <div class="tarjeta">
-    <h2>Exportar</h2>
-    <p class="sub">En CSV con punto y coma y codificación UTF-8 con BOM, que es lo
-       que Excel en español abre sin romper las tildes ni meter todo en una columna.</p>
-    <div class="acciones">
-      <a class="btn sec" href="/informes/licitaciones.csv">Licitaciones que te encajan</a>
-      <a class="btn sec" href="/informes/cobros.csv">Facturado y cobrado</a>
-    </div>
-  </div>
-
-</main>
 {% endblock %}

@@ -1,0 +1,214 @@
+/* ============================================================================
+   ACCESO — la concha compartida de /entrar, /registro y /recuperar
+
+   Se incluye dentro del <style nonce> de cada plantilla (block estilos), asi
+   que todo esto viaja con el nonce y la CSP no tiene que admitir nada mas.
+
+   EL PATRON
+     Pantalla partida 50/50 en escritorio, como el acceso de CargoXprez: a la
+     izquierda el panel de marca (fondo oscuro, trama de puntos, resplandor
+     menta, titular en Barlow, tres puntos con palomita, pie legal); a la
+     derecha una tarjeta oscura con el formulario. En el telefono solo queda la
+     tarjeta, con la marca y una linea encima y el pie legal debajo; la
+     decoracion se reduce al fondo.
+
+   LA IDENTIDAD ES LA DE LA PORTADA, NO LA DEL PANEL
+     Fondo #0B1014, menta #34E0B4, Barlow Condensed 900 para el titular, DM
+     Sans para el cuerpo y JetBrains Mono para las etiquetas. Es siempre oscura,
+     haga lo que haga el sistema: por eso los tokens de _base.html se
+     redefinen aqui sobre .acceso y sobre body, y los botones, campos, mensajes
+     y errores de la base salen ya en esta paleta sin reescribirlos.
+   ========================================================================== */
+body,.acceso{
+  --bg:#06080B; --panel:#0E141A; --panel-2:#121A21;
+  --ink:#F2F6F8; --ink-2:#AFBEC6; --ink-3:#8A99A0;
+  --line:#1E2A32; --line-soft:#182229;
+  --ac:#34E0B4; --ac-soft:#123029;
+  --urg:#FF6B60; --urg-soft:#3A1F1D;
+  --ok:#7FC08E; --ok-soft:#1A2E20;
+  --btn-txt:#04140F;
+  --mint-glow:rgba(52,224,180,.16);
+}
+body{background:var(--bg);color:var(--ink)}
+/* El pie comun de la base sobra: el panel de marca lleva el suyo, y en el
+   telefono lo lleva la columna del formulario. */
+.pie-app{display:none}
+
+.acceso{min-height:100svh;display:grid;grid-template-columns:1fr}
+@media (min-width:1024px){ .acceso{grid-template-columns:1fr 1fr} }
+
+/* ---------- PANEL DE MARCA (izquierda) ---------- */
+.pm{
+  display:none;position:relative;overflow:hidden;isolation:isolate;
+  flex-direction:column;justify-content:space-between;gap:40px;
+  padding:clamp(32px,4vw,56px);
+  background:linear-gradient(155deg,#06080B 0%,#0B1014 46%,#0C1A19 100%);
+}
+@media (min-width:1024px){ .pm{display:flex} }
+/* Trama de puntos: un punto de 1 px cada 24. Es lo que hace que el negro no
+   se lea plano, y cuesta cero peticiones. */
+.pm::before{
+  content:"";position:absolute;inset:0;z-index:-2;opacity:.09;pointer-events:none;
+  background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);
+  background-size:24px 24px;
+}
+/* Resplandores menta: dos, en esquinas opuestas, flotando muy despacio. */
+.pm-glow{position:absolute;z-index:-1;border-radius:50%;pointer-events:none;
+  filter:blur(70px);background:var(--ac)}
+.pm-glow.a{width:460px;height:460px;top:-180px;right:-170px;opacity:.14;
+  animation:pmFlota 14s ease-in-out infinite}
+.pm-glow.b{width:400px;height:400px;bottom:-190px;left:-120px;opacity:.09;
+  animation:pmFlota 18s ease-in-out infinite reverse}
+@keyframes pmFlota{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-18px,22px,0)}}
+/* El radar de la marca, enorme y casi invisible, girando: la unica forma
+   que no es un adorno generico, porque es el logotipo. */
+.pm-radar{position:absolute;z-index:-1;right:-6%;top:24%;width:min(46vw,520px);height:auto;
+  color:var(--ac);opacity:.07;pointer-events:none;animation:pmGira 90s linear infinite}
+@keyframes pmGira{to{transform:rotate(360deg)}}
+/* Particulas: cuatro puntos menta que suben y bajan a destiempo. */
+.pm-dot{position:absolute;z-index:-1;border-radius:50%;background:var(--ac);pointer-events:none;
+  animation:pmSube 7s ease-in-out infinite}
+.pm-dot.d1{width:6px;height:6px;left:12%;top:30%;opacity:.55}
+.pm-dot.d2{width:4px;height:4px;left:24%;top:62%;opacity:.4;animation-delay:1.4s}
+.pm-dot.d3{width:8px;height:8px;left:46%;top:78%;opacity:.3;animation-delay:2.8s}
+.pm-dot.d4{width:4px;height:4px;left:60%;top:22%;opacity:.45;animation-delay:.7s}
+@keyframes pmSube{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+
+.pm-marca{display:inline-flex;align-items:center;gap:10px;align-self:flex-start;
+  font-family:Sora,sans-serif;font-weight:600;font-size:16px;letter-spacing:-.022em;
+  color:var(--ink);text-decoration:none;min-height:44px}
+.pm-marca .ico{width:24px;height:24px;color:var(--ac);flex:none}
+.pm-marca .pe{color:var(--ink-3);font-weight:400}
+
+.pm-cuerpo{max-width:34rem}
+.pm-kicker{display:flex;align-items:center;gap:12px;margin:0 0 22px;
+  font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-3)}
+.pm-kicker::before{content:"";width:30px;height:1px;background:var(--ac);opacity:.6}
+.pm h2{
+  font-family:"Barlow Condensed",sans-serif;font-weight:900;
+  font-size:clamp(2.7rem,3.9vw,3.9rem);line-height:.94;letter-spacing:-.012em;
+  margin:0;color:var(--ink);text-wrap:balance;
+}
+.pm h2 .menta{color:var(--ac)}
+.pm-texto{margin:24px 0 0;max-width:44ch;font-size:1.05rem;line-height:1.55;color:var(--ink-2)}
+.pm-puntos{list-style:none;margin:28px 0 0;padding:0;display:flex;flex-direction:column;gap:13px}
+.pm-puntos li{display:flex;align-items:flex-start;gap:12px;font-size:.96rem;color:var(--ink-2);line-height:1.45}
+.pm-puntos svg{width:20px;height:20px;flex:none;color:var(--ac);margin-top:1px}
+.pm-pie{font-size:12.5px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.pm-pie a{color:var(--ink-3);text-decoration:underline;text-underline-offset:4px;
+  text-decoration-color:color-mix(in srgb,var(--ink-3) 50%,transparent);
+  transition:color var(--dur) ease;min-height:44px;display:inline-flex;align-items:center}
+.pm-pie a:hover{color:var(--ac)}
+
+/* ---------- COLUMNA DEL FORMULARIO (derecha) ---------- */
+.lf{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  padding:clamp(20px,4vw,48px) clamp(18px,4vw,48px);background:var(--bg);
+}
+/* En el telefono, donde no hay panel, la decoracion se reduce al fondo:
+   la trama y un resplandor arriba, sin formas. */
+.lf::before{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.07;
+  background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);
+  background-size:24px 24px;
+}
+.lf::after{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 34% at 50% -6%,var(--mint-glow),transparent 70%);
+}
+@media (min-width:1024px){
+  .lf::before{display:none}
+  .lf::after{background:radial-gradient(50% 40% at 100% 100%,rgba(52,224,180,.06),transparent 70%)}
+}
+.caja{position:relative;z-index:1;width:100%;max-width:440px}
+
+/* Marca y linea de arriba, solo en el telefono. */
+.marca-m{display:flex;flex-direction:column;align-items:center;gap:8px;margin:6px 0 26px;
+  text-decoration:none;color:var(--ink);text-align:center}
+.marca-m .logo{display:inline-flex;align-items:center;gap:9px;
+  font-family:Sora,sans-serif;font-weight:600;font-size:17px;letter-spacing:-.022em;min-height:44px}
+.marca-m .ico{width:24px;height:24px;color:var(--ac)}
+.marca-m .pe{color:var(--ink-3);font-weight:400}
+.marca-m .linea-m{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3)}
+@media (min-width:1024px){ .marca-m{display:none} }
+
+.tarjeta-acc{
+  background:var(--panel);border:1px solid var(--line);border-radius:20px;
+  padding:clamp(24px,3.4vw,34px);
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,
+             0 30px 60px -34px rgba(0,0,0,.85),
+             0 26px 70px -44px rgba(52,224,180,.35);
+}
+.tarjeta-acc h1{font-family:Sora,sans-serif;font-size:1.55rem;font-weight:600;
+  letter-spacing:-.025em;line-height:1.1;margin:0 0 6px;color:var(--ink)}
+.tarjeta-acc .lead{margin:0 0 24px;font-size:14px;color:var(--ink-3)}
+.tarjeta-acc .lead b{color:var(--ink-2);font-weight:500}
+
+form.acc{display:flex;flex-direction:column;gap:16px}
+form.acc .mensaje{margin:0}
+.tarjeta-acc label.campo>span{font-family:"JetBrains Mono",monospace;font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.tarjeta-acc input[type=text],
+.tarjeta-acc input[type=email],
+.tarjeta-acc input[type=password]{
+  background:rgba(255,255,255,.035);color:var(--ink);
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;
+  min-height:48px;padding:12px 14px;font-size:15px;
+  transition:border-color var(--dur) ease,box-shadow var(--dur) ease,background var(--dur) ease;
+}
+.tarjeta-acc input::placeholder{color:var(--ink-3)}
+.tarjeta-acc input:focus-visible{
+  outline:none;border-color:var(--ac);background:rgba(255,255,255,.05);
+  box-shadow:0 0 0 4px rgba(52,224,180,.18);
+}
+.tarjeta-acc .campo.mal input{border-color:var(--urg)}
+.tarjeta-acc .campo.mal input:focus-visible{box-shadow:0 0 0 4px rgba(255,107,96,.2)}
+.tarjeta-acc .ayuda{color:var(--ink-3)}
+
+/* El boton menta a todo el ancho. Hereda el hover/active/deshabilitado de la
+   base; aqui solo la talla. */
+.tarjeta-acc button[type=submit]{
+  width:100%;min-height:48px;padding:12px 18px;border-radius:10px;
+  font-size:15px;font-weight:600;margin-top:4px;
+  box-shadow:0 10px 26px -14px rgba(52,224,180,.6);
+}
+.tarjeta-acc button[type=submit]:hover{box-shadow:0 14px 30px -14px rgba(52,224,180,.7)}
+.tarjeta-acc .btn{width:100%;min-height:48px;border-radius:10px;font-size:15px;font-weight:600}
+
+.olvide{margin:2px 0 0;text-align:center;font-size:13.5px}
+.olvide a,.alterna a,.legal a{color:var(--ink-2);text-decoration:underline;text-underline-offset:4px;
+  text-decoration-color:color-mix(in srgb,var(--ink-3) 55%,transparent);transition:color var(--dur) ease}
+.olvide a:hover,.alterna a:hover,.legal a:hover{color:var(--ac)}
+.alterna a.fuerte{color:var(--ac);font-weight:600;text-decoration-color:color-mix(in srgb,var(--ac) 45%,transparent)}
+.alterna{margin:22px 0 0;text-align:center;font-size:14px;color:var(--ink-3)}
+.alterna + .alterna{margin-top:10px}
+.alterna a,.olvide a{display:inline-flex;align-items:center;min-height:32px}
+.legal{font-size:12px;color:var(--ink-3);line-height:1.55;margin:0;text-align:center}
+.volver .fl{display:inline-block;margin-right:6px;transition:transform .25s var(--ease-out)}
+.volver:hover .fl{transform:translateX(-3px)}
+.pie-m{margin:28px 0 0;text-align:center;font-size:12px;color:var(--ink-3)}
+.pie-m a{color:var(--ink-3);text-decoration:underline;text-underline-offset:4px}
+.pie-m a:hover{color:var(--ac)}
+@media (min-width:1024px){ .pie-m{display:none} }
+/* Marca de "hecho": circulo del color de exito con la palomita en SVG. */
+.icono-ok{width:48px;height:48px;border-radius:50%;background:var(--ok-soft);color:var(--ok);
+  display:flex;align-items:center;justify-content:center;margin:0 0 16px}
+.icono-ok svg{width:22px;height:22px}
+
+/* ---------- entrada ----------
+   Animacion CSS, no clase desde JS: si el script falla, un formulario de
+   acceso invisible deja a la persona fuera de su cuenta. Y sin fill forwards,
+   para que el estado final sea siempre el natural. */
+@keyframes accEntra{from{opacity:0;transform:translate3d(0,16px,0)}to{opacity:1;transform:none}}
+@keyframes accLogo{from{opacity:0;transform:translate3d(0,-10px,0) scale(.96)}to{opacity:1;transform:none}}
+.pm-marca,.marca-m{animation:accLogo .45s var(--ease-out) backwards}
+.pm-cuerpo,.tarjeta-acc{animation:accEntra .5s var(--ease-out) .12s backwards}
+.pm-pie,.alterna,.pie-m{animation:accEntra .5s var(--ease-out) .22s backwards}
+@media (prefers-reduced-motion:reduce){
+  .pm-marca,.marca-m,.pm-cuerpo,.tarjeta-acc,.pm-pie,.alterna,.pie-m{animation:none}
+  .pm-glow,.pm-radar,.pm-dot{animation:none}
+  .volver:hover .fl{transform:none}
+  .tarjeta-acc input,.olvide a,.alterna a,.legal a,.pm-pie a{transition:none}
+}

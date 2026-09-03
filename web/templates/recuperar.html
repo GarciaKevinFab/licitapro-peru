@@ -1,112 +1,87 @@
 {% extends "_base.html" %}
 {% block titulo %}Restablecer contraseña · LicitaPro
 {% endblock %}
+{% set badge_tema = 'sb-oscuro' %}
 
-{% block estilos %}
-.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
-.caja{width:100%;max-width:430px}
-.caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
-  font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
-.caja .marca{color:var(--ink);text-decoration:none;justify-content:center}
-.caja .marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
-.caja .marca .pe{color:var(--ink-3);font-weight:400}
-/* Los campos con fondo --panel-2 y no --bg: sobre la tarjeta --panel, en
-   oscuro esos dos valores estan tan cerca que el recuadro desaparecia. */
-.caja input[type=email]{background:var(--panel-2);border-radius:9px;padding:12px 14px;font-size:15px}
-.caja input:focus{outline:none;border-color:var(--ac);
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent)}
-.caja button{padding:13px;border-radius:10px;font-size:15px;font-weight:600}
-.caja h1{font-family:Sora,sans-serif;font-size:1.4rem;font-weight:600;margin:0 0 6px;
-  letter-spacing:-.02em;text-align:center}
-.caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
-form.acc{display:flex;flex-direction:column;gap:15px;background:var(--panel);
-  border:1px solid var(--line);border-radius:6px;padding:24px}
-form.acc button{width:100%;padding:10px}
-.alterna{text-align:center;font-size:13px;color:var(--ink-3);margin-top:18px}
-.centro{text-align:center}
-.icono{font-size:2rem;text-align:center;margin-bottom:8px;color:var(--ok)}
-/* ---------- VOLVER AL INICIO ----------
-   El logotipo ya enlaza a "/", pero un logo que es enlace no es descubrible:
-   hay que saberlo. Para alguien que no es tecnico -- que es exactamente quien
-   usa esto -- la salida tiene que tener texto y una flecha.
-
-   Arriba a la izquierda y no dentro de la tarjeta: ahi compite con el boton de
-   entrar, y esta pantalla tiene UNA accion principal. Fuera de la caja se ve
-   sin robarle protagonismo. */
-.volver{
-  position:absolute;top:clamp(18px,3vh,30px);left:clamp(18px,4vw,34px);
-  display:inline-flex;align-items:center;gap:7px;
-  font-size:13.5px;color:var(--ink-3);text-decoration:none;
-  padding:7px 12px 7px 9px;border-radius:8px;
-  transition:color .2s ease,background .2s ease;
-}
-.volver:hover{color:var(--ac);background:var(--ac-soft)}
-.volver .fl{transition:transform .25s cubic-bezier(.22,1,.36,1)}
-.volver:hover .fl{transform:translateX(-3px)}
-@media (prefers-reduced-motion:reduce){ .volver:hover .fl{transform:none} }
-{% endblock %}
+{# La misma concha que /entrar (_acceso_panel.html + _acceso_estilos.html) con
+   los cuatro estados del restablecimiento dentro de la tarjeta. #}
+{% block estilos %}{% include "_acceso_estilos.html" %}{% endblock %}
 
 {% block cuerpo %}
-  <a class="volver" href="/"><span class="fl">&larr;</span> Volver al inicio</a>
-
 <div class="acceso">
-  <div class="caja">
-    <a class="marca" href="/">
-      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
-        <g fill="currentColor" opacity=".4">
-          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
-        </g>
-        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
-        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
-      </svg>
-      LicitaPro <span class="pe">Perú</span>
-    </a>
+  {% include "_acceso_panel.html" %}
 
-    {% if paso == 'pedir' %}
-      <h1>Restablecer contraseña</h1>
-      <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
+  <div class="lf">
+    <div class="caja">
+      <a class="marca-m" href="/">
+        <span class="logo">
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+            <g fill="currentColor" opacity=".4">
+              <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+            </g>
+            <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+            <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+          </svg>
+          LicitaPro <span class="pe">Perú</span>
+        </span>
+        <span class="linea-m">Licitaciones del Estado peruano</span>
+      </a>
 
-      {% if aviso %}
-        <div class="mensaje ok">{{ aviso }}</div>
-        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
-      {% else %}
-        <form class="acc" method="post" action="/recuperar">
-          <label class="campo"><span>Correo de tu cuenta</span>
-            <input type="email" name="email" required autocomplete="email" autofocus></label>
-          <button type="submit">Enviarme el enlace</button>
-        </form>
-        <p class="alterna">¿Te acordaste? <a href="/entrar">Entrar</a></p>
-      {% endif %}
+      <div class="tarjeta-acc">
+        {% if paso == 'pedir' %}
+          <h1>Restablecer contraseña</h1>
+          <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
 
-    {% elif paso == 'cambiar' %}
-      <h1>Elige una contraseña nueva</h1>
-      <p class="lead">Para <b>{{ email }}</b></p>
+          {% if aviso %}
+            <div class="mensaje ok" role="status">{{ aviso }}</div>
+          {% else %}
+            <form class="acc" method="post" action="/recuperar" data-validar data-cargando="Enviando…">
+              <label class="campo"><span>Correo de tu cuenta</span>
+                <input type="email" name="email" required autocomplete="email" autofocus
+                       placeholder="tu@empresa.pe"></label>
+              <button type="submit">Enviarme el enlace</button>
+            </form>
+          {% endif %}
 
-      {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+        {% elif paso == 'cambiar' %}
+          <h1>Elige una contraseña nueva</h1>
+          <p class="lead">Para <b>{{ email }}</b></p>
 
-      <form class="acc" method="post" action="/recuperar/{{ token }}">
-        <label class="campo"><span>Contraseña nueva</span>
-          <input type="password" name="password" required minlength="10"
-                 autocomplete="new-password" autofocus>
-          <p class="ayuda">Mínimo 10 caracteres.</p></label>
-        <button type="submit">Guardar contraseña</button>
-      </form>
+          <form class="acc" method="post" action="/recuperar/{{ token }}" data-validar data-cargando="Guardando…">
+            {% if error %}<div class="mensaje mal" role="alert">{{ error }}</div>{% endif %}
+            <label class="campo{% if error %} mal{% endif %}"><span>Contraseña nueva</span>
+              <input type="password" name="password" required minlength="10"
+                     autocomplete="new-password" autofocus{% if error %} aria-invalid="true"{% endif %}>
+              <p class="ayuda">Mínimo 10 caracteres.</p></label>
+            <button type="submit">Guardar contraseña</button>
+          </form>
 
-    {% elif paso == 'listo' %}
-      <div class="icono">✓</div>
-      <h1>Contraseña actualizada</h1>
-      <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
-      <div class="centro"><a class="btn" href="/entrar">Entrar</a></div>
+        {% elif paso == 'listo' %}
+          <div class="icono-ok" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>
+          </div>
+          <h1>Contraseña actualizada</h1>
+          <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
+          <a class="btn" href="/entrar">Entrar</a>
 
-    {% else %}
-      <h1>Ese enlace ya no sirve</h1>
-      <p class="lead">Los enlaces vencen a la hora y solo se pueden usar una vez.
-         Si ya cambiaste tu contraseña, entra con la nueva.</p>
-      <div class="centro">
-        <a class="btn" href="/recuperar">Pedir otro enlace</a>
-        <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
+        {% else %}
+          <h1>Ese enlace ya no sirve</h1>
+          <p class="lead">Los enlaces vencen a la hora y solo se pueden usar una vez.
+             Si ya cambiaste tu contraseña, entra con la nueva.</p>
+          <a class="btn" href="/recuperar">Pedir otro enlace</a>
+        {% endif %}
       </div>
-    {% endif %}
+
+      {% if paso == 'pedir' and not aviso %}
+        <p class="alterna">¿Te acordaste? <a class="fuerte" href="/entrar">Entrar</a></p>
+      {% else %}
+        <p class="alterna"><a class="fuerte" href="/entrar">Volver a entrar</a></p>
+      {% endif %}
+      <p class="alterna"><a class="volver" href="/"><span class="fl">&larr;</span>Volver al inicio</a></p>
+
+      <p class="pie-m">&copy; 2026 LicitaPro Perú &middot;
+        <a href="/privacidad">Privacidad</a> &middot; <a href="/terminos">Términos</a></p>
+    </div>
   </div>
 </div>
 {% endblock %}

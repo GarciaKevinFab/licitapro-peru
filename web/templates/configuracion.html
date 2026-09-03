@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Configuración · LicitaPro Perú{% endblock %}
+{% set titulo_pagina = 'Configuración' %}
+{% set sub_pagina = 'Por dónde te avisamos, tus credenciales y los filtros que deciden qué licitaciones son tuyas.' %}
 
 {% block estilos %}
 .peligro-zona{border-color:var(--urg)}
@@ -25,22 +27,31 @@ table.cred th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform
 table.cred td{padding:11px 10px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:middle}
 table.cred tr:last-child td{border-bottom:none}
 .marca-cred{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
 .marca-cred.si{background:var(--ok-soft);color:var(--ok)}
 .marca-cred.no{background:var(--panel-2);color:var(--ink-3)}
 .fila-cred{display:flex;gap:8px;align-items:center}
 .fila-cred input{min-width:150px}
 .rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
-.regiones{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));
-  gap:6px 14px;margin-top:6px}
-.regiones label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:400;
-  text-transform:none;letter-spacing:0;color:var(--ink)}
-.regiones input{width:auto}
+/* Las 25 regiones en rejilla: cuatro columnas en ancho, tres en tableta y dos
+   en el telefono, con cada casilla a 36 px de alto (44 en movil) para que se
+   pueda acertar con el dedo. */
+.rotulo{margin:0}
+.rotulo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.regiones{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 16px;margin-top:6px}
+@media (max-width:720px){ .regiones{grid-template-columns:repeat(3,1fr)} }
+@media (max-width:480px){ .regiones{grid-template-columns:repeat(2,1fr)} }
+.regiones label{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:400;
+  text-transform:none;letter-spacing:0;color:var(--ink);min-height:36px;cursor:pointer;
+  padding:0 6px;margin:0 -6px;border-radius:var(--r);transition:background var(--dur) ease}
+.regiones label:hover{background:var(--panel-2)}
+.regiones input{width:16px;height:16px;flex:none}
+@media (max-width:640px){ .regiones label{min-height:44px} }
 .nota{font-size:12.5px;color:var(--ink-3);margin:16px 0 0;padding-top:14px;
   border-top:1px solid var(--line-soft);max-width:70ch}
 {% endblock %}
 
-{% block cuerpo %}
+{% block cuerpo_nota %}
 {# La cabecera COMPARTIDA, como el resto de las pantallas del panel.
    Esta plantilla llevaba una copia propia, y la copia se habia quedado atras:
    no tenia la inicial del usuario ni el <span class="quien">, asi que la regla
@@ -51,9 +62,9 @@ table.cred tr:last-child td{border-bottom:none}
    Tampoco mostraba los avisos de suscripcion ni el de "conecta Telegram", que
    si aparecen en las demas. Duplicar la barra costaba eso: dos productos
    distintos segun la pantalla en la que estuvieras. #}
-{% with activo='config' %}{% include "_nav.html" %}{% endwith %}
-
-<main>
+{% endblock %}
+{% block nav %}{% with activo='config' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
@@ -132,7 +143,7 @@ table.cred tr:last-child td{border-bottom:none}
     {% endif %}
 
     {% if whatsapp_disponible and usuario.whatsapp_estado != 'activo' %}
-      <form method="post" action="/configuracion/whatsapp" class="wa-form">
+      <form method="post" action="/configuracion/whatsapp" class="wa-form" data-validar>
         <label class="campo">
           <span>Tu número de móvil</span>
           <input type="text" name="numero" inputmode="tel" placeholder="987654321"
@@ -208,8 +219,9 @@ table.cred tr:last-child td{border-bottom:none}
     <p class="sub">Estos filtros deciden qué se te alerta. Las licitaciones son públicas
        y las rastreamos para todos; esto define cuáles son tuyas.</p>
 
-    <form method="post" action="/configuracion/filtros">
-      <label class="campo"><span>Regiones</span></label>
+    <form method="post" action="/configuracion/filtros" data-cargando="Guardando…">
+      {# Un rotulo, no un <label>: no hay un control unico al que asociarlo. #}
+      <p class="campo rotulo"><span>Regiones</span></p>
       <div class="regiones">
         {% for d in departamentos %}
           <label>
@@ -266,7 +278,7 @@ table.cred tr:last-child td{border-bottom:none}
        firmas. No hay vuelta atrás y no guardamos copia.</p>
     <p class="ayuda">Es tu derecho según la Ley 29733. Si solo quieres dejar de
        recibir avisos, no hace falta esto: desconecta los canales arriba.</p>
-    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form">
+    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form" data-validar>
       <label class="campo">
         <span>Tu contraseña</span>
         <input type="password" name="password" autocomplete="current-password" required>
@@ -280,6 +292,4 @@ table.cred tr:last-child td{border-bottom:none}
       </div>
     </form>
   </section>
-
-</main>
 {% endblock %}

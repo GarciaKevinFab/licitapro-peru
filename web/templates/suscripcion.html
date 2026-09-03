@@ -1,5 +1,7 @@
 {% extends "_base.html" %}
 {% block titulo %}Suscripción · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Suscripción' %}
+{% set sub_pagina = 'Tu plan, cómo se renueva y el historial de cobros.' %}
 {% block estilos %}
 /* ---------- EXCEPCION AL VALOR COMUN ----------
    _base.html alinea las celdas ARRIBA, que es lo correcto en las tablas donde
@@ -18,7 +20,7 @@ table.datos td{vertical-align:middle}
 .plan li.sin{color:var(--ink-3)}
 
 .pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .pill.urg{background:var(--urg-soft);color:var(--urg)}
 .pill.pend{background:var(--warn-soft);color:var(--warn)}
@@ -26,13 +28,13 @@ table.datos td{vertical-align:middle}
 .acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 .aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
   letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:3px}
+  padding:3px 7px;border-radius:var(--r-chip)}
 .sesion button{padding:5px 11px;font-size:12px}
 .ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
 
 main{max-width:900px}
 .planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
-.plan{border:1px solid var(--line);border-radius:6px;padding:20px;background:var(--bg);
+.plan{border:1px solid var(--line);border-radius:var(--r-card);padding:20px;background:var(--bg);
   display:flex;flex-direction:column;gap:6px}
 .plan.actual{border-color:var(--ac);background:var(--ac-soft)}
 .plan h3{font-family:Sora,sans-serif;font-size:1rem;margin:0}
@@ -49,9 +51,11 @@ main{max-width:900px}
   color:var(--ink-3);margin-bottom:2px}
 .estadobox div b{font-family:"JetBrains Mono",monospace;font-weight:600}
 {% endblock %}
-{% block cuerpo %}
-{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}
-<main>
+{% block nav %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  <div class="cab-acc"><a class="btn sec" href="/precios">Comparar planes</a></div>
+{% endblock %}
+{% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
@@ -143,6 +147,7 @@ main{max-width:900px}
   {% if historial %}
   <div class="tarjeta">
     <h2>Historial de cobros</h2>
+    <div class="tabla-caja">
     <table class="datos">
       <thead><tr><th class="num">Fecha</th><th class="num">Orden</th><th class="num">Monto</th>
         <th class="num">Comisión</th><th>Estado</th></tr></thead>
@@ -158,9 +163,9 @@ main{max-width:900px}
       {% endfor %}
       </tbody>
     </table>
+    </div>
     <p class="ayuda mt-12">La comisión es la que retiene Izipay:
        4.06% + S/0.81 por cobro, con IGV incluido.</p>
   </div>
   {% endif %}
-</main>
 {% endblock %}

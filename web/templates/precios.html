@@ -27,14 +27,35 @@
    se quite un plan, que es un UPDATE sin tocar codigo. */
 main{max-width:1180px}
 
+/* La cabecera de sitio para quien llega SIN cuenta. Antes esta pagina
+   arrancaba en el titulo, sin marca ni forma de volver: desde WhatsApp se
+   aterrizaba en un catalogo sin salida. Son las mismas piezas que la barra del
+   panel (header, .brand, nav.menu, .sesion de _base.html): pegajosa, con el
+   menu en su fila propia en el telefono, y "Planes" marcado como activo. Los
+   dos botones de sesion van a la altura del "Salir" del panel. */
+.sesion .btn{min-height:32px;padding:4px 12px;font-size:12.5px}
+@media (max-width:640px){ .sesion .btn{min-height:44px} }
+
+/* De cuatro a dos a una. `auto-fit` sigue mandando en ancho -asi el dia que
+   haya cinco planes se recolocan solos-, pero entre 768 y 1100 px se fuerza
+   2x2: ahi el auto-fit daba tres columnas y dejaba a "Empresa" solo en una
+   segunda fila, que se lee como un plan de segunda. */
 .planes{display:grid;gap:16px;
   grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
-.plan{border:1px solid var(--line);border-radius:6px;padding:22px;
-  background:var(--panel);display:flex;flex-direction:column}
+@media (max-width:1100px){ .planes{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:767px){ .planes{grid-template-columns:1fr} }
+.plan{border:1px solid var(--line);border-radius:var(--r-card);padding:22px;
+  background:var(--panel);display:flex;flex-direction:column;
+  transition:transform .25s var(--ease-out),box-shadow .25s var(--ease-out),border-color var(--dur) ease}
+.plan:hover{transform:translateY(-2px);
+  box-shadow:0 14px 30px -20px color-mix(in srgb,var(--ink) 40%,transparent)}
 /* El destacado se marca con el borde de acento y no con un fondo distinto: un
    fondo de color en una de tres tarjetas descuadra la comparacion de precios,
    que es justo a lo que se viene aqui. */
-.plan.destacado{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac)}
+.plan.destacado{border-color:var(--ac);
+  box-shadow:0 0 0 1px var(--ac),0 12px 28px -18px color-mix(in srgb,var(--ac) 55%,transparent)}
+.plan.destacado:hover{box-shadow:0 0 0 1px var(--ac),0 18px 34px -18px color-mix(in srgb,var(--ac) 60%,transparent)}
+@media (prefers-reduced-motion:reduce){ .plan,.plan:hover{transform:none;transition:none} }
 .plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;
   letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
 .plan.destacado .nm{color:var(--ac)}
@@ -64,16 +85,15 @@ main{max-width:1180px}
    ano deja de estar solo en la linea gris de arriba, que es donde nadie lo
    suma. */
 .periodos{display:flex;flex-direction:column;gap:8px}
-a.comprar{text-align:center;text-decoration:none;display:block;
-  padding:10px 12px;border-radius:4px;font-size:13.5px;white-space:nowrap;
-  background:var(--ac);color:var(--btn-txt);border:1px solid var(--ac)}
-a.comprar.sec{background:transparent;color:var(--ink-2);border-color:var(--line)}
-a.comprar:hover{opacity:.88}
+/* Son los botones comunes (.btn / .btn.sec de _base.html): misma altura,
+   mismo radio y la misma respuesta al pulsar que en el resto del sitio. Antes
+   eran una clase propia con su radio de 4 px y un hover por opacidad. */
+.periodos .btn{width:100%;white-space:nowrap}
 
 .medios{display:flex;flex-wrap:wrap;gap:8px}
 .medios span{font-family:"JetBrains Mono",monospace;font-size:10.5px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
-  border:1px solid var(--line);border-radius:3px;padding:4px 9px}
+  border:1px solid var(--line);border-radius:var(--r-chip);padding:4px 9px}
 .comercio{font-size:12.5px;color:var(--ink-3);line-height:1.7;margin:0}
 .comercio b{color:var(--ink-2);font-weight:500}
 .titularidad{font-size:12.5px;color:var(--ink-3);line-height:1.7;
@@ -82,8 +102,33 @@ a.comprar:hover{opacity:.88}
 {% endblock %}
 
 {% block cuerpo %}
-{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endif %}
-<main class="{% if not usuario %}pt-40{% endif %}">
+{% if usuario %}
+  {% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}
+{% else %}
+  <header>
+    <a class="brand" href="/">
+      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+      LicitaPro <span class="pe">Perú</span>
+    </a>
+    <nav class="menu" aria-label="Sitio">
+      <a href="/#como">Cómo funciona</a>
+      <a href="/#puntaje">Puntaje</a>
+      <a href="/#preguntas">Preguntas</a>
+      <a href="/precios" class="activo" aria-current="page">Planes</a>
+    </nav>
+    <span class="sesion">
+      <a class="btn sec" href="/entrar">Entrar</a>
+      <a class="btn" href="/registro">Empezar</a>
+    </span>
+  </header>
+{% endif %}
+<main>
 
   <div class="tarjeta">
     <h2 class="portada">Una licitación ganada lo paga todo.</h2>
@@ -126,14 +171,14 @@ a.comprar:hover{opacity:.88}
              boton lleva a su propio resumen de pedido. #}
           {% if p.precio_mensual and p.precio_mensual > 0 %}
             <div class="periodos">
-              <a class="comprar" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}/mes</a>
+              <a class="btn" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}/mes</a>
               {% if p.precio_anual %}
-                <a class="comprar sec" href="/comprar/{{ p.codigo }}?periodo=anual">Pagar el año · S/ {{ '%.0f'|format(p.precio_anual) }}</a>
+                <a class="btn sec" href="/comprar/{{ p.codigo }}?periodo=anual">Pagar el año · S/ {{ '%.0f'|format(p.precio_anual) }}</a>
               {% endif %}
             </div>
           {% else %}
             <div class="periodos">
-              <a class="comprar sec" href="/registro">Crear cuenta gratis</a>
+              <a class="btn sec" href="/registro">Crear cuenta gratis</a>
             </div>
           {% endif %}
         </div>
