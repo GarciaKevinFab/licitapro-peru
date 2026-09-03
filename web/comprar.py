@@ -45,9 +45,12 @@ from urllib.parse import quote
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+import asyncpg
+
+from shared import culqi
 from shared.db import connection, crear_usuario
 from shared.seguridad import hashear_password, password_debil
-from shared.suscripciones import cambiar_plan
+from shared.suscripciones import activar_por_culqi, cambiar_plan
 from web.auth import usuario_actual
 from web.suscripcion import _con_error, iniciar_cobro
 
@@ -55,6 +58,14 @@ log = logging.getLogger("web.comprar")
 router = APIRouter()
 
 PERIODOS = ("mensual", "anual")
+
+# POR_CONFIRMAR: la URL vigente del script de Culqi Checkout v4. Se conocen dos
+# formas publicadas -- https://js.culqi.com/checkout-js y
+# https://checkout.culqi.com/js/v4 -- y no se ha podido comprobar cual sirve
+# hoy: desde esta maquina no hay salida a Internet. Se deja por entorno
+# (CULQI_CHECKOUT_JS) y la CSP admite los DOS hosts, para que confirmarlo sea
+# cambiar una variable y no tocar codigo ni cabeceras.
+CHECKOUT_JS = "https://checkout.culqi.com/js/v4"
 
 # Los precios publicados YA incluyen IGV -- lo dice la portada y lo dicen los
 # terminos --, asi que el desglose se calcula hacia atras. Se muestra porque un
@@ -196,6 +207,67 @@ def _precio(plan: dict, periodo: str):
     return plan["precio_anual"] if periodo == "anual" else plan["precio_mensual"]
 
 
+_COLUMNA_CULQI = {"mensual": "culqi_plan_id_mensual",
+                  "anual": "culqi_plan_id_anual"}
+
+
+async def plan_culqi_id(codigo: str, periodo: str) -> str | None:
+    """El `pln_` de Culqi de un plan y periodo, o None si todavia no hay.
+
+    POR QUE NO VA EN `_COLUMNAS_PLAN` CON LAS DEMAS
+
+      Si /precios y /comprar seleccionaran estas columnas, el sitio ENTERO
+      dejaria de responder mientras la migracion 0015 no este aplicada: un
+      SELECT de una columna inexistente es un error, no un NULL. Aqui se
+      pregunta aparte y se traga ese caso concreto, asi que el codigo funciona
+      antes y despues de migrar -- como ya se hizo con `usuarios.ultimo_acceso`.
+
+      No es teorico: el compose aplica las migraciones antes de levantar la
+      web, pero una maquina de desarrollo con la base vieja no.
+    """
+    columna = _COLUMNA_CULQI.get(periodo)
+    if not columna:
+        return None
+    try:
+        async with connection() as conn:
+            return await conn.fetchval(
+                f"SELECT {columna} FROM planes WHERE codigo = $1", codigo)
+    except asyncpg.UndefinedColumnError:
+        log.warning("La migracion 0015 no esta aplicada: sin columnas de Culqi "
+                    "el checkout recurrente no puede funcionar.")
+        return None
+
+
+def _config_culqi(plan: dict, periodo: str, importe: dict, plan_id: str | None) -> dict | None:
+    """Lo que necesita el navegador para abrir Culqi Checkout, o None.
+
+    Devuelve None -- y entonces la pagina se queda con el checkout de siempre,
+    de pago unico -- si falta cualquiera de las tres piezas: la pasarela
+    apagada, la llave publica sin poner, o el plan sin sincronizar con
+    `tools/culqi_planes.py`. Media configuracion tiene que dar el flujo viejo
+    entero, nunca un boton que abre un formulario de pago que no puede cobrar.
+    """
+    if not culqi.cobro_recurrente():
+        return None
+    publica = os.getenv("CULQI_LLAVE_PUBLICA", "").strip()
+    if not publica or not plan_id:
+        log.warning("Culqi activo pero sin llave publica o sin plan sincronizado "
+                    "para %s/%s: el checkout sigue en pago unico.",
+                    plan.get("codigo"), periodo)
+        return None
+    return {
+        "llave_publica": publica,
+        "script": os.getenv("CULQI_CHECKOUT_JS", "").strip() or CHECKOUT_JS,
+        # Culqi Checkout trabaja en centimos, igual que la API.
+        "centimos": culqi.a_centimos(importe["total"]),
+        "titulo": "LicitaPro Peru",
+        # Sin tildes ni signos raros: este texto viaja a Culqi y acaba en el
+        # comprobante y en el extracto de la tarjeta, donde un caracter que la
+        # pasarela no digiera sale como un simbolo roto delante del cliente.
+        "descripcion": f"Plan {plan['nombre']} - facturacion {periodo}",
+    }
+
+
 # ─── Escaparate ──────────────────────────────────────────
 
 @router.get("/precios", response_class=HTMLResponse)
@@ -233,13 +305,19 @@ async def checkout(request: Request, plan_codigo: str,
     if not plan or not _precio(plan, periodo):
         return RedirectResponse("/precios", status_code=303)
 
+    importe = _desglose(_precio(plan, periodo))
     return _plantillas(request).TemplateResponse("comprar.html", {
         "request": request,
         "usuario": await usuario_actual(request),
         "plan": plan,
         "periodo": periodo,
-        "importe": _desglose(_precio(plan, periodo)),
+        "importe": importe,
         "comercio": _comercio(),
+        # None = no hay ruta recurrente y la pagina se queda como estaba: un
+        # pago unico. Los textos legales cuelgan de esto, no de una frase
+        # escrita a mano; ver la plantilla.
+        "culqi": _config_culqi(plan, periodo, importe,
+                               await plan_culqi_id(plan_codigo, periodo)),
         "error": error,
     })
 
@@ -298,3 +376,148 @@ async def confirmar(request: Request, plan: str = Form(...),
         return con_error("Plan o periodo no válido.")
 
     return await iniciar_cobro(request, usuario, volver_a=volver_a)
+
+
+# ─── Checkout recurrente con Culqi ───────────────────────
+
+@router.post("/comprar/culqi")
+async def comprar_con_culqi(request: Request, plan: str = Form(...),
+                            periodo: str = Form("mensual"),
+                            token_id: str = Form(...), email: str = Form(""),
+                            password: str = Form(""), nombre: str = Form("")):
+    """Del token de la tarjeta a una suscripcion que se cobra sola cada periodo.
+
+    LA TARJETA NO PASA POR AQUI
+
+      `token_id` es un `tkn_…` que Culqi Checkout genero EN EL NAVEGADOR. El
+      numero de la tarjeta viaja del navegador a Culqi y nunca toca este
+      servidor: es lo que mantiene a LicitaPro fuera del alcance de PCI-DSS.
+
+    EL ORDEN ES DELIBERADO, Y NO ES EL COMODO
+
+      1. Validaciones locales (plan, periodo, token, correo, contrasena, cuenta
+         existente). Todo lo que se puede rechazar sin gastar nada, primero.
+      2. Cliente y tarjeta en Culqi. Estas dos llamadas NO cobran: si algo
+         falla aqui, no hay dinero movido ni cuenta creada.
+      3. La cuenta local, si hace falta.
+      4. La SUSCRIPCION en Culqi. Esta es la que cobra.
+      5. La activacion local, en una transaccion.
+
+      Al reves -- crear la cuenta primero -- dejaria cuentas huerfanas cada vez
+      que una tarjeta rebota, que es a diario. Y cobrar antes de tener cuenta
+      dejaria un cargo sin servicio, que es peor.
+
+      El unico hueco que queda es entre 4 y 5: cobrado en Culqi y sin asentar
+      aqui. Se cierra cancelando la suscripcion recien creada, que es lo que
+      deja al cliente como estaba. No es perfecto -- el primer cobro puede
+      haberse hecho y habria que devolverlo a mano -- pero es visible en el log
+      con el `sxn_` y el correo, en vez de callado.
+    """
+    if periodo not in PERIODOS:
+        periodo = "mensual"
+    volver_a = f"/comprar/{quote(plan)}?periodo={periodo}"
+
+    def con_error(msg: str):
+        return RedirectResponse(_con_error(volver_a, msg), status_code=303)
+
+    # ─── 1. Lo que se puede rechazar sin gastar nada ────
+    elegido = await _plan(plan)
+    if not elegido or not _precio(elegido, periodo):
+        return RedirectResponse("/precios", status_code=303)
+
+    if not culqi.cobro_recurrente():
+        # La pagina no deberia haber ensenado este boton. Si alguien llega
+        # igualmente, se le manda al checkout de siempre en vez de fingir.
+        log.warning("POST /comprar/culqi con la pasarela en modo simulado")
+        return con_error("El pago recurrente no está disponible ahora mismo.")
+
+    plan_id = await plan_culqi_id(plan, periodo)
+    if not plan_id:
+        log.error("Sin plan de Culqi para %s/%s: falta correr "
+                  "tools/culqi_planes.py", plan, periodo)
+        return con_error("Ese plan aún no está disponible para pago automático.")
+
+    token_id = (token_id or "").strip()
+    if not token_id.startswith("tkn_"):
+        # No es una validacion de seguridad -- Culqi rechazaria el token igual
+        # -- sino de claridad: asi el error es "vuelve a intentarlo" y no un
+        # mensaje de la pasarela sobre un parametro.
+        return con_error("No se recibió la tarjeta. Vuelve a intentarlo.")
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        # Las mismas reglas que /registro y que POST /comprar: si aqui se
+        # relajaran, este seria el camino para crear cuentas con contrasenas
+        # que el formulario de registro rechaza.
+        if "@" not in email or "." not in email.split("@")[-1]:
+            return con_error("Ese correo no parece válido.")
+        motivo = password_debil(password)
+        if motivo:
+            return con_error(motivo)
+
+    correo = usuario["email"] if usuario else email.strip()
+    monto = _precio(elegido, periodo)
+
+    # ─── 2. Cliente y tarjeta: todavia no se cobra ──────
+    try:
+        cliente = await culqi.crear_cliente(correo, nombre=nombre.strip())
+        tarjeta = await culqi.crear_tarjeta(cliente["id"], token_id)
+    except culqi.ErrorCulqi as e:
+        log.warning("Culqi rechazo la tarjeta de %s: %s", correo, e.merchant_message)
+        return con_error(e.user_message)
+    except culqi.ConfiguracionCulqi as e:
+        log.error("Culqi mal configurado: %s", e)
+        return con_error("El pago no está disponible ahora mismo. "
+                         "Escríbenos y lo resolvemos.")
+
+    # ─── 3. La cuenta, ya con la tarjeta validada ───────
+    if not usuario:
+        usuario = await crear_usuario(email, hashear_password(password),
+                                      nombre.strip() or None)
+        if not usuario:
+            # Ya tiene cuenta: no es un error, es un cliente que vuelve. Se le
+            # manda a entrar y se le devuelve a ESTE checkout. No se ha cobrado
+            # nada: el cus_/crd_ creado arriba se reaprovecha o se queda
+            # inerte en Culqi, que no cuesta nada.
+            aviso = ("Ya tienes una cuenta con ese correo. Entra y terminamos "
+                     "la compra.")
+            return RedirectResponse(
+                f"/entrar?siguiente={quote(volver_a, safe='')}"
+                f"&error={quote(aviso)}",
+                status_code=303)
+        request.session["usuario_id"] = usuario["id"]
+        log.info("Cuenta creada desde el checkout de Culqi para el plan %s", plan)
+
+    # ─── 4. La suscripcion: AQUI se cobra ───────────────
+    try:
+        suscripcion = await culqi.crear_suscripcion(
+            tarjeta["id"], plan_id,
+            metadata={"usuario_id": usuario["id"], "plan_codigo": plan,
+                      "periodo": periodo, "producto": "licitapro"})
+    except culqi.ErrorCulqi as e:
+        log.warning("Culqi rechazo la suscripcion de %s: %s",
+                    correo, e.merchant_message)
+        return con_error(e.user_message)
+
+    # ─── 5. Asentarlo aqui, o deshacerlo alli ──────────
+    marca, ultimos = culqi.marca_y_ultimos(tarjeta)
+    asentado = await activar_por_culqi(
+        usuario_id=usuario["id"], plan_codigo=plan, periodo=periodo,
+        monto=monto, customer_id=cliente["id"], card_id=tarjeta["id"],
+        subscription_id=suscripcion["id"], marca=marca, ultimos=ultimos,
+        respuesta={"origen": "checkout", "suscripcion": suscripcion})
+
+    if not asentado:
+        log.error("Suscripcion %s creada en Culqi para %s y NO asentada aqui: "
+                  "se cancela en Culqi", suscripcion["id"], correo)
+        try:
+            await culqi.cancelar_suscripcion(suscripcion["id"])
+        except culqi.ErrorCulqi as e:
+            log.error("Y tampoco se pudo cancelar %s: %s. REVISAR A MANO en el "
+                      "panel de Culqi.", suscripcion["id"], e.merchant_message)
+        return con_error("No pudimos activar tu plan. No se te cobrará; "
+                         "escríbenos y lo resolvemos.")
+
+    return RedirectResponse(
+        "/suscripcion?aviso=Suscripcion+activada.+Se+renueva+sola+cada+periodo",
+        status_code=303)
