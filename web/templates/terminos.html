@@ -85,12 +85,25 @@
     <li>Al terminar la prueba no se cierra tu cuenta: pasa al <b>plan Gratis</b>,
         conservando tu panel y tus datos, y perdiendo los avisos automáticos, el
         análisis con IA y las empresas adicionales.</li>
+    {# Estas dos cláusulas describen cómo se cobra, y eso depende de la
+       pasarela que esté activa. Se atan a `cobro_recurrente()` y no a una
+       redacción fija: unos términos del servicio que prometan algo que la
+       pasarela no hace son justo el papel que se enseña en un reclamo. #}
+    {% if cobro_recurrente() %}
+    <li>Los planes de pago <b>se renuevan automáticamente</b> cada periodo con
+        la tarjeta que registraste. Puedes cancelar cuando quieras desde tu
+        cuenta: conservas el acceso hasta el final del periodo ya pagado, y no
+        se te vuelve a cobrar.</li>
+    <li>Si un cobro falla, lo reintentamos durante unos días antes de suspender
+        el plan. No cortamos al primer rebote.</li>
+    {% else %}
     <li>Los planes de pago se cobran <b>por periodo y de una sola vez</b>: no
         guardamos tu tarjeta ni programamos cobros automáticos. Antes de que
         venza tu periodo te avisamos por correo para que renueves si quieres
         seguir; conservas el acceso hasta el último día pagado.</li>
     <li>Si dejas vencer el periodo no cortamos al día siguiente: hay unos días
         de gracia para que puedas renovar sin perder el acceso.</li>
+    {% endif %}
     <li>Los precios incluyen IGV y pueden cambiar. Un cambio de precio se avisa
         con antelación y nunca se aplica a un periodo ya pagado.</li>
   </ul>

@@ -257,3 +257,117 @@ async def test_todos_los_periodos_declarados_tienen_checkout(cliente):
         r = await cliente.get(f"/comprar/pro?periodo={periodo}")
         assert r.status_code == 200, f"periodo {periodo} sin checkout"
         assert "Total a pagar" in r.text
+
+
+# ─── La promesa del cobro sale de la pasarela, no de la plantilla ─
+
+# QUE PASO Y POR QUE HAY PRUEBAS DE ESTO
+#
+#   /comprar, /precios y /terminos afirmaron durante meses que la suscripcion
+#   se renovaba sola y que un cobro fallido se reintentaba, con una pasarela
+#   que solo hacia pagos unicos. Nadie mintio a proposito: la promesa estaba
+#   escrita a mano en tres plantillas y la realidad cambio en otro sitio.
+#
+#   Ahora las tres cuelgan de `cobro_recurrente()`. Estas pruebas comprueban
+#   las dos direcciones, porque el fallo puede repetirse en cualquiera de las
+#   dos: prometer renovacion sin pasarela que la haga, o seguir diciendo "pago
+#   unico" cuando ya se cobra solo.
+
+def _con_culqi(monkeypatch):
+    monkeypatch.setenv("CULQI_MODO", "prueba")
+    monkeypatch.setenv("CULQI_LLAVE_PUBLICA", "pk_test_pruebas")
+    monkeypatch.setenv("CULQI_LLAVE_SECRETA", "sk_test_pruebas")
+
+
+def _sin_culqi(monkeypatch):
+    for v in ("CULQI_MODO", "CULQI_LLAVE_PUBLICA", "CULQI_LLAVE_SECRETA"):
+        monkeypatch.delenv(v, raising=False)
+
+
+@sin_base
+@pytest.mark.parametrize("pagina", ["/precios", "/terminos"])
+async def test_sin_pasarela_recurrente_el_texto_dice_pago_unico(
+        cliente, monkeypatch, pagina):
+    """Sin llaves no hay cobro automatico, y el texto no puede prometerlo."""
+    _sin_culqi(monkeypatch)
+    r = await cliente.get(pagina)
+    assert r.status_code == 200
+    assert "no deja cobros programados" in r.text or "de una sola vez" in r.text
+    assert "renovación es automática" not in r.text
+    assert "se renuevan automáticamente" not in r.text
+
+
+@sin_base
+@pytest.mark.parametrize("pagina", ["/precios", "/terminos"])
+async def test_con_culqi_el_texto_promete_la_renovacion_que_si_ocurre(
+        cliente, monkeypatch, pagina):
+    _con_culqi(monkeypatch)
+    r = await cliente.get(pagina)
+    assert r.status_code == 200
+    assert "automátic" in r.text
+    assert "de una sola vez" not in r.text
+    assert "no deja cobros programados" not in r.text
+
+
+@sin_base
+async def test_la_pagina_de_privacidad_nombra_a_la_pasarela_que_cobra(
+        cliente, monkeypatch):
+    """El encargado del tratamiento se declara por su nombre (Ley 29733).
+
+    Nombrar al que no es tan malo como no nombrar a ninguno.
+    """
+    _con_culqi(monkeypatch)
+    r = await cliente.get("/privacidad")
+    assert "<b>Culqi.</b>" in r.text
+
+    _sin_culqi(monkeypatch)
+    r = await cliente.get("/privacidad")
+    assert "<b>Izipay.</b>" in r.text
+
+
+@sin_base
+async def test_sin_plan_sincronizado_el_checkout_no_abre_culqi(cliente, monkeypatch):
+    """Media configuracion tiene que dar el flujo viejo ENTERO.
+
+    Con las llaves puestas pero sin `pln_` en la tabla, un boton que abriera el
+    formulario de tarjeta acabaria en un error de la pasarela con la tarjeta ya
+    escrita. Se vuelve al pago unico, que si funciona.
+    """
+    _con_culqi(monkeypatch)
+    r = await cliente.get("/comprar/pro?periodo=mensual")
+    assert r.status_code == 200
+    assert 'action="/comprar"' in r.text
+    assert "data-culqi-llave" not in r.text
+    assert "pago único" in r.text
+
+
+@sin_base
+async def test_con_plan_sincronizado_el_checkout_si_abre_culqi(cliente, monkeypatch):
+    """La otra direccion: con todo puesto, el boton tiene que llevar a Culqi.
+
+    Y el formulario cambia de destino, no de forma: el resumen del pedido, el
+    desglose con IGV y el total siguen ahi. Es lo que hace el sitio validable
+    desde fuera, y fue lo que costo el primer rechazo de la pasarela.
+    """
+    from shared.db import connection
+    _con_culqi(monkeypatch)
+    async with connection() as c:
+        await c.execute("UPDATE planes SET culqi_plan_id_mensual=$1 WHERE codigo='pro'",
+                        "pln_test_pruebasdelasuite")
+    try:
+        r = await cliente.get("/comprar/pro?periodo=mensual")
+    finally:
+        async with connection() as c:
+            await c.execute(
+                "UPDATE planes SET culqi_plan_id_mensual=NULL WHERE codigo='pro'")
+
+    assert r.status_code == 200
+    assert 'action="/comprar/culqi"' in r.text
+    assert 'name="token_id"' in r.text
+    assert 'data-culqi-centimos="9900"' in r.text, "el importe no va en centimos"
+    assert "renueva automáticamente" in r.text
+    assert "pago único" not in r.text
+    # Lo que no puede desaparecer nunca de esta pagina.
+    assert "Resumen del pedido" in r.text
+    assert "Total a pagar" in r.text
+    assert "Pagar S/ 99.00" in r.text

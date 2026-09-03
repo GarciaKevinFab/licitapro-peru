@@ -343,6 +343,257 @@ async def renovaciones_pendientes() -> list[dict]:
     return [dict(f) for f in filas]
 
 
+# ─── Suscripciones recurrentes de Culqi ──────────────────
+#
+# QUE CAMBIA RESPECTO A IZIPAY
+#
+#   Con Izipay el cobro lo disparabamos nosotros: `renovaciones_pendientes` +
+#   un cron que cobra la tarjeta guardada. Con Culqi el cobro lo dispara
+#   Culqi, cada periodo, y nos avisa. Nuestro trabajo pasa de "cobrar" a
+#   "enterarse y no equivocarse al contar los periodos".
+#
+#   Por eso lo de aqui gira todo alrededor de la misma pregunta: este aviso,
+#   ¿ya lo apliqué? Culqi reintenta lo que no recibe 200, asi que el mismo
+#   cobro puede llegar tres veces, y cada aplicacion de mas es un mes de
+#   servicio regalado que nadie reclama.
+
+DIAS_POR_PERIODO = {"mensual": 30, "anual": 365}
+
+
+def _dias_de(periodo: str) -> int:
+    return DIAS_POR_PERIODO.get(periodo, 30)
+
+
+async def suscripcion_por_culqi(subscription_id: str | None = None,
+                                customer_id: str | None = None,
+                                email: str | None = None) -> dict | None:
+    """De un identificador de Culqi a nuestra fila. None si no es nuestra.
+
+    SE BUSCA POR TRES VIAS Y EN ESTE ORDEN
+
+      El webhook trae lo que trae -- su forma exacta es POR_CONFIRMAR -- y no
+      podemos exigir un campo concreto. Se intenta de lo mas especifico a lo
+      menos:
+
+        sxn_  identifica exactamente una suscripcion nuestra.
+        cus_  identifica al cliente; si tuviera dos suscripciones habria
+              ambiguedad, pero la tabla tiene usuario_id UNICO, asi que no.
+        email ultimo recurso, y solo sirve si el correo de Culqi es el de la
+              cuenta.
+
+      Devolver None NO es un error: puede ser un aviso de otro comercio o de
+      otro producto. Quien llama lo registra y contesta 200.
+    """
+    condiciones, valores = [], []
+    if subscription_id:
+        valores.append(subscription_id)
+        condiciones.append(f"s.culqi_subscription_id = ${len(valores)}")
+    if customer_id:
+        valores.append(customer_id)
+        condiciones.append(f"s.culqi_customer_id = ${len(valores)}")
+    if email:
+        valores.append(email.strip().lower())
+        condiciones.append(f"LOWER(u.email) = ${len(valores)}")
+    if not condiciones:
+        return None
+
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            f"""SELECT s.id, s.usuario_id, s.periodo, s.plan_codigo, s.estado,
+                       s.vence, s.culqi_subscription_id, s.culqi_card_id,
+                       s.culqi_customer_id, u.email
+                  FROM suscripciones s
+                  JOIN usuarios u ON u.id = s.usuario_id
+                 WHERE {' OR '.join(condiciones)}
+                 LIMIT 1""",
+            *valores)
+    return dict(fila) if fila else None
+
+
+async def datos_culqi(usuario_id: int) -> dict | None:
+    """Los identificadores de Culqi de una cuenta, para cancelar o cambiar plan."""
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            """SELECT id, periodo, plan_codigo, estado, vence,
+                      culqi_customer_id, culqi_card_id, culqi_subscription_id,
+                      tarjeta_marca, tarjeta_ultimos
+                 FROM suscripciones WHERE usuario_id = $1""",
+            usuario_id)
+    return dict(fila) if fila else None
+
+
+async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
+                            monto, customer_id: str, card_id: str,
+                            subscription_id: str, marca: str | None = None,
+                            ultimos: str | None = None,
+                            charge_id: str | None = None,
+                            respuesta: dict | None = None) -> bool:
+    """Deja la cuenta activa tras contratar en Culqi, y registra el pago inicial.
+
+    TODO EN UNA TRANSACCION, Y NO POR PULCRITUD
+
+      Al llegar aqui la suscripcion en Culqi YA ESTA CREADA y el primer cobro
+      YA SE HIZO. Si la activacion local se quedara a medias -- suscripcion
+      activa sin pago registrado, o pago registrado sin activar --, el cliente
+      tendria un cargo en su tarjeta y una cuenta que no le deja entrar, o un
+      historial que no cuadra con su banco. O entra entero o no entra nada, y
+      quien llama cancela en Culqi lo que no pudo asentar aqui.
+
+    EL PERIODO SE CONCEDE AQUI, NO EN EL WEBHOOK
+
+      `vence` se pone a un periodo vista desde HOY. El aviso de ese mismo
+      primer cobro llegara despues por webhook, y ahi NO puede volver a
+      extender: ver `aplicar_cargo_culqi`, que reconoce este pago y lo adopta
+      en vez de contarlo dos veces.
+    """
+    import json
+    dias = _dias_de(periodo)
+    async with connection() as conn, conn.transaction():
+        susc_id = await conn.fetchval(
+            """UPDATE suscripciones
+                  SET plan_codigo=$2, periodo=$3, estado='activa',
+                      inicia=NOW(), vence=NOW() + ($4 || ' days')::interval,
+                      cancelada_en=NULL, intentos_fallidos=0,
+                      culqi_customer_id=$5, culqi_card_id=$6,
+                      culqi_subscription_id=$7,
+                      tarjeta_marca=COALESCE($8, tarjeta_marca),
+                      tarjeta_ultimos=COALESCE($9, tarjeta_ultimos)
+                WHERE usuario_id=$1
+             RETURNING id""",
+            usuario_id, plan_codigo, periodo, str(dias),
+            customer_id, card_id, subscription_id, marca, ultimos)
+        if not susc_id:
+            log.error("Culqi activo la suscripcion %s del usuario %s pero no "
+                      "hay fila local que actualizar", subscription_id, usuario_id)
+            return False
+
+        await conn.execute(
+            """INSERT INTO pagos_suscripcion
+                   (suscripcion_id, monto, moneda, estado, metodo,
+                    culqi_charge_id, respuesta, confirmado_en)
+               VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, NOW())
+               -- El WHERE no sobra: el indice de culqi_charge_id es PARCIAL, y
+               -- sin repetir su predicado Postgres no lo reconoce como arbitro
+               -- ("there is no unique or exclusion constraint matching the ON
+               -- CONFLICT specification") y el INSERT revienta. Se descubrio
+               -- corriendo las pruebas contra una base de verdad; sin base,
+               -- este error no aparece hasta el primer cliente.
+               ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+               DO NOTHING""",
+            susc_id, monto, charge_id,
+            json.dumps(respuesta) if respuesta else None)
+
+    log.info("Suscripcion de Culqi %s activada para el usuario %s (%s/%s, %s dias)",
+             subscription_id, usuario_id, plan_codigo, periodo, dias)
+    return True
+
+
+async def aplicar_cargo_culqi(suscripcion_id: int, monto, charge_id: str,
+                              event_id: str | None = None,
+                              respuesta: dict | None = None,
+                              periodo: str | None = None) -> str:
+    """Aplica un cobro de Culqi ya COMPROBADO contra su API. Idempotente.
+
+    Devuelve 'aplicado' | 'adoptado' | 'repetido'.
+
+    LOS TRES CASOS SON DISTINTOS Y HAY QUE DISTINGUIRLOS
+
+      repetido  Ese chr_ ya esta en la tabla. Culqi reintenta lo que no recibe
+                200, asi que esto es lo NORMAL, no un error. No se toca nada.
+
+      adoptado  Es el aviso del PRIMER cobro, el que disparo la creacion de la
+                suscripcion en el checkout. Ese periodo ya se concedio alli
+                (`activar_por_culqi` puso `vence` a un periodo vista), asi que
+                aqui solo se le pega el chr_ real a esa fila y NO se extiende.
+
+                Sin este caso, todo el que contrata recibiria dos periodos por
+                un pago: uno en el checkout y otro al llegar el webhook. No da
+                error, no aparece en ningun log, y son treinta dias regalados
+                por cliente.
+
+      aplicado  Una renovacion de verdad: Culqi cobro sola al vencer el
+                periodo. Se registra el pago y se extiende.
+
+    LA IDEMPOTENCIA LA GARANTIZA LA BASE, NO ESTE CODIGO
+
+      El INSERT lleva ON CONFLICT sobre el indice unico parcial de
+      culqi_charge_id. Comprobar antes con un SELECT y decidir despues es
+      exactamente la carrera que dos avisos simultaneos ganan.
+    """
+    import json
+    cuerpo = json.dumps(respuesta) if respuesta else None
+    async with connection() as conn, conn.transaction():
+        if await conn.fetchval(
+                "SELECT 1 FROM pagos_suscripcion WHERE culqi_charge_id=$1",
+                charge_id):
+            return "repetido"
+
+        # ¿Es el aviso del cobro inicial que el checkout ya asento? Se busca el
+        # pago de Culqi mas reciente sin cargo asociado. La ventana de 2 dias
+        # evita adoptar un pago viejo por accidente: un aviso que tarda dos
+        # dias en llegar ya no es el del alta.
+        adoptado = await conn.fetchval(
+            """UPDATE pagos_suscripcion
+                  SET culqi_charge_id=$2, culqi_event_id=$3,
+                      respuesta=COALESCE(respuesta, $4)
+                WHERE id = (SELECT id FROM pagos_suscripcion
+                             WHERE suscripcion_id=$1 AND metodo='culqi'
+                               AND culqi_charge_id IS NULL
+                               AND created_at > NOW() - INTERVAL '2 days'
+                             ORDER BY created_at DESC LIMIT 1)
+             RETURNING id""",
+            suscripcion_id, charge_id, event_id, cuerpo)
+        if adoptado:
+            log.info("Cargo %s adoptado por el pago inicial de la suscripcion %s: "
+                     "el periodo ya se concedio en el checkout",
+                     charge_id, suscripcion_id)
+            return "adoptado"
+
+        nuevo = await conn.fetchval(
+            """INSERT INTO pagos_suscripcion
+                   (suscripcion_id, monto, moneda, estado, metodo,
+                    culqi_charge_id, culqi_event_id, respuesta, confirmado_en)
+               VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, $5, NOW())
+               -- Mismo predicado que el indice parcial: ver activar_por_culqi.
+               ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+               DO NOTHING
+               RETURNING id""",
+            suscripcion_id, monto, charge_id, event_id, cuerpo)
+        if not nuevo:
+            # Otro aviso identico gano la carrera entre el SELECT y el INSERT.
+            return "repetido"
+
+        dias = _dias_de(periodo) if periodo else await conn.fetchval(
+            "SELECT CASE WHEN periodo='anual' THEN 365 ELSE 30 END "
+            "FROM suscripciones WHERE id=$1", suscripcion_id)
+        # Se extiende desde el vencimiento si aun no paso; si ya paso, desde
+        # hoy. Asi un cobro adelantado no regala dias ni los quita.
+        await conn.execute(
+            """UPDATE suscripciones
+                  SET estado='activa', intentos_fallidos=0,
+                      vence = GREATEST(COALESCE(vence, NOW()), NOW())
+                              + ($2 || ' days')::interval
+                WHERE id=$1""",
+            suscripcion_id, str(dias))
+
+    log.info("Cargo %s aplicado: suscripcion %s extendida", charge_id, suscripcion_id)
+    return "aplicado"
+
+
+async def limpiar_culqi(usuario_id: int) -> None:
+    """Olvida la suscripcion de Culqi de una cuenta, conservando cliente y tarjeta.
+
+    Se llama al cancelar y al cambiar de plan. El `cus_` y el `crd_` se
+    conservan a proposito: son los que permiten crear la suscripcion nueva sin
+    volver a pedirle la tarjeta al cliente. Lo que desaparece es el `sxn_`,
+    que es lo unico que deja de existir en Culqi tras un DELETE.
+    """
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE suscripciones SET culqi_subscription_id=NULL WHERE usuario_id=$1",
+            usuario_id)
+
+
 # ─── Puerta de acceso al producto ────────────────────────
 
 # Rutas que SIEMPRE se pueden usar, aunque la suscripcion este suspendida.

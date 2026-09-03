@@ -193,7 +193,73 @@ python3 -c "import secrets,string; a=string.ascii_letters+string.digits+'!@#^&*(
 `LICITAPRO_SECRET_KEY` no sufre esto: `secrets.token_urlsafe` solo produce
 letras, dígitos, `-` y `_`.
 
-## 8. Activar cobros con Izipay
+## 8. Activar el cobro automático con Culqi
+
+Izipay confirmó por escrito que la afiliación del comercio admite **solo pagos
+únicos**, no recurrentes, y que cada dominio necesita afiliación propia. Culqi
+sí tiene suscripciones nativas en soles: el cliente pone la tarjeta una vez y
+Culqi cobra cada periodo y avisa por webhook.
+
+Mientras `CULQI_MODO=simulado` (el valor por defecto) el flujo entero
+—checkout, webhook, cancelación— funciona sin tocar la red y sin cobrar nada,
+y **el sitio sigue diciendo que el pago es único**, porque es lo que ocurriría.
+Los textos de `/comprar`, `/precios`, `/terminos` y `/privacidad` cuelgan de
+`shared.culqi.cobro_recurrente()`, no de una frase escrita a mano.
+
+Para cobrar de verdad, en este orden:
+
+1. Del panel de Culqi: `CULQI_LLAVE_PUBLICA` (`pk_test_…`) y
+   `CULQI_LLAVE_SECRETA` (`sk_test_…`). Pon `CULQI_MODO=prueba`.
+2. **Averigua el intervalo** y rellena `CULQI_INTERVALO_MENSUAL` y
+   `CULQI_INTERVALO_ANUAL` — ver más abajo. Sin ellos no se crea ningún plan.
+3. `python tools/culqi_planes.py` para ver qué haría, y luego con `--aplicar`.
+   Guarda un `pln_…` por plan y periodo. Es idempotente.
+4. Registra el webhook en el panel de Culqi (Eventos → Webhooks):
+   `https://licitapro.sisac.pe/webhooks/culqi`
+   La ruta responde también a `GET` para el validador del panel.
+5. Compra de punta a punta con una tarjeta de prueba y comprueba que
+   `/suscripcion` queda **activa** con vencimiento a un periodo vista.
+6. Cuando funcione, cambia las **dos** llaves por las `pk_live_`/`sk_live_` y
+   pon `CULQI_MODO=produccion`.
+
+Si faltan las llaves, el sistema **vuelve solo a simulado**. Y con
+`CULQI_MODO=produccion` y llaves `sk_test_` se **niega a arrancar**: Culqi las
+aceptaría sin protestar y crearía suscripciones que no mueven dinero, o sea que
+el sitio parecería estar facturando sin cobrar un sol.
+
+### Lo que falta confirmar con las llaves de prueba
+
+Tres cosas, todas marcadas `POR_CONFIRMAR` en el código y ninguna inventada:
+
+1. **Qué `interval_unit_time` es mensual y cuál anual.** La documentación
+   pública sólo enseña `1` en los ejemplos y dice que el intervalo "puede ser
+   día, mes y año", sin decir cuál es cuál. Se comprueba creando un plan sonda
+   con cada valor (1, 2, 3) y mirando qué frecuencia devuelve Culqi; el
+   procedimiento exacto, con el `curl`, está en `shared/culqi.py` →
+   `intervalo_de()`. **No hay valor por defecto a propósito**: adivinar no da
+   error, da un plan mensual que cobra cada día o uno anual que no factura en
+   once meses, y ninguno de los dos avisa.
+2. **La URL vigente del script de Culqi Checkout.** Se conocen dos formas
+   publicadas (`https://checkout.culqi.com/js/v4` y
+   `https://js.culqi.com/checkout-js`) y no se pudo comprobar cuál sirve hoy.
+   Va por `CULQI_CHECKOUT_JS` y la CSP admite los dos hosts; cuando se sepa,
+   quitar el que sobre de `_CULQI_SCRIPT` en `web/app.py`.
+3. **Si el webhook trae firma y qué forma tiene su cuerpo.** El receptor está
+   hecho para no necesitarlo: saca el id del cargo y lo **comprueba contra la
+   API** con la llave secreta antes de dar un pago por bueno. Eso funciona haya
+   firma o no. Si resulta que la hay, verificarla además es una defensa más.
+
+También queda por ver en el primer intento real, con la consola abierta: si el
+desafío de 3-D Secure va en un iframe del banco emisor (haría falta añadir su
+dominio a `frame-src`) y si el script de Culqi inyecta un `<style>` en nuestra
+página (haría falta un hash en `style-src`; nunca `'unsafe-inline'`). Las dos
+cosas se ven como una violación de CSP en cuanto ocurren.
+
+## 9. Pago único con Izipay (el camino anterior, que sigue vivo)
+
+La afiliación de Izipay sigue activa y sirve para el pago único. No se ha
+quitado nada: hay cobros registrados con su número de orden y pagos manuales
+—efectivo, Yape, transferencia— en el mismo historial.
 
 Mientras `IZIPAY_MODO=simulado`, el flujo de suscripción funciona completo pero
 no cobra nada. Para cobrar de verdad:
@@ -223,7 +289,14 @@ ante cualquier cuerpo:
 Reserva medio día para ajustar esos tres puntos contra su documentación real.
 Están aislados en un solo archivo justamente para eso.
 
-## 9. Renovaciones automáticas
+## 10. Renovaciones automáticas
+
+**Con Culqi este cron no hace falta**: las suscripciones recurrentes las cobra
+Culqi por su cuenta y nos avisa por `POST /webhooks/culqi`. El cron de abajo es
+para las cuentas que quedaron con tarjeta guardada en Izipay; mientras haya
+alguna, se deja puesto. Nunca cobra dos veces a la misma cuenta:
+`renovaciones_pendientes` sólo mira las que tienen `token_tarjeta` de Izipay, y
+las de Culqi no lo tienen.
 
 Las suscripciones vencidas con tarjeta guardada se renuevan con un cron diario:
 
@@ -236,7 +309,7 @@ vencimiento y la suspensión hay 7 días de gracia en los que el cliente sigue
 teniendo acceso: una tarjeta rebota por mil motivos, y cortarle el servicio a
 alguien que sí quiere pagar es la forma más cara de perderlo.
 
-## 10. Respaldos
+## 11. Respaldos
 
 Sin esto, un disco perdido son todos tus clientes perdidos. Y Supabase en su
 plan gratuito **no da restauración a demanda**: la copia tiene que ser tuya.
@@ -343,7 +416,7 @@ clásico de una restauración a medias.
 gunzip -c /respaldos/licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "${DATABASE_URL/:6543/:5432}"
 ```
 
-## 11. Comprobaciones de salud
+## 12. Comprobaciones de salud
 
 ### Auditorías del código
 
@@ -396,7 +469,7 @@ doscientos mensajes iguales.
 > GitHub desactiva los `cron` de los repositorios sin actividad durante 60
 > días. Si el proyecto se queda quieto, este vigía se apaga solo.
 
-## 11.bis El puente de OECE: montar la máquina peruana
+## 12.bis El puente de OECE: montar la máquina peruana
 
 OECE responde **403 a todo el tráfico del VPS** —sale por una IP de datacenter
 fuera de Perú— y **200 desde una conexión peruana**. Se intentó una pasarela
@@ -459,7 +532,7 @@ cosecha (§11). Esa es la red que hace tolerable depender de una PC de casa: no
 evita que se apague, pero convierte «nadie trae datos desde el viernes» en un
 mensaje esa misma mañana.
 
-## 12. Antes de abrir al público
+## 13. Antes de abrir al público
 
 - [ ] `LICITAPRO_SECRET_KEY` generada y guardada fuera del servidor
 - [ ] `LICITAPRO_ENTORNO=produccion`
@@ -469,7 +542,15 @@ mensaje esa misma mañana.
 - [x] Respaldos programados en el cron del host **y una restauración probada**
 - [x] `RESPALDO_REMOTO` apuntando fuera del servidor (R2)
 - [ ] Secretos del vigía (`RADAR_BOT_TOKEN`, `TELEGRAM_ADMIN_ID`) en GitHub
-- [ ] Webhook de Izipay registrado y con `IZIPAY_HMAC_KEY`
+- [ ] `CULQI_INTERVALO_MENSUAL` y `CULQI_INTERVALO_ANUAL` **comprobados**
+      contra la llave de prueba, no adivinados
+- [ ] `tools/culqi_planes.py --aplicar` corrido: un `pln_` por plan y periodo
+- [ ] Webhook de Culqi registrado en su panel (`/webhooks/culqi`) y probado con
+      una compra de prueba de punta a punta
+- [ ] `CULQI_MODO=produccion` con llaves `pk_live_`/`sk_live_` (con las de
+      prueba se niega a arrancar, a propósito)
+- [ ] Webhook de Izipay registrado y con `IZIPAY_HMAC_KEY` (sólo si se sigue
+      usando el pago único)
 - [ ] Términos de servicio y política de privacidad publicados
       (Ley 29733: guardas RUC, DNI y firmas de terceros)
 

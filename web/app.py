@@ -140,7 +140,61 @@ async def permitir_head(request: Request, call_next):
 # El nonce se genera por peticion y NUNCA se reutiliza: un nonce fijo es lo
 # mismo que 'unsafe-inline' con pasos extra, porque el atacante puede leerlo
 # del HTML y ponerselo a su propia etiqueta.
+# LOS ORIGENES DE CULQI, Y POR QUE NO ESTAN SIEMPRE
+#
+#   Culqi Checkout se carga desde un dominio suyo y tokeniza la tarjeta contra
+#   su API: sin abrirle hueco en la CSP, el navegador bloquea el script y el
+#   boton de pagar no hace NADA. Sin error visible para el usuario, solo una
+#   linea en la consola que nadie mira.
+#
+#   Se anaden solo cuando la ruta recurrente esta activa. Una excepcion de CSP
+#   sin uso es una puerta abierta, y mientras no haya llaves de Culqi el sitio
+#   no habla con Culqi.
+#
+#   Los DOS hosts del script van juntos porque no esta confirmado cual es el
+#   vigente (POR_CONFIRMAR en web/comprar.py: CHECKOUT_JS). Cuando se compruebe
+#   con las llaves de prueba, sobra el que no se use: quitarlo entonces.
+_CULQI_SCRIPT = ("https://checkout.culqi.com", "https://js.culqi.com")
+# La tokenizacion viaja del navegador a Culqi, no por nuestro servidor: es lo
+# que nos mantiene fuera del alcance de PCI-DSS, y por eso hace falta
+# connect-src. `secure.culqi.com` aparece en su documentacion de 3-D Secure.
+_CULQI_API = ("https://api.culqi.com", "https://secure.culqi.com",
+              "https://3ds.culqi.com")
+
+
+def _origenes_culqi() -> dict:
+    """Que hosts hay que abrirle a Culqi, o nada si la pasarela esta apagada."""
+    from shared import culqi
+    if not culqi.cobro_recurrente():
+        return {"script": "", "connect": "", "frame": "", "img": "", "style": ""}
+    script = " " + " ".join(_CULQI_SCRIPT)
+    return {
+        "script": script,
+        "connect": script + " " + " ".join(_CULQI_API),
+        # El formulario de tarjeta vive en un iframe de Culqi. Y el desafio de
+        # 3-D Secure lo pinta el BANCO EMISOR, en su propio dominio, que no se
+        # puede conocer de antemano.
+        #
+        # POR_CONFIRMAR: si el 3DS de Culqi v4 va por iframe anidado o por
+        # redireccion completa. Si fuera lo primero, aqui faltaria el dominio
+        # del banco y el desafio saldria en blanco -- con la tarjeta ya
+        # tokenizada y el cobro sin terminar, que es el peor sitio donde
+        # fallar. Se comprueba en cinco minutos con una tarjeta de prueba con
+        # 3DS y la consola abierta: una violacion de frame-src lo delata.
+        "frame": script + " " + " ".join(_CULQI_API),
+        "img": script,
+        # POR_CONFIRMAR: si el script de Culqi inyecta un <style> en NUESTRA
+        # pagina (no en su iframe, que tiene su propia politica). Si lo hace,
+        # style-src lo bloquea -- no admite 'unsafe-inline' y no podemos ponerle
+        # nuestro nonce a una etiqueta que crea un tercero -- y el modal saldria
+        # sin estilos. Se ve en la consola al primer intento; la salida seria un
+        # hash, nunca 'unsafe-inline'.
+        "style": script,
+    }
+
+
 def _csp(nonce: str) -> str:
+    culqi_src = _origenes_culqi()
     return "; ".join([
         "default-src 'self'",
         # cloudflareinsights: Cloudflare inyecta su beacon de analitica DESDE EL
@@ -154,14 +208,20 @@ def _csp(nonce: str) -> str:
         # Se admite el origen exacto, no un comodin. Y si algun dia se desactiva
         # la insercion automatica en el panel de Cloudflare, esta linea sobra:
         # quitarla entonces, que una excepcion sin uso es una puerta abierta.
-        "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com",
-        f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
+        "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com"
+        + culqi_src["script"],
+        f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com"
+        + culqi_src["style"],
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data:",
+        "img-src 'self' data:" + culqi_src["img"],
         # El beacon manda las medidas por fetch a este origen; sin esto carga
         # el script pero el envio se bloquea, que es la misma nada con mas pasos.
-        "connect-src 'self' https://cloudflareinsights.com",
+        "connect-src 'self' https://cloudflareinsights.com" + culqi_src["connect"],
         "form-action 'self'",
+        # frame-src, no frame-ancestors: quien nos mete a NOSOTROS en un marco
+        # sigue prohibido (frame-ancestors 'none'); lo que se abre es que
+        # nosotros metamos el formulario de tarjeta de Culqi en uno.
+        "frame-src 'self'" + culqi_src["frame"],
         "frame-ancestors 'none'",
         "base-uri 'self'",
         "object-src 'none'",
@@ -232,6 +292,7 @@ from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
 from web.comprar import router as router_comprar  # noqa: E402
 from web.reclamaciones import router as router_reclamaciones  # noqa: E402
+from web.webhooks_culqi import router as router_culqi_webhook
 from web.webhooks_whatsapp import router as router_wa_webhook
 from web.admin import router as router_admin  # noqa: E402
 from web.informes import router as router_informes  # noqa: E402
@@ -283,6 +344,25 @@ templates.env.globals["estatico"] = estatico
 from web.comprar import _comercio as _identidad_comercio  # noqa: E402
 templates.env.globals["identidad"] = _identidad_comercio
 
+# QUE SE PUEDE PROMETER SOBRE EL COBRO, ATADO A UN HECHO Y NO A UNA FRASE
+#
+#   La semana pasada hubo que corregir /comprar, /precios y /terminos: los tres
+#   afirmaban que la suscripcion se renovaba sola y que un cobro fallido se
+#   reintentaba, con una pasarela que solo hacia pagos unicos. Nadie mintio a
+#   proposito: la promesa estaba escrita a mano en tres plantillas y la realidad
+#   cambio en otro sitio.
+#
+#   Ahora las tres preguntan lo mismo -- ¿esta viva la ruta recurrente? -- y la
+#   respuesta sale de las llaves configuradas. Sin llaves, el texto vuelve solo
+#   a decir "pago unico", porque es lo que ocurriria. No hay nada que acordarse
+#   de editar el dia que esto cambie en cualquiera de los dos sentidos.
+#
+#   Va como FUNCION y no como valor resuelto, por lo mismo que `identidad`: un
+#   cambio en el .env tiene que verse sin reiniciar, y las pruebas tienen que
+#   poder manipularlo.
+from shared.culqi import cobro_recurrente  # noqa: E402
+templates.env.globals["cobro_recurrente"] = cobro_recurrente
+
 app.include_router(router_auth)
 app.include_router(router_config)
 app.include_router(router_empresas)
@@ -291,6 +371,7 @@ app.include_router(router_contratos)
 app.include_router(router_suscripcion)
 app.include_router(router_comprar)
 app.include_router(router_reclamaciones)
+app.include_router(router_culqi_webhook)
 app.include_router(router_wa_webhook)
 app.include_router(router_admin)
 app.include_router(router_informes)

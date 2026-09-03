@@ -59,11 +59,16 @@ main{max-width:900px}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
-  {% if modo_pasarela == 'simulado' %}
+  {# El aviso mira las DOS pasarelas. Con Culqi activo el cobro es real aunque
+     Izipay siga simulado, y decir "no se cobra nada" seria mentir justo en la
+     pantalla donde alguien decide si probar un pago. #}
+  {% if modo_pasarela == 'simulado' and not culqi_activo %}
     <div class="mensaje aviso">
-      <b>Pasarela en modo simulado.</b> No se cobra nada real. Para cobrar de verdad
-      configura <code>IZIPAY_MODO</code>, <code>IZIPAY_MERCHANT_CODE</code> e
-      <code>IZIPAY_API_KEY</code>.
+      <b>Pasarela en modo simulado.</b> No se cobra nada real. Para el cobro
+      automático configura <code>CULQI_MODO</code>,
+      <code>CULQI_LLAVE_PUBLICA</code> y <code>CULQI_LLAVE_SECRETA</code>; para
+      el pago único, <code>IZIPAY_MODO</code>,
+      <code>IZIPAY_MERCHANT_CODE</code> e <code>IZIPAY_API_KEY</code>.
     </div>
   {% endif %}
 
@@ -89,13 +94,31 @@ main{max-width:900px}
           Suscripción suspendida. Paga para recuperar el acceso.
         </div>
       {% endif %}
+      {% if culqi_sxn %}
+        {# CON COBRO AUTOMATICO NO SE ENSENA EL BOTON DE PAGAR A MANO
+
+           Ese boton va al cobro de pago unico de Izipay. Pulsarlo teniendo una
+           suscripcion viva en Culqi seria pagar DOS VECES el mismo periodo, y
+           el cliente no tiene forma de saberlo mirando la pantalla. Se
+           sustituye por lo que de verdad pasa. #}
+        <p class="ayuda mt-14">Tu plan se renueva automáticamente cada
+           {{ s.periodo }}{% if s.tarjeta_ultimos %} con la tarjeta
+           {{ s.tarjeta_marca or '' }} ····{{ s.tarjeta_ultimos }}{% endif %}.
+           No tienes que hacer nada.</p>
+      {% endif %}
       <div class="acciones mt-16">
-        <form method="post" action="/suscripcion/pagar">
-          <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
-        </form>
+        {% if not culqi_sxn %}
+          <form method="post" action="/suscripcion/pagar">
+            <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
+          </form>
+        {% endif %}
         {% if s.estado_efectivo != 'cancelada' %}
+          {# La confirmacion dice lo que de verdad va a pasar. Con una
+             suscripcion viva en Culqi, cancelar es IRREVERSIBLE: Culqi no
+             reactiva nada, hay que contratar de cero y volver a escribir la
+             tarjeta. Decirlo despues no sirve de nada. #}
           <form method="post" action="/suscripcion/cancelar"
-                data-confirmar="¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.">
+                data-confirmar="{% if culqi_sxn %}¿Cancelar el cobro automático? Es irreversible: para volver tendrás que contratar de nuevo e introducir tu tarjeta otra vez. Conservas el acceso hasta el fin del periodo ya pagado.{% else %}¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.{% endif %}">
             <button type="submit" class="peligro">Cancelar</button></form>
         {% endif %}
       </div>
@@ -128,7 +151,14 @@ main{max-width:900px}
             {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
           </ul>
           {% if p.precio_mensual and p.precio_mensual > 0 %}
-            <form method="post" action="/suscripcion/elegir">
+            {# Con una suscripcion viva en Culqi, "Elegir" no cambia una fila:
+               cancela el cobro recurrente actual y crea otro, que cobra el
+               plan nuevo ya mismo. Eso hay que decirlo ANTES, no en el aviso
+               de despues. #}
+            <form method="post" action="/suscripcion/elegir"
+                  {% if culqi_sxn and s.plan_codigo != p.codigo %}
+                  data-confirmar="Cambiar al plan {{ p.nombre }} cancela tu cobro automático actual y crea uno nuevo, que se cobra ahora con la misma tarjeta. ¿Continuamos?"
+                  {% endif %}>
               <input type="hidden" name="plan" value="{{ p.codigo }}">
               <select name="periodo" aria-label="Periodo de pago del plan {{ p.nombre }}">
                 <option value="mensual">Mensual</option>
@@ -155,7 +185,10 @@ main{max-width:900px}
       {% for h in historial %}
         <tr>
           <td class="num">{{ h.created_at.strftime('%d/%m/%Y') if h.created_at else '—' }}</td>
-          <td class="num">{{ h.izipay_order_number or '—' }}</td>
+          {# La referencia sale de la pasarela que hizo el cobro: los de Culqi
+             no tienen numero de orden de Izipay y saldrian todos como "—",
+             dejando el historial sin nada con que reclamar. #}
+          <td class="num">{{ h.izipay_order_number or h.culqi_charge_id or '—' }}</td>
           <td class="num">S/ {{ '%.2f'|format(h.monto) }}</td>
           <td class="num">−{{ '%.2f'|format(comision(h.monto|float)) }}</td>
           <td><span class="pill {% if h.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ h.estado }}</span></td>
@@ -164,8 +197,12 @@ main{max-width:900px}
       </tbody>
     </table>
     </div>
-    <p class="ayuda mt-12">La comisión es la que retiene Izipay:
-       4.06% + S/0.81 por cobro, con IGV incluido.</p>
+    {# La comision no es la misma en las dos pasarelas, y esta columna es la que
+       el dueno usa para saber lo que le queda. Dejarla fija con la de Izipay
+       daria un neto equivocado en cuanto empiece a cobrar por Culqi. #}
+    <p class="ayuda mt-12">La comisión es la que retiene
+       {% if culqi_activo %}Culqi: 3.99% + S/0.90 por cobro{% else %}Izipay:
+       4.06% + S/0.81 por cobro{% endif %}, con IGV incluido.</p>
   </div>
   {% endif %}
 {% endblock %}

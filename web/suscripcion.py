@@ -5,10 +5,11 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from shared import izipay
+from shared import culqi, izipay
 from shared.db import connection
 from shared.suscripciones import (
-    cambiar_plan, cancelar, confirmar_pago, estado_suscripcion, registrar_intento,
+    activar_por_culqi, cambiar_plan, cancelar, confirmar_pago, datos_culqi,
+    estado_suscripcion, limpiar_culqi, registrar_intento,
 )
 from web.auth import usuario_actual
 
@@ -41,24 +42,120 @@ async def ver(request: Request, aviso: str = "", error: str = ""):
                 ORDER BY ps.created_at DESC LIMIT 12""",
             usuario["id"])
 
+    # `sxn` es lo que distingue "esta cuenta se cobra sola" de "hay que
+    # perseguirla cada periodo", y de eso dependen tres cosas en la pantalla:
+    # si se ensena el boton de pagar a mano, que dice la confirmacion de
+    # cancelar y que avisa el cambio de plan.
+    culqi_datos = await datos_culqi(usuario["id"]) if susc.get("existe") else None
     return _plantillas(request).TemplateResponse("suscripcion.html", {
         "request": request, "usuario": usuario, "s": susc,
         "planes": await _planes(), "historial": historial,
-        "modo_pasarela": izipay.modo(), "comision": izipay.comision_estimada,
+        "modo_pasarela": izipay.modo(),
+        # La comision de la pasarela que de verdad cobra. Con Culqi activo,
+        # seguir restando la de Izipay daria un neto equivocado en la unica
+        # pantalla donde el dueno mira lo que le queda.
+        "comision": (culqi.comision_estimada if culqi.cobro_recurrente()
+                     else izipay.comision_estimada),
+        "culqi_activo": culqi.cobro_recurrente(),
+        "culqi_sxn": (culqi_datos or {}).get("culqi_subscription_id"),
         "aviso": aviso, "error": error,
     })
 
 
 @router.post("/suscripcion/elegir")
 async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("mensual")):
+    """Cambia de plan. Con Culqi eso es cancelar una suscripcion y crear otra.
+
+    POR QUE NO ES UN UPDATE
+
+      En Culqi el importe y la frecuencia viven DENTRO del plan, y una
+      suscripcion apunta a un plan concreto. No existe "cambiale el plan a esta
+      suscripcion": hay que cancelar la vieja y crear otra contra el plan nuevo.
+      La tarjeta se reaprovecha -- el `crd_` sigue guardado --, asi que el
+      cliente no vuelve a escribirla para algo que el vive como un simple
+      cambio de plan.
+
+    SE CANCELA ANTES DE CREAR, Y ES LA MENOS MALA DE LAS DOS OPCIONES
+
+      Lo comodo seria crear la nueva y cancelar la vieja solo si sale bien.
+      Pero entonces habria un instante con DOS suscripciones vivas sobre la
+      misma tarjeta, y un proceso que muera justo ahi deja al cliente con dos
+      cobros recurrentes -- que descubre en su extracto, un mes despues.
+
+      Cancelando primero, el hueco malo pasa a ser "un segundo sin cobro
+      automatico", que se ve en esta misma pantalla y se arregla volviendo a
+      elegir el plan. Si la creacion falla, se dice con todas las letras que el
+      cobro automatico quedo desactivado.
+    """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
+
+    datos = await datos_culqi(usuario["id"])
+    sxn = (datos or {}).get("culqi_subscription_id")
+    tarjeta = (datos or {}).get("culqi_card_id")
+
     if not await cambiar_plan(usuario["id"], plan, periodo):
         return RedirectResponse("/suscripcion?error=Plan+o+periodo+no+valido",
                                 status_code=303)
-    return RedirectResponse("/suscripcion?aviso=Plan+actualizado.+Ya+puedes+pagar",
-                            status_code=303)
+
+    # Sin suscripcion recurrente viva, cambiar de plan es lo que siempre fue:
+    # un cambio de fila. El cobro llegara cuando el cliente pague.
+    if not (sxn and tarjeta and culqi.cobro_recurrente()):
+        return RedirectResponse("/suscripcion?aviso=Plan+actualizado.+Ya+puedes+pagar",
+                                status_code=303)
+
+    from web.comprar import plan_culqi_id
+    plan_id = await plan_culqi_id(plan, periodo)
+    if not plan_id:
+        log.error("Cambio de plan a %s/%s sin plan de Culqi sincronizado",
+                  plan, periodo)
+        return RedirectResponse(_con_error(
+            "/suscripcion",
+            "Ese plan aún no admite cobro automático. Escríbenos y lo "
+            "resolvemos."), status_code=303)
+
+    try:
+        await culqi.cancelar_suscripcion(sxn)
+    except culqi.ErrorCulqi as e:
+        log.error("No se pudo cancelar %s al cambiar de plan: %s", sxn,
+                  e.merchant_message)
+        return RedirectResponse(_con_error(
+            "/suscripcion",
+            "No pudimos cambiar el cobro automático. No hemos tocado nada: "
+            "vuelve a intentarlo en un momento."), status_code=303)
+    await limpiar_culqi(usuario["id"])
+
+    susc = await estado_suscripcion(usuario["id"])
+    monto = (susc.get("precio_anual") if periodo == "anual"
+             else susc.get("precio_mensual"))
+    try:
+        nueva = await culqi.crear_suscripcion(
+            tarjeta, plan_id,
+            metadata={"usuario_id": usuario["id"], "plan_codigo": plan,
+                      "periodo": periodo, "producto": "licitapro",
+                      "cambio_desde": sxn})
+    except culqi.ErrorCulqi as e:
+        log.error("Suscripcion vieja %s cancelada y la nueva (%s/%s) fallo para "
+                  "%s: %s. La cuenta se queda SIN cobro automatico.",
+                  sxn, plan, periodo, usuario["email"], e.merchant_message)
+        return RedirectResponse(_con_error(
+            "/suscripcion",
+            f"Cambiamos tu plan, pero el cobro automático quedó desactivado: "
+            f"{e.user_message} Vuelve a contratarlo desde Precios."),
+            status_code=303)
+
+    await activar_por_culqi(
+        usuario_id=usuario["id"], plan_codigo=plan, periodo=periodo,
+        monto=monto, customer_id=(datos or {}).get("culqi_customer_id"),
+        card_id=tarjeta, subscription_id=nueva["id"],
+        respuesta={"origen": "cambio_de_plan", "anterior": sxn,
+                   "suscripcion": nueva})
+    log.info("Plan de %s cambiado a %s/%s: %s -> %s", usuario["email"], plan,
+             periodo, sxn, nueva["id"])
+    return RedirectResponse(
+        "/suscripcion?aviso=Plan+cambiado.+Se+renueva+solo+cada+periodo",
+        status_code=303)
 
 
 def _con_error(ruta: str, texto: str) -> str:
@@ -228,9 +325,45 @@ async def webhook(request: Request):
 
 @router.post("/suscripcion/cancelar")
 async def cancelar_suscripcion(request: Request):
+    """Cancela en Culqi y aqui. El acceso se conserva hasta el fin del periodo.
+
+    EL ORDEN IMPORTA: PRIMERO CULQI
+
+      Marcar la cancelacion aqui y fallar alli dejaria a Culqi cobrando cada
+      periodo a alguien que ve "cancelada" en su cuenta. Es la peor de las dos
+      equivocaciones posibles: un cargo que el cliente no espera y que ademas
+      nuestra propia pantalla desmiente.
+
+      Al reves -- cancelar alli y fallar aqui -- deja una cuenta que dice
+      "activa" y ya no se cobra. Se corrige sola en cuanto venza, y mientras
+      tanto el cliente tiene de mas, no de menos.
+
+    ES IRREVERSIBLE, Y SE AVISA ANTES
+
+      Culqi no reactiva una suscripcion cancelada: para volver hay que crear
+      otra, o sea pedir la tarjeta de nuevo. La confirmacion de la plantilla lo
+      dice con esas palabras cuando hay una suscripcion viva en Culqi.
+    """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
+
+    datos = await datos_culqi(usuario["id"])
+    sxn = (datos or {}).get("culqi_subscription_id")
+    if sxn:
+        try:
+            await culqi.cancelar_suscripcion(sxn)
+        except culqi.ErrorCulqi as e:
+            log.error("No se pudo cancelar la suscripcion %s de %s en Culqi: %s",
+                      sxn, usuario["email"], e.merchant_message)
+            return RedirectResponse(_con_error(
+                "/suscripcion",
+                "No pudimos cancelar el cobro automático. No hemos tocado nada: "
+                "vuelve a intentarlo o escríbenos y lo cancelamos nosotros."),
+                status_code=303)
+        await limpiar_culqi(usuario["id"])
+        log.info("Suscripcion de Culqi %s cancelada por %s", sxn, usuario["email"])
+
     await cancelar(usuario["id"])
     return RedirectResponse(
         "/suscripcion?aviso=Suscripcion+cancelada.+Conservas+el+acceso+hasta+el+fin+del+periodo",

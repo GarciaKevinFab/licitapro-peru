@@ -120,7 +120,28 @@ main{max-width:920px}
       {# data-validar: el error del campo sale debajo del control, en --urg, en
          vez del globo nativo. data-cargando: al pulsar, el boton se deshabilita
          y lo dice; en un pago, un doble clic es un doble cargo en potencia. #}
+      {# CON CULQI EL FORMULARIO CAMBIA DE DESTINO, NO DE FORMA
+
+         La pagina sigue renderizada en el servidor con su resumen, su total y
+         su boton: es lo que hace el sitio validable desde fuera, y eso no se
+         toca. Lo unico que cambia es adonde va el envio y que antes pasa por
+         el formulario de tarjeta de Culqi, que devuelve un token.
+
+         `data-cargando` solo va en la ruta de pago unico: con Culqi el estado
+         del boton lo lleva culqi-checkout.js, que sabe devolverlo a su sitio
+         si el usuario cierra el modal sin pagar. #}
+      {% if culqi %}
+      <form method="post" action="/comprar/culqi" data-validar
+            data-culqi-llave="{{ culqi.llave_publica }}"
+            data-culqi-centimos="{{ culqi.centimos }}"
+            data-culqi-titulo="{{ culqi.titulo }}"
+            data-culqi-descripcion="{{ culqi.descripcion }}">
+        {# Lo rellena culqi-checkout.js con el `tkn_…` que devuelve Culqi. La
+           tarjeta no pasa por aqui: viaja del navegador a Culqi. #}
+        <input type="hidden" name="token_id" value="">
+      {% else %}
       <form method="post" action="/comprar" data-validar data-cargando="Preparando el pago…">
+      {% endif %}
         {# El plan y el periodo viajan en el formulario y no solo en la URL. El
            servidor los vuelve a validar contra la tabla `planes` y recalcula el
            importe alli antes de cobrar: tocarlos aqui no compra un plan que no
@@ -149,13 +170,29 @@ main{max-width:920px}
         </div>
       </form>
 
+      {# EL TEXTO SALE DE LO QUE LA PASARELA HACE HOY, NO DE LO QUE QUEREMOS
+
+         La semana pasada hubo que corregir esta misma frase: prometia
+         renovacion automatica y la pasarela de entonces solo hacia pagos
+         unicos. Para que no vuelva a pasar, la promesa cuelga de un hecho
+         comprobable -- que la ruta recurrente de Culqi este activa -- y no de
+         que alguien se acuerde de editar la plantilla el dia que cambie. #}
       <p class="legal">
         Al pulsar <b>Pagar</b> aceptas los <a href="/terminos">términos del
-        servicio</a> y la <a href="/privacidad">política de privacidad</a>. El
-        cobro lo procesa <b>Izipay</b>: los datos de tu tarjeta viajan directos
-        a la pasarela y LicitaPro nunca los ve ni los guarda. Este es un pago único:
-        cubre el periodo que elegiste y no queda ningún cobro programado. Antes
-        de que venza te avisamos por correo para que renueves si quieres seguir.
+        servicio</a> y la <a href="/privacidad">política de privacidad</a>.
+        {% if culqi %}
+          El cobro lo procesa <b>Culqi</b>: los datos de tu tarjeta viajan
+          directos a la pasarela y LicitaPro nunca los ve ni los guarda. La
+          suscripción se renueva automáticamente cada periodo y puedes
+          cancelarla cuando quieras desde tu cuenta, conservando el acceso
+          hasta el final del periodo pagado.
+        {% else %}
+          El cobro lo procesa <b>Izipay</b>: los datos de tu tarjeta viajan
+          directos a la pasarela y LicitaPro nunca los ve ni los guarda. Este
+          es un pago único: cubre el periodo que elegiste y no queda ningún
+          cobro programado. Antes de que venza te avisamos por correo para que
+          renueves si quieres seguir.
+        {% endif %}
       </p>
 
       <div class="medios">
@@ -178,4 +215,18 @@ main{max-width:920px}
 
   </div>
 </main>
+{% endblock %}
+
+{% block scripts %}
+{% if culqi %}
+  {# El script de Culqi va con el nonce del dia, como todo lo demas. Hoy
+     script-src autoriza a Culqi POR ORIGEN y el nonce es inerte aqui; se pone
+     igualmente para que la etiqueta siga siendo correcta el dia que script-src
+     pase a exigirlo, que es cuando descubrirlo cuesta caro.
+
+     `defer` en los dos y en este orden: el de Culqi define window.Culqi y el
+     nuestro lo usa. Los deferidos se ejecutan en orden de documento. #}
+  <script nonce="{{ request.state.csp_nonce }}" src="{{ culqi.script }}" defer></script>
+  <script nonce="{{ request.state.csp_nonce }}" src="{{ estatico('culqi-checkout.js') }}" defer></script>
+{% endif %}
 {% endblock %}
