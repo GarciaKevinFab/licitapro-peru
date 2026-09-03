@@ -504,3 +504,39 @@ async def test_los_identificadores_simulados_se_ven_a_simple_vista(monkeypatch):
     cliente = await culqi.crear_cliente("cliente@ejemplo.pe")
     assert "_sim_" in cliente["id"]
     assert cliente["simulado"] is True
+
+
+# ─── El comando de planes no crea nada al importarse ─────
+
+def test_importar_el_comando_de_planes_no_crea_planes():
+    """Mismo guardia que `tools/renovar_suscripciones.py`, y por lo mismo.
+
+    Alli, un `asyncio.run(main())` suelto a nivel de modulo convertia un import
+    en una ronda de cobros a todos los clientes. Aqui convertiria un import en
+    una tanda de planes creados en Culqi -- y Culqi NO deja borrar un plan con
+    suscripciones vivas, asi que la basura se queda en el panel para siempre.
+
+    Se comprueba leyendo el fichero y no importandolo: importarlo es
+    precisamente lo que no debe tener efectos, y una prueba que lo hiciera
+    crearia los planes de verdad si el guardia desapareciera.
+    """
+    import pathlib
+    fuente = (pathlib.Path(__file__).resolve().parent.parent
+              / "tools" / "culqi_planes.py").read_text(encoding="utf-8")
+
+    for linea in fuente.splitlines():
+        if "asyncio.run(" in linea and not linea.lstrip().startswith("#"):
+            assert linea.startswith("    "), (
+                "asyncio.run() esta a nivel de modulo: importar "
+                "tools/culqi_planes crearia planes en Culqi")
+    assert 'if __name__ == "__main__":' in fuente, "falta el guardia de __main__"
+
+
+def test_el_short_name_del_plan_sale_del_codigo_y_no_del_nombre():
+    """El nombre visible cambia ("Pro" -> "Pro 2026") y el short_name quedaria
+    describiendo otra cosa. El codigo de la tabla es la identidad estable."""
+    from tools.culqi_planes import short_name
+    assert short_name("pro", "mensual") == "plan-pro-mensual"
+    assert short_name("empresa", "anual") == "plan-empresa-anual"
+    # Sin tildes ni mayusculas: Culqi trata short_name como identificador.
+    assert short_name("Básico", "mensual") == "plan-basico-mensual"
