@@ -36,7 +36,10 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import ia
-from shared.db import connection
+from shared.admin_cuentas import (
+    FILTROS_ESTADO, filtrar_cuentas, ingresos_del_mes, listar_cuentas,
+    planes_activos, resumir_cuentas,
+)
 from shared.suscripciones import activar_manual
 from web.auth import usuario_actual
 
@@ -80,33 +83,27 @@ async def gasto_ia(request: Request):
 
 
 @router.get("/admin/clientes", response_class=HTMLResponse)
-async def clientes(request: Request, aviso: str = "", error: str = ""):
-    """Cada cuenta con su plan, y un formulario por fila para ponerlo a mano.
+async def clientes(request: Request, q: str = "", plan: str = "", estado: str = "",
+                   aviso: str = "", error: str = ""):
+    """Cada cuenta con su plan, sus recuentos y las acciones sobre ella.
 
-    Para el cliente que paga en efectivo, por Yape o por transferencia, o al
-    que se le regala un periodo: sin esta pantalla el unico camino para activar
-    un plan era la pasarela, y el dueno no podia honrar un pago ya recibido.
+    Es la consola multi-cuenta: la misma pantalla desde la que en CargoXprez
+    se listan las empresas y se entra en cualquiera. Aqui el inquilino es la
+    cuenta (`usuarios`), y las empresas cuelgan de ella.
+
+    Los filtros van por GET para que una busqueda se pueda guardar como
+    marcador y compartir por el enlace: "mira esta cuenta" es un URL.
     """
     usuario = await _exige_dueno(request)
-    async with connection() as conn:
-        cuentas = await conn.fetch(
-            """SELECT u.id, u.email, u.nombre, u.activo, u.created_at,
-                      s.plan_codigo, s.estado, s.periodo, s.vence, s.inicia,
-                      p.nombre AS plan_nombre,
-                      (SELECT count(*) FROM empresas e WHERE e.usuario_id = u.id) AS empresas,
-                      (SELECT max(ps.confirmado_en) FROM pagos_suscripcion ps
-                         WHERE ps.suscripcion_id = s.id AND ps.estado = 'pagado') AS ultimo_pago,
-                      (SELECT ps.metodo FROM pagos_suscripcion ps
-                         WHERE ps.suscripcion_id = s.id AND ps.estado = 'pagado'
-                         ORDER BY ps.confirmado_en DESC LIMIT 1) AS ultimo_metodo
-                 FROM usuarios u
-                 LEFT JOIN suscripciones s ON s.usuario_id = u.id
-                 LEFT JOIN planes p ON p.codigo = s.plan_codigo
-                ORDER BY u.created_at DESC""")
-        planes = await conn.fetch(
-            "SELECT codigo, nombre, precio_mensual, precio_anual FROM planes WHERE activo ORDER BY orden")
+    filas, con_acceso = await listar_cuentas()
+    if estado not in FILTROS_ESTADO:
+        estado = ""
     return _plantillas(request).TemplateResponse("admin_clientes.html", {
-        "request": request, "usuario": usuario, "cuentas": cuentas, "planes": planes,
+        "request": request, "usuario": usuario,
+        "cuentas": filtrar_cuentas(filas, q, plan, estado),
+        "cifras": {**resumir_cuentas(filas), "ingresos": await ingresos_del_mes()},
+        "planes": await planes_activos(), "con_acceso": con_acceso,
+        "q": q, "plan": plan, "estado": estado, "estados": FILTROS_ESTADO,
         "hoy": date.today(), "aviso": aviso, "error": error,
     })
 

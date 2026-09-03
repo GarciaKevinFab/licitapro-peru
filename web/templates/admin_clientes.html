@@ -1,103 +1,155 @@
 {% extends "_base.html" %}
 {% block titulo %}Clientes · LicitaPro{% endblock %}
-{% set titulo_pagina = 'Clientes y planes' %}
-{% set sub_pagina = 'Cada cuenta con su plan. Cámbialo a mano cuando alguien paga en efectivo, por Yape o por transferencia, o para regalar un periodo: lo que pongas aquí manda sobre la pasarela.' %}
+{% set titulo_pagina = 'Clientes' %}
+{% set sub_pagina = 'Cada cuenta es un inquilino con sus empresas, propuestas y contratos. Desde aquí se da de alta, se pone el plan a mano, se entra a mirar y se elimina.' %}
 {% block estilos %}
-main{max-width:1180px}
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+{% include "_admin_estilos.html" %}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px}
+.filtros label.campo{flex:1 1 150px}
+.filtros label.campo.busca{flex:2 1 260px}
+.filtros .botones{display:flex;gap:8px}
+.filtros button{min-height:36px}
 .cuenta b{display:block;font-weight:600}
-.cuenta span{font-size:12.5px;color:var(--ink-3)}
-.fecha{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums}
-/* El formulario de cada fila: seis controles chicos en una linea que se parte
-   sola cuando no cabe. Cada control lleva su rotulo encima, que es lo que
-   permite leerlos aunque queden en dos filas. */
-.poner{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
-.poner label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--ink-3)}
-.poner select,.poner input{font:inherit;font-size:13px;color:var(--ink);background:var(--bg);
-  border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;min-height:34px}
-.poner input[type=date]{width:150px}
-.poner input[type=number]{width:96px}
-.poner input[type=text]{width:190px}
-.poner button{min-height:34px}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+.cuenta span{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
+.cuenta .pill{margin-top:4px}
+.plan b{display:block}
+.plan .ent{margin-top:3px}
+/* Seis acciones en dos lineas de tres: con la columna al 1% se apilaban en
+   vertical y cada fila medía doscientos pixeles. */
+table.datos td.acciones-c{width:262px}
+table.datos td.acciones-c .acciones{max-width:250px}
+table.datos th.num,table.datos td.num{padding-right:18px}
+.resultado{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+
+/* En el telefono cada fila es una tarjeta: la cabecera se esconde para los
+   lectores de pantalla y cada celda lleva su rotulo delante (data-eti).
+   Es el mismo tratamiento que la tabla de licitaciones del panel. */
 @media (max-width:640px){
-  .poner label{flex:1 1 45%}
-  .poner input[type=date],.poner input[type=number],.poner input[type=text]{width:100%}
-  .poner button{flex:1 1 100%}
+  .filtros label.campo,.filtros label.campo.busca{flex:1 1 100%}
+  .filtros .botones{width:100%}
+  .filtros .botones button,.filtros .botones .btn{flex:1 1 auto;min-height:44px}
+  .tabla-caja table.datos.cuentas{min-width:0}
+  .cuentas thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .cuentas tbody tr{display:flex;flex-wrap:wrap;gap:10px 18px;padding:14px 2px 12px;
+    border-bottom:1px solid var(--line-soft)}
+  .cuentas tbody tr:last-child{border-bottom:none}
+  .cuentas tbody tr:hover{background:transparent}
+  .cuentas tbody tr td:first-child,.cuentas tbody tr:hover td:first-child{box-shadow:none}
+  .cuentas td{display:block;padding:0;border:0;flex:1 1 40%;min-width:0}
+  .cuentas td.cuenta,.cuentas td.acciones-c{flex:1 1 100%;width:auto}
+  .cuentas td.acciones-c .acciones{max-width:none}
+  .cuentas td[data-eti]::before{content:attr(data-eti);display:block;font-size:10.5px;
+    letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+  .cuentas .acciones{gap:8px}
+  .cuentas .acciones .btn,.cuentas .acciones button{flex:1 1 30%}
 }
 {% endblock %}
 {% block nav %}{% with activo='admin' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  <div class="cab-acc">
+    <a class="btn sec" href="/admin/ia">Gasto de IA</a>
+    <a class="btn" href="/admin/clientes/nueva">Nueva cuenta</a>
+  </div>
+{% endblock %}
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
+  <div class="tarjetas" aria-label="Resumen de cuentas">
+    <div class="t"><div class="n">{{ cifras.total }}</div><div class="l">cuentas</div></div>
+    <div class="t"><div class="n">{{ cifras.activas }}</div><div class="l">activas</div></div>
+    <div class="t"><div class="n">{{ cifras.prueba }}</div><div class="l">en prueba</div></div>
+    <div class="t"><div class="n">{{ cifras.pagando }}</div><div class="l">pagando</div></div>
+    <div class="t"><div class="n">S/ {{ '{:,.0f}'.format(cifras.ingresos) }}</div><div class="l">ingresos del mes</div></div>
+  </div>
+
   <div class="tarjeta">
-    <h2>{{ cuentas | length }} cuenta(s)</h2>
-    <p class="sub">Estados: <b>activa</b> paga y con acceso · <b>prueba</b> los 14 días · <b>vencida</b> en gracia, sigue entrando · <b>suspendida</b> sin acceso · <b>cancelada</b>. Si indicas un monto queda registrado como pago manual en el historial de la cuenta.</p>
+    <form class="filtros" method="get" action="/admin/clientes" role="search">
+      <label class="campo busca"><span>Buscar</span>
+        <input type="search" name="q" value="{{ q }}" placeholder="correo o nombre" autocomplete="off"></label>
+      <label class="campo"><span>Plan</span>
+        <select name="plan">
+          <option value="">Todos</option>
+          {% for p in planes %}
+            <option value="{{ p.codigo }}" {% if p.codigo == plan %}selected{% endif %}>{{ p.nombre }}</option>
+          {% endfor %}
+        </select></label>
+      <label class="campo"><span>Estado</span>
+        <select name="estado">
+          <option value="">Todos</option>
+          {% for e in estados %}
+            <option value="{{ e }}" {% if e == estado %}selected{% endif %}>{{ e | replace('_', ' ') }}</option>
+          {% endfor %}
+        </select></label>
+      <div class="botones">
+        <button type="submit">Filtrar</button>
+        {% if q or plan or estado %}<a class="btn sec" href="/admin/clientes">Limpiar</a>{% endif %}
+      </div>
+    </form>
+
+    <p class="resultado"><b>{{ cuentas | length }}</b> cuenta(s){% if q or plan or estado %} con este filtro{% endif %}.
+       Estados: <b>activa</b> paga y con acceso · <b>prueba</b> los 14 días · <b>vencida</b> en gracia, sigue entrando ·
+       <b>suspendida</b> cae al plan gratis · <b>cancelada</b> por el cliente.</p>
+
     {% if not cuentas %}
-      <div class="vacio"><p>Todavía no hay cuentas.</p></div>
+      <div class="vacio">
+        <p><strong>{% if q or plan or estado %}Ninguna cuenta coincide.{% else %}Todavía no hay cuentas.{% endif %}</strong></p>
+        {% if q or plan or estado %}<p><a href="/admin/clientes">Quitar el filtro</a></p>{% endif %}
+      </div>
     {% else %}
     <div class="tabla-caja">
-    <table class="datos">
+    <table class="datos cuentas">
       <thead><tr>
-        <th>Cuenta</th><th>Plan actual</th><th>Vence</th><th>Último pago</th><th>Poner a mano</th>
+        <th>Cuenta</th><th>Plan</th><th>Vence</th>
+        <th class="num">Empresas</th><th class="num">Propuestas</th>
+        {% if con_acceso %}<th>Último acceso</th>{% endif %}
+        <th>Creada</th><th>Acciones</th>
       </tr></thead>
       <tbody>
       {% for c in cuentas %}
         <tr>
-          <td class="cuenta"><b>{{ c.nombre or c.email }}</b><span>{{ c.email }} · {{ c.empresas }} empresa(s)</span></td>
-          <td>
+          <td class="cuenta">
+            <b>{{ c.nombre or c.email }}</b>
+            <span>{{ c.email }}</span>
+            {% if not c.activo %}<span class="pill urg">desactivada</span>{% endif %}
+          </td>
+          <td class="plan" data-eti="Plan">
             {% if c.plan_codigo %}
               <b>{{ c.plan_nombre }}</b>
-              {% set cl = 'ok' if c.estado in ('activa','prueba') else ('pend' if c.estado == 'vencida' else 'urg') %}
-              <span class="pill {{ cl }}">{{ c.estado }}</span>
-              <span class="ent">{{ c.periodo }}</span>
+              {% set cl = 'ok' if c.estado_efectivo in ('activa','prueba') else ('pend' if c.estado_efectivo == 'vencida' else 'urg') %}
+              <span class="pill {{ cl }}">{{ c.estado_efectivo }}</span>
+              <span class="ent">{{ c.periodo }}{% if c.ultimo_pago %} · pagó {{ c.ultimo_pago.strftime('%d/%m/%Y') }} ({{ c.ultimo_metodo or 'pasarela' }}){% endif %}</span>
             {% else %}
               <span class="pill neutro">sin suscripción</span>
             {% endif %}
           </td>
-          <td class="fecha">{% if c.vence %}{{ c.vence.strftime('%d/%m/%Y') }}{% if c.vence.date() < hoy %} <span class="pill urg">pasó</span>{% endif %}{% else %}—{% endif %}</td>
-          <td class="fecha">{% if c.ultimo_pago %}{{ c.ultimo_pago.strftime('%d/%m/%Y') }} <span class="ent">{{ c.ultimo_metodo or 'pasarela' }}</span>{% else %}—{% endif %}</td>
-          <td>
-            <form class="poner" method="post" action="/admin/clientes/{{ c.id }}/plan" data-cargando="Guardando…">
-              <label>Plan
-                <select name="plan">
-                  {% for p in planes %}
-                    <option value="{{ p.codigo }}" {% if p.codigo == c.plan_codigo %}selected{% endif %}>{{ p.nombre }} · S/ {{ '%d' % p.precio_mensual }}/mes</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>Estado
-                <select name="estado">
-                  {% for e in ['activa','prueba','vencida','suspendida','cancelada'] %}
-                    <option value="{{ e }}" {% if e == (c.estado or 'activa') %}selected{% endif %}>{{ e }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>Periodo
-                <select name="periodo">
-                  <option value="mensual" {% if c.periodo != 'anual' %}selected{% endif %}>mensual</option>
-                  <option value="anual" {% if c.periodo == 'anual' %}selected{% endif %}>anual</option>
-                </select>
-              </label>
-              <label>Pagado hasta
-                <input type="date" name="vence" value="{{ c.vence.strftime('%Y-%m-%d') if c.vence else '' }}">
-              </label>
-              <label>Monto S/
-                <input type="number" name="monto" step="0.01" min="0" placeholder="0">
-              </label>
-              <label>Nota
-                <input type="text" name="nota" maxlength="200" placeholder="efectivo, Yape, recibo…">
-              </label>
-              <button type="submit">Guardar</button>
-            </form>
+          <td class="fecha" data-eti="Vence">{% if c.vence %}{{ c.vence.strftime('%d/%m/%Y') }}{% if c.vence.date() < hoy %} <span class="pill urg">pasó</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="num" data-eti="Empresas">{{ c.empresas }}</td>
+          <td class="num" data-eti="Propuestas">{{ c.propuestas }}</td>
+          {% if con_acceso %}
+          <td class="fecha" data-eti="Último acceso">{% if c.ultimo_acceso %}{{ c.ultimo_acceso.strftime('%d/%m/%Y') }}<span class="ent">{{ c.ultimo_acceso.strftime('%H:%M') }}</span>{% else %}nunca{% endif %}</td>
+          {% endif %}
+          <td class="fecha" data-eti="Creada">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else '—' }}</td>
+          <td class="acciones-c">
+            <div class="acciones">
+              <a class="btn sec" href="/admin/clientes/{{ c.id }}">Ver</a>
+              <a class="btn sec" href="/admin/clientes/{{ c.id }}/editar">Editar</a>
+              <a class="btn sec" href="/admin/clientes/{{ c.id }}#plan">Plan</a>
+              {% if c.email|lower != usuario.email|lower %}
+              {% if c.activo %}
+              <form method="post" action="/admin/clientes/{{ c.id }}/entrar" data-cargando="Entrando…">
+                <button type="submit" class="sec">Entrar como</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/admin/clientes/{{ c.id }}/activo">
+                <input type="hidden" name="activo" value="{{ '0' if c.activo else '1' }}">
+                <button type="submit" class="sec">{{ 'Desactivar' if c.activo else 'Activar' }}</button>
+              </form>
+              <button type="button" class="peligro" data-dialogo="dlg-eliminar"
+                      data-accion="/admin/clientes/{{ c.id }}/eliminar" data-correo="{{ c.email }}"
+                      data-resumen="{{ c.empresas }} empresa(s) y {{ c.propuestas }} propuesta(s)">Eliminar</button>
+              {% endif %}
+            </div>
           </td>
         </tr>
       {% endfor %}
@@ -106,4 +158,6 @@ main{max-width:1180px}
     </div>
     {% endif %}
   </div>
+
+  {% include "_admin_dialogo_eliminar.html" %}
 {% endblock %}

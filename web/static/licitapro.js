@@ -30,6 +30,45 @@
       ev.preventDefault();
     }
   });
+
+  // Cuadro de confirmacion escrita (<dialog>) para borrar una cuenta desde el
+  // panel del dueno. El boton que lo abre trae la accion, el correo y el
+  // resumen en data-*; hay UN dialogo por pagina y se rellena al abrirlo. El
+  // boton de borrar solo se habilita cuando lo escrito coincide con el correo,
+  // y el servidor lo vuelve a comprobar: esto evita el clic en falso, no
+  // sustituye a la comprobacion de verdad.
+  document.addEventListener("click", function (ev) {
+    var abrir = ev.target.closest("[data-dialogo]");
+    if (abrir) {
+      var dlg = document.getElementById(abrir.dataset.dialogo);
+      if (!dlg || typeof dlg.showModal !== "function") return;
+      ev.preventDefault();
+      var form = dlg.querySelector("form");
+      if (form && abrir.dataset.accion) form.action = abrir.dataset.accion;
+      var correo = dlg.querySelector(".dlg-correo");
+      if (correo) correo.textContent = abrir.dataset.correo || "";
+      var resumen = dlg.querySelector(".dlg-resumen");
+      if (resumen) resumen.textContent = abrir.dataset.resumen || "";
+      var campo = dlg.querySelector("[data-esperado]");
+      if (campo) { campo.dataset.esperado = abrir.dataset.correo || ""; campo.value = ""; }
+      var exige = dlg.querySelector("[data-exige]");
+      if (exige) exige.disabled = true;
+      dlg.showModal();
+      if (campo) campo.focus();
+      return;
+    }
+    var cerrar = ev.target.closest("dialog [data-cerrar]");
+    if (cerrar) cerrar.closest("dialog").close();
+  });
+
+  document.addEventListener("input", function (ev) {
+    var campo = ev.target;
+    if (!campo.hasAttribute || !campo.hasAttribute("data-esperado")) return;
+    var dlg = campo.closest("dialog");
+    var exige = dlg && dlg.querySelector("[data-exige]");
+    if (!exige) return;
+    exige.disabled = campo.value.trim().toLowerCase() !== (campo.dataset.esperado || "").toLowerCase();
+  });
 })();
 
 

@@ -1,0 +1,64 @@
+{# Estilos comunes de las pantallas de administracion de cuentas (lista,
+   alta/edicion y detalle). Van en un parcial y no en _base.html porque solo
+   los ve una persona: cargarlos en las 17 pantallas del panel seria pagar en
+   cada peticion por algo que se usa en tres. #}
+main{max-width:1240px}
+
+/* Pildoras de estado. Los colores salen de los tokens: ok para lo que
+   funciona, warn para lo que esta en gracia, urg para lo cortado, neutro
+   para lo que no tiene plan. */
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap;
+  display:inline-block;vertical-align:middle}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+.fecha{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+
+/* Cifras de cabecera: la misma rejilla que el panel del cliente, para que el
+   dueno lea su negocio con la misma pieza con la que el cliente lee el suyo. */
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-card);
+  overflow:hidden;margin-bottom:18px}
+.t{background:var(--panel);padding:13px 16px}
+.t .n{font-family:Sora,sans-serif;font-weight:600;font-size:1.7rem;line-height:1.1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.t .l{font-size:11.5px;color:var(--ink-3);margin-top:3px;letter-spacing:.02em}
+
+/* Botones chicos de fila: la accion existe pero no compite con el dato. En
+   el telefono crecen al suelo tactil de 44 px como todo lo demas. */
+.acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.acciones .btn,.acciones button{min-height:30px;padding:3px 10px;font-size:12.5px;font-weight:500}
+.acciones form{display:contents}
+
+/* Formulario en rejilla de dos columnas que se apila en el telefono. */
+.rejilla{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.rejilla .ancho{grid-column:1 / -1}
+.pie-form{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.pie-form .sec{margin-left:auto}
+
+/* Cuadro de confirmacion para lo que no se deshace. Nativo (<dialog>) para
+   que el foco quede dentro, Escape lo cierre y el fondo no reciba clics sin
+   escribir una linea de script para cada una de esas cosas. */
+dialog.confirmar{border:1px solid var(--line);border-radius:var(--r-card);background:var(--panel);
+  color:var(--ink);padding:22px 24px;max-width:460px;width:calc(100% - 32px);
+  box-shadow:0 24px 60px -24px color-mix(in srgb,var(--ink) 50%,transparent)}
+dialog.confirmar::backdrop{background:color-mix(in srgb,var(--ink) 55%,transparent)}
+dialog.confirmar h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0 0 6px;
+  letter-spacing:-.01em;color:var(--urg)}
+dialog.confirmar p{margin:0 0 12px;font-size:13.5px;color:var(--ink-2)}
+dialog.confirmar .dlg-correo{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+dialog.confirmar .campo{margin-top:14px}
+
+@media (max-width:640px){
+  .tarjetas{grid-template-columns:1fr 1fr}
+  .t .n{font-size:1.5rem}
+  .rejilla{grid-template-columns:1fr}
+  .acciones .btn,.acciones button{min-height:44px;flex:1 1 auto}
+  .pie-form .btn,.pie-form button{flex:1 1 100%}
+  .pie-form .sec{margin-left:0}
+  dialog.confirmar{padding:18px 16px}
+}

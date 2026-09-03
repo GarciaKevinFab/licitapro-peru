@@ -34,6 +34,22 @@ ACCESO_PERMITIDO = ("prueba", "activa", "vencida")
 PLAN_GRATUITO = "gratis"   # 'vencida' sigue en gracia
 
 
+def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str:
+    """El estado que de verdad aplica hoy, a partir del guardado y la fecha.
+
+    Es la regla de `estado_suscripcion` sacada a una funcion sin base para que
+    el panel del dueno la aplique a cien cuentas de una consulta y para que se
+    pueda probar con fechas inventadas. Cambiarla aqui cambia las dos cosas, que
+    es lo que se quiere: una sola definicion de "vencida" y de "suspendida".
+    """
+    ahora = ahora or datetime.now()
+    if estado in ("prueba", "activa") and vence and vence < ahora:
+        estado = "vencida"
+    if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
+        estado = "suspendida"
+    return estado
+
+
 async def estado_suscripcion(usuario_id: int) -> dict:
     """Suscripcion + plan + si tiene acceso, resuelto en un solo lugar."""
     async with connection() as conn:
@@ -58,13 +74,9 @@ async def estado_suscripcion(usuario_id: int) -> dict:
     vence = d.get("vence")
     dias = (vence - ahora).days if vence else None
 
-    estado = d["estado"]
     # El vencimiento se evalua al leer: asi el estado es correcto aunque el
     # proceso de renovacion no haya corrido todavia.
-    if estado in ("prueba", "activa") and vence and vence < ahora:
-        estado = "vencida"
-    if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
-        estado = "suspendida"
+    estado = estado_efectivo_de(d["estado"], vence, ahora)
 
     d["estado_efectivo"] = estado
     d["existe"] = True
