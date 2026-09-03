@@ -52,7 +52,7 @@ main{max-width:920px}
 /* ---------- formulario ---------- */
 .campos{display:flex;flex-direction:column;gap:14px;margin-top:16px}
 .pagar{margin-top:20px}
-.pagar button{width:100%;padding:13px;font-size:1rem;font-weight:600}
+.pagar button{width:100%;min-height:46px;padding:12px 16px;font-size:1rem;font-weight:600}
 .legal{font-size:11.5px;color:var(--ink-3);line-height:1.6;margin:12px 0 0}
 .medios{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
 .medios span{font-family:"JetBrains Mono",monospace;font-size:10px;
@@ -117,7 +117,10 @@ main{max-width:920px}
            <a href="/entrar?siguiente=%2Fcomprar%2F{{ plan.codigo }}%3Fperiodo%3D{{ periodo }}">Entra aquí</a>.</p>
       {% endif %}
 
-      <form method="post" action="/comprar">
+      {# data-validar: el error del campo sale debajo del control, en --urg, en
+         vez del globo nativo. data-cargando: al pulsar, el boton se deshabilita
+         y lo dice; en un pago, un doble clic es un doble cargo en potencia. #}
+      <form method="post" action="/comprar" data-validar data-cargando="Preparando el pago…">
         {# El plan y el periodo viajan en el formulario y no solo en la URL. El
            servidor los vuelve a validar contra la tabla `planes` y recalcula el
            importe alli antes de cobrar: tocarlos aqui no compra un plan que no
@@ -134,7 +137,9 @@ main{max-width:920px}
             <label class="campo"><span>Contraseña</span>
               <input type="password" name="password" required minlength="10"
                      autocomplete="new-password">
-              <span class="ayuda">Mínimo 10 caracteres. Con ella entrarás a tu panel.</span>
+              {# <p> y no <span>: dentro de label.campo, un <span> hijo directo
+                 es el rotulo y sale en mayusculas de 11 px. Asi salia esta ayuda. #}
+              <p class="ayuda">Mínimo 10 caracteres. Con ella entrarás a tu panel.</p>
             </label>
           </div>
         {% endif %}

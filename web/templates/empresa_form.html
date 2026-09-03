@@ -42,7 +42,7 @@ form.emp{display:flex;flex-direction:column;gap:15px}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
   <div class="tarjeta">
     <h2>Datos de la empresa</h2>
-    <form class="emp mt-14" method="post" action="/empresas/guardar" data-validar>
+    <form class="emp mt-14" method="post" action="/empresas/guardar" data-validar data-cargando="Guardando…">
       <input type="hidden" name="empresa_id" value="{{ empresa.id if empresa else 0 }}">
       <label class="campo"><span>Razón social *</span>
         <input type="text" name="razon_social" required
@@ -184,7 +184,7 @@ form.emp{display:flex;flex-direction:column;gap:15px}
         con razón: para el comité, la experiencia que no se acredita no existe.</div>
     {% endif %}
 
-    <form method="post" action="/empresas/{{ empresa.id }}/experiencia" class="mt-14">
+    <form method="post" action="/empresas/{{ empresa.id }}/experiencia" class="mt-14" data-validar>
       <label class="campo"><span>Objeto del contrato *</span>
         <input type="text" name="objeto_contrato" required
                placeholder="Mejoramiento del sistema de agua potable de…"></label>
@@ -238,7 +238,7 @@ form.emp{display:flex;flex-direction:column;gap:15px}
       </div>
     {% endif %}
 
-    <form method="post" action="/empresas/{{ empresa.id }}/vencimiento" class="mt-14">
+    <form method="post" action="/empresas/{{ empresa.id }}/vencimiento" class="mt-14" data-validar>
       <div class="rejilla">
         <label class="campo"><span>Documento *</span>
           <input type="text" name="tipo" required placeholder="Póliza CAR"></label>
@@ -285,7 +285,7 @@ form.emp{display:flex;flex-direction:column;gap:15px}
         avisará en cada expediente hasta que agregues al menos uno.</div>
     {% endif %}
 
-    <form method="post" action="/empresas/{{ empresa.id }}/equipo" class="mt-14">
+    <form method="post" action="/empresas/{{ empresa.id }}/equipo" class="mt-14" data-validar>
       <div class="rejilla">
         <label class="campo"><span>Nombre completo *</span>
           <input type="text" name="nombre_completo" required></label>

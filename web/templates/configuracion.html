@@ -36,6 +36,8 @@ table.cred tr:last-child td{border-bottom:none}
 /* Las 25 regiones en rejilla: cuatro columnas en ancho, tres en tableta y dos
    en el telefono, con cada casilla a 36 px de alto (44 en movil) para que se
    pueda acertar con el dedo. */
+.rotulo{margin:0}
+.rotulo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
 .regiones{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 16px;margin-top:6px}
 @media (max-width:720px){ .regiones{grid-template-columns:repeat(3,1fr)} }
 @media (max-width:480px){ .regiones{grid-template-columns:repeat(2,1fr)} }
@@ -141,7 +143,7 @@ table.cred tr:last-child td{border-bottom:none}
     {% endif %}
 
     {% if whatsapp_disponible and usuario.whatsapp_estado != 'activo' %}
-      <form method="post" action="/configuracion/whatsapp" class="wa-form">
+      <form method="post" action="/configuracion/whatsapp" class="wa-form" data-validar>
         <label class="campo">
           <span>Tu número de móvil</span>
           <input type="text" name="numero" inputmode="tel" placeholder="987654321"
@@ -217,8 +219,9 @@ table.cred tr:last-child td{border-bottom:none}
     <p class="sub">Estos filtros deciden qué se te alerta. Las licitaciones son públicas
        y las rastreamos para todos; esto define cuáles son tuyas.</p>
 
-    <form method="post" action="/configuracion/filtros">
-      <label class="campo"><span>Regiones</span></label>
+    <form method="post" action="/configuracion/filtros" data-cargando="Guardando…">
+      {# Un rotulo, no un <label>: no hay un control unico al que asociarlo. #}
+      <p class="campo rotulo"><span>Regiones</span></p>
       <div class="regiones">
         {% for d in departamentos %}
           <label>
@@ -275,7 +278,7 @@ table.cred tr:last-child td{border-bottom:none}
        firmas. No hay vuelta atrás y no guardamos copia.</p>
     <p class="ayuda">Es tu derecho según la Ley 29733. Si solo quieres dejar de
        recibir avisos, no hace falta esto: desconecta los canales arriba.</p>
-    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form">
+    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form" data-validar>
       <label class="campo">
         <span>Tu contraseña</span>
         <input type="password" name="password" autocomplete="current-password" required>
