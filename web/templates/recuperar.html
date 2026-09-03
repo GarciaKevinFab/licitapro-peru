@@ -3,53 +3,96 @@
 {% endblock %}
 
 {% block estilos %}
-.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
-.caja{width:100%;max-width:430px}
-.caja .marca{display:flex;align-items:center;gap:9px;font-family:Sora,sans-serif;
-  font-weight:600;font-size:16px;letter-spacing:-.02em;margin-bottom:26px;justify-content:center}
-.caja .marca{color:var(--ink);text-decoration:none;justify-content:center}
-.caja .marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
-.caja .marca .pe{color:var(--ink-3);font-weight:400}
-/* Los campos con fondo --panel-2 y no --bg: sobre la tarjeta --panel, en
-   oscuro esos dos valores estan tan cerca que el recuadro desaparecia. */
-.caja input[type=email]{background:var(--panel-2);border-radius:9px;padding:12px 14px;font-size:15px}
-.caja input:focus{outline:none;border-color:var(--ac);
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent)}
-.caja button{padding:13px;border-radius:10px;font-size:15px;font-weight:600}
-.caja h1{font-family:Sora,sans-serif;font-size:1.4rem;font-weight:600;margin:0 0 6px;
-  letter-spacing:-.02em;text-align:center}
-.caja .lead{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 24px}
-form.acc{display:flex;flex-direction:column;gap:15px;background:var(--panel);
-  border:1px solid var(--line);border-radius:6px;padding:24px}
-form.acc button{width:100%;padding:10px}
-.alterna{text-align:center;font-size:13px;color:var(--ink-3);margin-top:18px}
-.centro{text-align:center}
-.icono{font-size:2rem;text-align:center;margin-bottom:8px;color:var(--ok)}
-/* ---------- VOLVER AL INICIO ----------
-   El logotipo ya enlaza a "/", pero un logo que es enlace no es descubrible:
-   hay que saberlo. Para alguien que no es tecnico -- que es exactamente quien
-   usa esto -- la salida tiene que tener texto y una flecha.
+/* La misma pieza que /entrar: mismo titular, misma tarjeta, mismos campos y
+   el mismo boton. Antes esta pantalla tenia su propia version -titulo a
+   1.4rem, tarjeta de 6px y boton de 10px- y al pasar de una a otra cambiaba
+   todo un poco, que es justo lo que hace que un sitio parezca cosido. */
+.acceso{min-height:100svh;display:flex;align-items:center;justify-content:center;
+  padding:clamp(28px,6vh,64px) clamp(20px,5vw,40px);position:relative}
+.acceso::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(52% 40% at 24% 8%,
+    color-mix(in srgb, var(--ac) 13%, transparent), transparent 68%);
+}
+.caja{width:100%;max-width:420px}
+.marca{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.022em;
+  margin-bottom:24px;color:var(--ink);text-decoration:none;
+}
+.marca .ico{width:21px;height:21px;color:var(--ac);flex:none}
+.marca .pe{color:var(--ink-3);font-weight:400}
+.caja h1{
+  font-family:Sora,sans-serif;font-size:clamp(1.75rem,2.6vw,2.1rem);font-weight:600;
+  margin:0 0 7px;letter-spacing:-.03em;text-align:center;line-height:1.05;
+}
+.lead{text-align:center;color:var(--ink-3);font-size:14px;margin:0 0 26px}
+.lead b{color:var(--ink-2);font-weight:500}
 
-   Arriba a la izquierda y no dentro de la tarjeta: ahi compite con el boton de
-   entrar, y esta pantalla tiene UNA accion principal. Fuera de la caja se ve
-   sin robarle protagonismo. */
+form.acc{
+  display:flex;flex-direction:column;gap:16px;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-card);padding:28px;
+  box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 5%,transparent),
+             0 18px 44px -30px color-mix(in srgb,var(--ink) 45%,transparent);
+}
+form.acc .mensaje{margin:0}
+form.acc input[type=email],
+form.acc input[type=password]{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);
+  padding:12px 14px;font-size:15px;min-height:46px;
+  transition:border-color var(--dur) ease, box-shadow var(--dur) ease, background var(--dur) ease;
+}
+form.acc input:focus-visible{
+  outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac);
+  background:var(--panel);box-shadow:0 0 0 5px var(--ac-soft);
+}
+form.acc .campo.mal input{border-color:var(--urg)}
+form.acc .campo.mal input:focus-visible{outline-color:var(--urg);box-shadow:0 0 0 5px var(--urg-soft)}
+form.acc label.campo>span{font-size:10.5px;letter-spacing:.09em}
+form.acc button{width:100%;min-height:48px;padding:12px 16px;font-size:15px;font-weight:600;margin-top:4px}
+
+.alterna{text-align:center;font-size:13.5px;color:var(--ink-3);margin-top:20px;line-height:1.9}
+.alterna a{font-weight:500}
+.centro{text-align:center}
+.centro .btn{min-width:200px;min-height:46px}
+/* Marca de "hecho": un circulo del color de exito con la palomita dibujada en
+   SVG. Antes era un caracter de texto a 2rem, que cada fuente pinta distinto. */
+.icono{width:48px;height:48px;border-radius:50%;background:var(--ok-soft);color:var(--ok);
+  display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.icono svg{width:22px;height:22px}
+
+@keyframes entra{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+.marca,.caja h1,.lead,form.acc,.alterna,.icono,.centro,.caja .mensaje{
+  animation:entra .6s var(--ease-out) backwards;
+}
+.caja h1{animation-delay:.05s}
+.lead{animation-delay:.09s}
+form.acc,.caja .mensaje,.centro{animation-delay:.13s}
+.alterna{animation-delay:.19s}
+
 .volver{
   position:absolute;top:clamp(18px,3vh,30px);left:clamp(18px,4vw,34px);
-  display:inline-flex;align-items:center;gap:7px;
+  display:inline-flex;align-items:center;gap:7px;min-height:44px;
   font-size:13.5px;color:var(--ink-3);text-decoration:none;
-  padding:7px 12px 7px 9px;border-radius:8px;
-  transition:color .2s ease,background .2s ease;
+  padding:7px 12px 7px 9px;border-radius:var(--r);
+  transition:color var(--dur) ease,background var(--dur) ease;
 }
 .volver:hover{color:var(--ac);background:var(--ac-soft)}
-.volver .fl{transition:transform .25s cubic-bezier(.22,1,.36,1)}
+.volver .fl{transition:transform .25s var(--ease-out)}
 .volver:hover .fl{transform:translateX(-3px)}
-@media (prefers-reduced-motion:reduce){ .volver:hover .fl{transform:none} }
+
+@media (prefers-reduced-motion:reduce){
+  .marca,.caja h1,.lead,form.acc,.alterna,.icono,.centro,.caja .mensaje{animation:none}
+  .volver:hover .fl{transform:none}
+  form.acc input,.volver{transition:none}
+}
 {% endblock %}
 
 {% block cuerpo %}
+<div class="acceso">
   <a class="volver" href="/"><span class="fl">&larr;</span> Volver al inicio</a>
 
-<div class="acceso">
   <div class="caja">
     <a class="marca" href="/">
       <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
@@ -67,10 +110,10 @@ form.acc button{width:100%;padding:10px}
       <p class="lead">Te enviamos un enlace al correo de tu cuenta.</p>
 
       {% if aviso %}
-        <div class="mensaje ok">{{ aviso }}</div>
+        <div class="mensaje ok" role="status">{{ aviso }}</div>
         <p class="alterna"><a href="/entrar">Volver a entrar</a></p>
       {% else %}
-        <form class="acc" method="post" action="/recuperar">
+        <form class="acc" method="post" action="/recuperar" data-validar data-cargando="Enviando…">
           <label class="campo"><span>Correo de tu cuenta</span>
             <input type="email" name="email" required autocomplete="email" autofocus></label>
           <button type="submit">Enviarme el enlace</button>
@@ -82,18 +125,19 @@ form.acc button{width:100%;padding:10px}
       <h1>Elige una contraseña nueva</h1>
       <p class="lead">Para <b>{{ email }}</b></p>
 
-      {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
-
-      <form class="acc" method="post" action="/recuperar/{{ token }}">
-        <label class="campo"><span>Contraseña nueva</span>
+      <form class="acc" method="post" action="/recuperar/{{ token }}" data-validar data-cargando="Guardando…">
+        {% if error %}<div class="mensaje mal" role="alert">{{ error }}</div>{% endif %}
+        <label class="campo{% if error %} mal{% endif %}"><span>Contraseña nueva</span>
           <input type="password" name="password" required minlength="10"
-                 autocomplete="new-password" autofocus>
+                 autocomplete="new-password" autofocus{% if error %} aria-invalid="true"{% endif %}>
           <p class="ayuda">Mínimo 10 caracteres.</p></label>
         <button type="submit">Guardar contraseña</button>
       </form>
 
     {% elif paso == 'listo' %}
-      <div class="icono">✓</div>
+      <div class="icono" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>
+      </div>
       <h1>Contraseña actualizada</h1>
       <p class="lead">Ya puedes entrar con tu contraseña nueva.</p>
       <div class="centro"><a class="btn" href="/entrar">Entrar</a></div>
