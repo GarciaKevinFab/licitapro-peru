@@ -34,6 +34,22 @@ ACCESO_PERMITIDO = ("prueba", "activa", "vencida")
 PLAN_GRATUITO = "gratis"   # 'vencida' sigue en gracia
 
 
+def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str:
+    """El estado que de verdad aplica hoy, a partir del guardado y la fecha.
+
+    Es la regla de `estado_suscripcion` sacada a una funcion sin base para que
+    el panel del dueno la aplique a cien cuentas de una consulta y para que se
+    pueda probar con fechas inventadas. Cambiarla aqui cambia las dos cosas, que
+    es lo que se quiere: una sola definicion de "vencida" y de "suspendida".
+    """
+    ahora = ahora or datetime.now()
+    if estado in ("prueba", "activa") and vence and vence < ahora:
+        estado = "vencida"
+    if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
+        estado = "suspendida"
+    return estado
+
+
 async def estado_suscripcion(usuario_id: int) -> dict:
     """Suscripcion + plan + si tiene acceso, resuelto en un solo lugar."""
     async with connection() as conn:
@@ -58,13 +74,9 @@ async def estado_suscripcion(usuario_id: int) -> dict:
     vence = d.get("vence")
     dias = (vence - ahora).days if vence else None
 
-    estado = d["estado"]
     # El vencimiento se evalua al leer: asi el estado es correcto aunque el
     # proceso de renovacion no haya corrido todavia.
-    if estado in ("prueba", "activa") and vence and vence < ahora:
-        estado = "vencida"
-    if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
-        estado = "suspendida"
+    estado = estado_efectivo_de(d["estado"], vence, ahora)
 
     d["estado_efectivo"] = estado
     d["existe"] = True
@@ -238,6 +250,53 @@ async def cambiar_plan(usuario_id: int, plan_codigo: str, periodo: str) -> bool:
         await conn.execute(
             "UPDATE suscripciones SET plan_codigo=$2, periodo=$3 WHERE usuario_id=$1",
             usuario_id, plan_codigo, periodo)
+    return True
+
+
+async def activar_manual(usuario_id: int, plan_codigo: str, estado: str, periodo: str,
+                         vence, nota: str | None, monto=None, por: str | None = None) -> bool:
+    """Plan y estado puestos A MANO por el dueno del producto.
+
+    Existe porque no todo el mundo paga por Izipay: hay clientes que pagan en
+    efectivo, por Yape o por transferencia, y otros a los que se les regala un
+    periodo. Sin esto, el unico camino para activar un plan era la pasarela.
+
+    Si no hay fila de suscripcion se crea; si la hay, se pisa. Cuando se indica
+    un monto, queda un pago con metodo 'manual' en pagos_suscripcion para que
+    el historial de la cuenta y los informes cuadren con lo cobrado.
+    """
+    import json
+    if estado not in ("prueba", "activa", "vencida", "suspendida", "cancelada"):
+        return False
+    if periodo not in ("mensual", "anual"):
+        return False
+    async with connection() as conn:
+        if not await conn.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM planes WHERE codigo=$1 AND activo=TRUE)", plan_codigo):
+            return False
+        susc_id = await conn.fetchval(
+            "SELECT id FROM suscripciones WHERE usuario_id=$1", usuario_id)
+        if susc_id:
+            await conn.execute(
+                """UPDATE suscripciones
+                      SET plan_codigo=$2, estado=$3, periodo=$4, vence=$5,
+                          intentos_fallidos=0,
+                          cancelada_en=CASE WHEN $3='cancelada' THEN NOW() ELSE NULL END
+                    WHERE id=$1""",
+                susc_id, plan_codigo, estado, periodo, vence)
+        else:
+            susc_id = await conn.fetchval(
+                """INSERT INTO suscripciones (usuario_id, plan_codigo, estado, periodo, inicia, vence)
+                   VALUES ($1, $2, $3, $4, NOW(), $5) RETURNING id""",
+                usuario_id, plan_codigo, estado, periodo, vence)
+        if monto is not None and float(monto) > 0:
+            await conn.execute(
+                """INSERT INTO pagos_suscripcion
+                       (suscripcion_id, monto, moneda, estado, metodo, respuesta, confirmado_en)
+                   VALUES ($1, $2, 'PEN', 'pagado', 'manual', $3, NOW())""",
+                susc_id, monto, json.dumps({"nota": nota, "por": por}))
+    log.info("Suscripcion de %s puesta a mano: %s/%s hasta %s por %s",
+             usuario_id, plan_codigo, estado, vence, por)
     return True
 
 

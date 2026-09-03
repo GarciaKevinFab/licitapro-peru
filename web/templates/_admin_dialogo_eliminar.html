@@ -1,0 +1,20 @@
+{# Confirmacion de borrado de una cuenta. Uno solo por pagina: el boton que
+   lo abre trae en data-* la accion y el correo (ver licitapro.js), y el
+   servidor vuelve a comprobar el correo escrito -- lo del navegador es
+   comodidad, no seguridad. #}
+<dialog class="confirmar" id="dlg-eliminar" aria-labelledby="dlg-eliminar-titulo">
+  <form method="post" action="" data-cargando="Eliminando…">
+    <h2 id="dlg-eliminar-titulo">Eliminar la cuenta</h2>
+    <p>Se borra <span class="dlg-correo"></span> con <span class="dlg-resumen"></span>.
+       No se puede deshacer y no queda copia.</p>
+    <label class="campo">
+      <span>Escribe el correo de la cuenta para confirmar</span>
+      <input type="text" name="confirmacion" autocomplete="off" spellcheck="false"
+             data-esperado="" placeholder="correo@empresa.pe" required>
+    </label>
+    <div class="pie-form">
+      <button type="submit" class="peligro" data-exige disabled>Eliminar definitivamente</button>
+      <button type="button" class="sec" data-cerrar>Cancelar</button>
+    </div>
+  </form>
+</dialog>

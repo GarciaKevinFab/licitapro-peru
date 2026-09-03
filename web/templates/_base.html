@@ -219,6 +219,42 @@ nav.menu a.activo::after{transform:scaleX(1);background:var(--ac)}
 }
 .sesion button.sec{min-height:32px;padding:4px 12px;font-size:12.5px}
 
+/* ---------- FRANJA "ESTAS DENTRO DE OTRA CUENTA" ----------
+   Solo la ve el dueno del producto cuando entra en la cuenta de un cliente
+   desde /admin/clientes. Ambar y no verde a proposito: es un estado de
+   cuidado, no de exito, y tiene que distinguirse de la cabecera a un golpe
+   de vista. Pegajosa junto con la cabecera: el aviso no puede irse al hacer
+   scroll, que es justo cuando se olvida. */
+.dentro-de{
+  position:sticky;top:0;z-index:41;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 22px;font-size:13.5px;font-weight:500;line-height:1.35;
+  background:var(--warn);color:var(--bg);
+}
+.dentro-de>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dentro-de strong{font-weight:700}
+.dentro-de form{flex:none}
+.dentro-de button{
+  background:var(--bg);color:var(--warn);border-color:var(--bg);
+  min-height:30px;padding:3px 12px;font-size:12.5px;font-weight:600;
+}
+.dentro-de button:hover{background:var(--panel);border-color:var(--panel);color:var(--warn)}
+/* La cabecera baja para dejar sitio a la franja: las dos son pegajosas y
+   sin esto se pisan. 46px es el alto de la franja, que en escritorio es
+   siempre de una linea (el texto se recorta con puntos suspensivos). */
+.dentro-de + header{top:46px}
+@media (max-width:640px){
+  /* En el telefono el texto ocupa tres lineas y la franja deja de ser
+     pegajosa: pegar 90 px de aviso encima de una pantalla de 844 es quitar
+     un tercio del sitio a lo que se vino a mirar. Se ve al entrar y al
+     volver arriba, que es cuando se decide algo. */
+  .dentro-de{position:static;padding:10px 14px;font-size:13px}
+  .dentro-de>span{white-space:normal;overflow:visible}
+  .dentro-de strong{overflow-wrap:anywhere}
+  .dentro-de button{min-height:44px}
+  .dentro-de + header{top:0}
+}
+
 main{max-width:1400px;margin:0 auto;padding:26px 22px 72px}
 
 /* ---------- BOTONES ----------

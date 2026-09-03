@@ -1,0 +1,99 @@
+{% extends "_base.html" %}
+{% block titulo %}{{ 'Nueva cuenta' if modo == 'nueva' else 'Editar cuenta' }} · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Nueva cuenta' if modo == 'nueva' else 'Editar cuenta' %}
+{% set sub_pagina = 'Para el cliente que llama y al que se le entrega el acceso ya hecho: correo, contraseña temporal y plan. Nace con su configuración y su suscripción, igual que si se hubiera registrado solo.' if modo == 'nueva' else (c.email ~ ' · creada el ' ~ c.created_at.strftime('%d/%m/%Y')) %}
+{% block estilos %}
+{% include "_admin_estilos.html" %}
+main{max-width:860px}
+.clave{display:flex;gap:8px;align-items:stretch}
+.clave input{font-family:"JetBrains Mono",monospace;letter-spacing:.02em}
+.clave button{white-space:nowrap}
+.miga{font-size:12.5px;color:var(--ink-3);margin:0 0 14px}
+.miga a{color:var(--ink-3)}
+@media (max-width:640px){
+  .clave{flex-direction:column}
+}
+{% endblock %}
+{% block nav %}{% with activo='admin' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  <div class="cab-acc">
+    {% if modo == 'editar' %}<a class="btn sec" href="/admin/clientes/{{ c.id }}">Ver la cuenta</a>{% endif %}
+    <a class="btn sec" href="/admin/clientes">Volver a clientes</a>
+  </div>
+{% endblock %}
+{% block contenido %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  <div class="tarjeta">
+    <h2>{{ 'Datos de la cuenta' if modo == 'nueva' else 'Datos' }}</h2>
+    <p class="sub">{% if modo == 'nueva' %}El correo es el usuario con el que entra y donde recibe los avisos.{% else %}Cambiar el correo cambia con qué entra. Desactivada, la cuenta no puede entrar y sus datos siguen ahí.{% endif %}</p>
+    <form method="post" action="{{ '/admin/clientes/nueva' if modo == 'nueva' else '/admin/clientes/' ~ c.id ~ '/editar' }}"
+          data-validar data-cargando="Guardando…" autocomplete="off">
+      <div class="rejilla">
+        <label class="campo"><span>Correo</span>
+          <input type="email" name="email" value="{{ valores.email }}" required maxlength="200"
+                 placeholder="correo@empresa.pe" autocomplete="off"></label>
+        <label class="campo"><span>Nombre o razón social</span>
+          <input type="text" name="nombre" value="{{ valores.nombre }}" maxlength="200"
+                 placeholder="Construcciones Andinas S.A.C."></label>
+
+        {% if modo == 'nueva' %}
+        <label class="campo ancho"><span>Contraseña temporal</span>
+          <span class="clave">
+            <input type="text" name="password" value="{{ password_sugerida }}" required minlength="10"
+                   maxlength="200" spellcheck="false" data-error="Al menos 10 caracteres.">
+          </span>
+          <p class="ayuda">Viene generada; puedes escribir otra. Mínimo 10 caracteres. Se la entregas al cliente por un canal seguro y él la cambia desde Recuperar contraseña.</p>
+        </label>
+
+        <label class="campo"><span>Plan</span>
+          <select name="plan">
+            {% for p in planes %}
+              <option value="{{ p.codigo }}" {% if p.codigo == valores.plan %}selected{% endif %}>{{ p.nombre }} · S/ {{ '%d' % p.precio_mensual }}/mes</option>
+            {% endfor %}
+          </select></label>
+        <label class="campo"><span>Estado</span>
+          <select name="estado">
+            {% for e in ['prueba','activa','vencida','suspendida','cancelada'] %}
+              <option value="{{ e }}" {% if e == valores.estado %}selected{% endif %}>{{ e }}</option>
+            {% endfor %}
+          </select></label>
+        <label class="campo"><span>Periodo</span>
+          <select name="periodo">
+            <option value="mensual" {% if valores.periodo != 'anual' %}selected{% endif %}>mensual</option>
+            <option value="anual" {% if valores.periodo == 'anual' %}selected{% endif %}>anual</option>
+          </select></label>
+        <label class="campo"><span>Vence</span>
+          <input type="date" name="vence" value="{{ valores.vence }}">
+          <p class="ayuda">Vacío: sin fecha. En prueba suelen ser 14 días; en activa, hasta donde pagó.</p></label>
+        {% else %}
+        <label class="check ancho">
+          <input type="checkbox" name="activo" value="1" {% if valores.activo %}checked{% endif %}>
+          Cuenta activa (puede entrar)
+        </label>
+        {% endif %}
+      </div>
+      <div class="pie-form">
+        <button type="submit">{{ 'Crear la cuenta' if modo == 'nueva' else 'Guardar cambios' }}</button>
+        <a class="btn sec" href="{{ '/admin/clientes' if modo == 'nueva' else '/admin/clientes/' ~ c.id }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+
+  {% if modo == 'editar' %}
+  <div class="tarjeta">
+    <h2>Contraseña nueva</h2>
+    <p class="sub">Para cuando el cliente perdió el acceso y el correo de recuperación no le llega. Los enlaces de recuperación pendientes dejan de valer.</p>
+    <form method="post" action="/admin/clientes/{{ c.id }}/password" data-validar data-cargando="Cambiando…" autocomplete="off">
+      <input type="hidden" name="volver" value="detalle">
+      <label class="campo"><span>Contraseña</span>
+        <span class="clave">
+          <input type="text" name="password" required minlength="10" maxlength="200" spellcheck="false"
+                 placeholder="mínimo 10 caracteres" data-error="Al menos 10 caracteres.">
+          <button type="submit" class="sec">Cambiar la contraseña</button>
+        </span>
+      </label>
+    </form>
+  </div>
+  {% endif %}
+{% endblock %}

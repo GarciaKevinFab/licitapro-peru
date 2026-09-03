@@ -28,6 +28,8 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 # Los routers alcanzan las plantillas por app.state y no importando este modulo,
 # que los importa a ellos: al reves habria ciclo.
 app.state.templates = templates
+# El correo del dueno, para que la barra sepa si mostrar "Admin". Vacio = nadie.
+app.state.admin_email = (os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip().lower()
 
 # La guarda de suscripcion se registra ANTES que SessionMiddleware: en
 # Starlette el ultimo en registrarse envuelve a los anteriores, asi que
