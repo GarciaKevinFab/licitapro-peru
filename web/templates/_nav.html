@@ -21,6 +21,11 @@
     <a href="/empresas" {% if activo == 'empresas' %}class="activo" aria-current="page"{% endif %}>Empresas</a>
     <a href="/configuracion" {% if activo == 'config' %}class="activo" aria-current="page"{% endif %}>Configuración</a>
     <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo" aria-current="page"{% endif %}>Suscripción</a>
+    {# Solo el dueno del producto ve Admin: el correo sale de LICITAPRO_ADMIN_EMAIL
+       via app.state.admin_email. Para todos los demas el enlace no existe. #}
+    {% if request.app.state.admin_email and usuario.email and usuario.email|lower == request.app.state.admin_email %}
+    <a href="/admin/clientes" {% if activo == 'admin' %}class="activo" aria-current="page"{% endif %}>Admin</a>
+    {% endif %}
   </nav>
 
   <span class="sesion">

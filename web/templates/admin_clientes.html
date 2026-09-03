@@ -1,0 +1,109 @@
+{% extends "_base.html" %}
+{% block titulo %}Clientes · LicitaPro{% endblock %}
+{% set titulo_pagina = 'Clientes y planes' %}
+{% set sub_pagina = 'Cada cuenta con su plan. Cámbialo a mano cuando alguien paga en efectivo, por Yape o por transferencia, o para regalar un periodo: lo que pongas aquí manda sobre la pasarela.' %}
+{% block estilos %}
+main{max-width:1180px}
+.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.urg{background:var(--urg-soft);color:var(--urg)}
+.pill.pend{background:var(--warn-soft);color:var(--warn)}
+.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
+.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+.cuenta b{display:block;font-weight:600}
+.cuenta span{font-size:12.5px;color:var(--ink-3)}
+.fecha{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums}
+/* El formulario de cada fila: seis controles chicos en una linea que se parte
+   sola cuando no cabe. Cada control lleva su rotulo encima, que es lo que
+   permite leerlos aunque queden en dos filas. */
+.poner{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.poner label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3)}
+.poner select,.poner input{font:inherit;font-size:13px;color:var(--ink);background:var(--bg);
+  border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;min-height:34px}
+.poner input[type=date]{width:150px}
+.poner input[type=number]{width:96px}
+.poner input[type=text]{width:190px}
+.poner button{min-height:34px}
+.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+@media (max-width:640px){
+  .poner label{flex:1 1 45%}
+  .poner input[type=date],.poner input[type=number],.poner input[type=text]{width:100%}
+  .poner button{flex:1 1 100%}
+}
+{% endblock %}
+{% block nav %}{% with activo='admin' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block contenido %}
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+
+  <div class="tarjeta">
+    <h2>{{ cuentas | length }} cuenta(s)</h2>
+    <p class="sub">Estados: <b>activa</b> paga y con acceso · <b>prueba</b> los 14 días · <b>vencida</b> en gracia, sigue entrando · <b>suspendida</b> sin acceso · <b>cancelada</b>. Si indicas un monto queda registrado como pago manual en el historial de la cuenta.</p>
+    {% if not cuentas %}
+      <div class="vacio"><p>Todavía no hay cuentas.</p></div>
+    {% else %}
+    <div class="tabla-caja">
+    <table class="datos">
+      <thead><tr>
+        <th>Cuenta</th><th>Plan actual</th><th>Vence</th><th>Último pago</th><th>Poner a mano</th>
+      </tr></thead>
+      <tbody>
+      {% for c in cuentas %}
+        <tr>
+          <td class="cuenta"><b>{{ c.nombre or c.email }}</b><span>{{ c.email }} · {{ c.empresas }} empresa(s)</span></td>
+          <td>
+            {% if c.plan_codigo %}
+              <b>{{ c.plan_nombre }}</b>
+              {% set cl = 'ok' if c.estado in ('activa','prueba') else ('pend' if c.estado == 'vencida' else 'urg') %}
+              <span class="pill {{ cl }}">{{ c.estado }}</span>
+              <span class="ent">{{ c.periodo }}</span>
+            {% else %}
+              <span class="pill neutro">sin suscripción</span>
+            {% endif %}
+          </td>
+          <td class="fecha">{% if c.vence %}{{ c.vence.strftime('%d/%m/%Y') }}{% if c.vence.date() < hoy %} <span class="pill urg">pasó</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="fecha">{% if c.ultimo_pago %}{{ c.ultimo_pago.strftime('%d/%m/%Y') }} <span class="ent">{{ c.ultimo_metodo or 'pasarela' }}</span>{% else %}—{% endif %}</td>
+          <td>
+            <form class="poner" method="post" action="/admin/clientes/{{ c.id }}/plan" data-cargando="Guardando…">
+              <label>Plan
+                <select name="plan">
+                  {% for p in planes %}
+                    <option value="{{ p.codigo }}" {% if p.codigo == c.plan_codigo %}selected{% endif %}>{{ p.nombre }} · S/ {{ '%d' % p.precio_mensual }}/mes</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>Estado
+                <select name="estado">
+                  {% for e in ['activa','prueba','vencida','suspendida','cancelada'] %}
+                    <option value="{{ e }}" {% if e == (c.estado or 'activa') %}selected{% endif %}>{{ e }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>Periodo
+                <select name="periodo">
+                  <option value="mensual" {% if c.periodo != 'anual' %}selected{% endif %}>mensual</option>
+                  <option value="anual" {% if c.periodo == 'anual' %}selected{% endif %}>anual</option>
+                </select>
+              </label>
+              <label>Pagado hasta
+                <input type="date" name="vence" value="{{ c.vence.strftime('%Y-%m-%d') if c.vence else '' }}">
+              </label>
+              <label>Monto S/
+                <input type="number" name="monto" step="0.01" min="0" placeholder="0">
+              </label>
+              <label>Nota
+                <input type="text" name="nota" maxlength="200" placeholder="efectivo, Yape, recibo…">
+              </label>
+              <button type="submit">Guardar</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+{% endblock %}
