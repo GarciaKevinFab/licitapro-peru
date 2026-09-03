@@ -292,6 +292,7 @@ from web.contratos import router as router_contratos  # noqa: E402
 from web.suscripcion import router as router_suscripcion  # noqa: E402
 from web.comprar import router as router_comprar  # noqa: E402
 from web.reclamaciones import router as router_reclamaciones  # noqa: E402
+from web.webhooks_culqi import router as router_culqi_webhook
 from web.webhooks_whatsapp import router as router_wa_webhook
 from web.admin import router as router_admin  # noqa: E402
 from web.informes import router as router_informes  # noqa: E402
@@ -351,6 +352,7 @@ app.include_router(router_contratos)
 app.include_router(router_suscripcion)
 app.include_router(router_comprar)
 app.include_router(router_reclamaciones)
+app.include_router(router_culqi_webhook)
 app.include_router(router_wa_webhook)
 app.include_router(router_admin)
 app.include_router(router_informes)

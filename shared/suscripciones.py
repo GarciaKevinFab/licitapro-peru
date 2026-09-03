@@ -472,7 +472,14 @@ async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
                    (suscripcion_id, monto, moneda, estado, metodo,
                     culqi_charge_id, respuesta, confirmado_en)
                VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, NOW())
-               ON CONFLICT (culqi_charge_id) DO NOTHING""",
+               -- El WHERE no sobra: el indice de culqi_charge_id es PARCIAL, y
+               -- sin repetir su predicado Postgres no lo reconoce como arbitro
+               -- ("there is no unique or exclusion constraint matching the ON
+               -- CONFLICT specification") y el INSERT revienta. Se descubrio
+               -- corriendo las pruebas contra una base de verdad; sin base,
+               -- este error no aparece hasta el primer cliente.
+               ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+               DO NOTHING""",
             susc_id, monto, charge_id,
             json.dumps(respuesta) if respuesta else None)
 
@@ -547,7 +554,9 @@ async def aplicar_cargo_culqi(suscripcion_id: int, monto, charge_id: str,
                    (suscripcion_id, monto, moneda, estado, metodo,
                     culqi_charge_id, culqi_event_id, respuesta, confirmado_en)
                VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, $5, NOW())
-               ON CONFLICT (culqi_charge_id) DO NOTHING
+               -- Mismo predicado que el indice parcial: ver activar_por_culqi.
+               ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+               DO NOTHING
                RETURNING id""",
             suscripcion_id, monto, charge_id, event_id, cuerpo)
         if not nuevo:
