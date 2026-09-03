@@ -44,7 +44,7 @@
      quede en blanco porque medio contenido esta a opacity 0 esperando una
      clase que nunca llega. */
   const revelarTodo = () => {
-    document.querySelectorAll(".rv").forEach((el) => el.classList.add("in"));
+    document.querySelectorAll(".rv").forEach((el) => { el.classList.remove("rv-pre"); el.classList.add("in"); });
     document.querySelectorAll(".cifra").forEach((c) => {
       c.classList.add("viva");
       const n = c.querySelector(".n");
@@ -63,15 +63,25 @@
   const revelador = new IntersectionObserver((entradas) => {
     for (const e of entradas) {
       if (!e.isIntersecting) continue;
+      e.target.classList.remove("rv-pre");
       e.target.classList.add("in");
       revelador.unobserve(e.target);
     }
   }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
 
-  document.querySelectorAll(".rv").forEach((el) => {
-    if (menosMovimiento) { el.classList.add("in"); return; }
-    revelador.observe(el);
-  });
+  /* EL ESTADO OCULTO SE PONE DESDE AQUI, Y SOLO BAJO EL PLIEGUE.
+     Antes lo escondia el CSS (.rv{opacity:0}) y este script lo revelaba: si
+     el script no llegaba, media portada se quedaba en blanco. Ahora la hoja
+     no esconde nada; se marca .rv-pre solo a lo que aun no se ve, y lo que ya
+     esta en pantalla al cargar no se toca, que es lo que la persona vino a
+     leer. Con menos movimiento no se marca nada: todo visible, sin animar. */
+  if (!menosMovimiento) {
+    document.querySelectorAll(".rv").forEach((el) => {
+      if (el.getBoundingClientRect().top <= innerHeight * 0.9) return;
+      el.classList.add("rv-pre");
+      revelador.observe(el);
+    });
+  }
 
   /* ------------------------------------------------------- contador suave
      Arranca rapido y frena al final (easeOutExpo). Un contador lineal parece
