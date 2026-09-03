@@ -10,7 +10,6 @@ LO QUE SE PROTEGE
     - Dos suscripciones vivas alli tras un cambio de plan: dos cobros
       recurrentes que el cliente descubre en su extracto, un mes despues.
 """
-import pytest
 
 from tests.conftest import sin_base
 from web import suscripcion as vista

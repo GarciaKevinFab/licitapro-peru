@@ -50,7 +50,12 @@ async def ver(request: Request, aviso: str = "", error: str = ""):
     return _plantillas(request).TemplateResponse("suscripcion.html", {
         "request": request, "usuario": usuario, "s": susc,
         "planes": await _planes(), "historial": historial,
-        "modo_pasarela": izipay.modo(), "comision": izipay.comision_estimada,
+        "modo_pasarela": izipay.modo(),
+        # La comision de la pasarela que de verdad cobra. Con Culqi activo,
+        # seguir restando la de Izipay daria un neto equivocado en la unica
+        # pantalla donde el dueno mira lo que le queda.
+        "comision": (culqi.comision_estimada if culqi.cobro_recurrente()
+                     else izipay.comision_estimada),
         "culqi_activo": culqi.cobro_recurrente(),
         "culqi_sxn": (culqi_datos or {}).get("culqi_subscription_id"),
         "aviso": aviso, "error": error,

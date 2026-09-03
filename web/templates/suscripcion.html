@@ -185,7 +185,10 @@ main{max-width:900px}
       {% for h in historial %}
         <tr>
           <td class="num">{{ h.created_at.strftime('%d/%m/%Y') if h.created_at else '—' }}</td>
-          <td class="num">{{ h.izipay_order_number or '—' }}</td>
+          {# La referencia sale de la pasarela que hizo el cobro: los de Culqi
+             no tienen numero de orden de Izipay y saldrian todos como "—",
+             dejando el historial sin nada con que reclamar. #}
+          <td class="num">{{ h.izipay_order_number or h.culqi_charge_id or '—' }}</td>
           <td class="num">S/ {{ '%.2f'|format(h.monto) }}</td>
           <td class="num">−{{ '%.2f'|format(comision(h.monto|float)) }}</td>
           <td><span class="pill {% if h.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ h.estado }}</span></td>
@@ -194,8 +197,12 @@ main{max-width:900px}
       </tbody>
     </table>
     </div>
-    <p class="ayuda mt-12">La comisión es la que retiene Izipay:
-       4.06% + S/0.81 por cobro, con IGV incluido.</p>
+    {# La comision no es la misma en las dos pasarelas, y esta columna es la que
+       el dueno usa para saber lo que le queda. Dejarla fija con la de Izipay
+       daria un neto equivocado en cuanto empiece a cobrar por Culqi. #}
+    <p class="ayuda mt-12">La comisión es la que retiene
+       {% if culqi_activo %}Culqi: 3.99% + S/0.90 por cobro{% else %}Izipay:
+       4.06% + S/0.81 por cobro{% endif %}, con IGV incluido.</p>
   </div>
   {% endif %}
 {% endblock %}

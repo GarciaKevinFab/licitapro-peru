@@ -188,15 +188,26 @@ main{max-width:1180px}
 
   <div class="tarjeta">
     <h2>Cómo se paga</h2>
-    <p class="sub">El cobro lo procesa Izipay. Los datos de tu tarjeta viajan
-       directos a la pasarela: LicitaPro nunca los ve ni los guarda.</p>
+    {# La promesa sale de `cobro_recurrente()`, que mira las llaves de verdad, y
+       no de una frase escrita a mano. Ver el comentario largo en web/app.py:
+       esto ya estuvo mal una vez porque la realidad cambio en otro sitio. #}
+    <p class="sub">El cobro lo procesa {% if cobro_recurrente() %}Culqi{% else %}Izipay{% endif %}.
+       Los datos de tu tarjeta viajan directos a la pasarela: LicitaPro nunca
+       los ve ni los guarda.</p>
     <div class="medios">
       <span>Visa</span><span>Mastercard</span><span>American Express</span>
       <span>Diners Club</span><span>Soles · PEN</span>
     </div>
     <p class="ayuda mt-16">
-      Cada pago cubre un periodo y no deja cobros programados: antes de que venza
-      te avisamos por correo para que renueves si quieres seguir. Consulta los
+      {% if cobro_recurrente() %}
+        La renovación es automática cada periodo y se cancela en cualquier
+        momento desde <b>Suscripción</b>, dentro de tu cuenta, conservando el
+        acceso hasta el final del periodo pagado. Consulta los
+      {% else %}
+        Cada pago cubre un periodo y no deja cobros programados: antes de que
+        venza te avisamos por correo para que renueves si quieres seguir.
+        Consulta los
+      {% endif %}
       <a href="/terminos">términos del servicio</a> y la
       <a href="/privacidad">política de privacidad</a>.
     </p>

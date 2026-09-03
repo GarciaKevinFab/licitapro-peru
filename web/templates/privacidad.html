@@ -141,8 +141,12 @@
     <li><b>Meta (WhatsApp Business).</b> Tu número y tu nombre, únicamente si
         activaste ese canal.</li>
     <li><b>Telegram.</b> Tu identificador de chat, únicamente si lo vinculaste.</li>
-    <li><b>Izipay.</b> Los datos del cobro. Tu tarjeta la recibe la pasarela
-        directamente; nosotros nunca la vemos.</li>
+    {# El encargado del tratamiento se nombra por su nombre: es lo que la Ley
+       29733 exige declarar, y nombrar al que no es tan malo como no nombrar a
+       ninguno. Sale de la pasarela activa, no de una linea escrita a mano. #}
+    <li><b>{% if cobro_recurrente() %}Culqi{% else %}Izipay{% endif %}.</b>
+        Los datos del cobro. Tu tarjeta la recibe la pasarela directamente;
+        nosotros nunca la vemos.</li>
     <li><b>Anthropic.</b> Solo en los planes que incluyen análisis con IA, y solo
         el texto de las bases de la licitación que analizas. No se envían tus
         datos personales ni los de tu empresa.</li>

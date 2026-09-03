@@ -344,6 +344,25 @@ templates.env.globals["estatico"] = estatico
 from web.comprar import _comercio as _identidad_comercio  # noqa: E402
 templates.env.globals["identidad"] = _identidad_comercio
 
+# QUE SE PUEDE PROMETER SOBRE EL COBRO, ATADO A UN HECHO Y NO A UNA FRASE
+#
+#   La semana pasada hubo que corregir /comprar, /precios y /terminos: los tres
+#   afirmaban que la suscripcion se renovaba sola y que un cobro fallido se
+#   reintentaba, con una pasarela que solo hacia pagos unicos. Nadie mintio a
+#   proposito: la promesa estaba escrita a mano en tres plantillas y la realidad
+#   cambio en otro sitio.
+#
+#   Ahora las tres preguntan lo mismo -- ¿esta viva la ruta recurrente? -- y la
+#   respuesta sale de las llaves configuradas. Sin llaves, el texto vuelve solo
+#   a decir "pago unico", porque es lo que ocurriria. No hay nada que acordarse
+#   de editar el dia que esto cambie en cualquiera de los dos sentidos.
+#
+#   Va como FUNCION y no como valor resuelto, por lo mismo que `identidad`: un
+#   cambio en el .env tiene que verse sin reiniciar, y las pruebas tienen que
+#   poder manipularlo.
+from shared.culqi import cobro_recurrente  # noqa: E402
+templates.env.globals["cobro_recurrente"] = cobro_recurrente
+
 app.include_router(router_auth)
 app.include_router(router_config)
 app.include_router(router_empresas)
