@@ -16,6 +16,7 @@ from shared.db import (
 from shared.db import (
     anotar_intento_fallido, intentos_recientes, limpiar_intentos,
 )
+from shared.admin_cuentas import anotar_acceso
 from shared.seguridad import hashear_password, password_debil, verificar_password
 
 log = logging.getLogger("web.auth")
@@ -24,6 +25,9 @@ router = APIRouter()
 # Mensaje unico para credenciales invalidas: distinguir "no existe" de
 # "contrasena incorrecta" le regala al atacante la lista de correos registrados.
 ERROR_CREDENCIALES = "Correo o contraseña incorrectos."
+# Cuenta desactivada por el dueno del producto. Se muestra solo a quien
+# acierta la contrasena; ver hacer_entrar.
+ERROR_DESACTIVADA = "Cuenta desactivada. Escribe a soporte@sisac.pe."
 
 
 async def usuario_actual(request: Request):
@@ -102,14 +106,26 @@ async def hacer_entrar(request: Request, email: str = Form(...),
                     email[:40], por_email, ip, por_ip)
         return rechazar()
 
-    fila = await get_usuario_por_email(email)
+    fila = await get_usuario_por_email(email, incluso_inactivo=True)
     if not fila or not verificar_password(password, fila["password_hash"]):
         await anotar_intento_fallido(email, ip)
         log.info("Intento de acceso fallido para %r", email[:40])
         return rechazar()
 
+    if not fila["activo"]:
+        # Solo se dice DESPUES de acertar la contrasena: asi no revela nada a
+        # quien no la tiene, y a quien si la tiene le ahorra pedir una
+        # recuperacion que no le devolveria el acceso.
+        log.info("Acceso a cuenta desactivada: %s", fila["id"])
+        return _plantillas(request).TemplateResponse(
+            "entrar.html",
+            {"request": request, "modo": "entrar", "siguiente": siguiente,
+             "error": ERROR_DESACTIVADA, "email": email},
+            status_code=403)
+
     # Entro bien: sus fallos previos no deben acercarle al bloqueo manana.
     await limpiar_intentos(email, ip)
+    await anotar_acceso(fila["id"])
     request.session["usuario_id"] = fila["id"]
     return RedirectResponse(_destino_seguro(siguiente), status_code=303)
 

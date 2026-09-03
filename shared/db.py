@@ -608,11 +608,16 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
     return fila
 
 
-async def get_usuario_por_email(email: str):
+async def get_usuario_por_email(email: str, incluso_inactivo: bool = False):
+    """Por defecto solo cuentas activas: una desactivada no existe para el
+    login ni para la recuperacion. `incluso_inactivo` es para decirle a quien
+    acierta la contrasena de una cuenta desactivada que lo esta, en vez de
+    "correo o contrasena incorrectos", que le haria pedir una recuperacion
+    que tampoco va a funcionar."""
     async with connection() as conn:
         return await conn.fetchrow(
-            "SELECT * FROM usuarios WHERE email = LOWER($1) AND activo = TRUE",
-            email.strip(),
+            "SELECT * FROM usuarios WHERE email = LOWER($1) AND (activo = TRUE OR $2)",
+            email.strip(), incluso_inactivo,
         )
 
 
