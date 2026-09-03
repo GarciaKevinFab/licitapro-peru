@@ -384,6 +384,26 @@ tbody tr:nth-child(10){animation-delay:.29s}
   td.bases .nd{display:none}
   .vacio{padding:26px 16px}
 }
+/* Franja "estas dentro de otra cuenta" (ver _nav.html). Copiada de
+   _base.html porque esta plantilla no hereda de ella: si se cambia alla,
+   cambiar aqui. */
+.dentro-de{position:sticky;top:0;z-index:41;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;padding:8px 22px;font-size:13.5px;font-weight:500;
+  line-height:1.35;background:var(--warn);color:var(--bg)}
+.dentro-de>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dentro-de strong{font-weight:700}
+.dentro-de form{flex:none}
+.dentro-de button{background:var(--bg);color:var(--warn);border-color:var(--bg);
+  min-height:30px;padding:3px 12px;font-size:12.5px;font-weight:600}
+.dentro-de button:hover{background:var(--panel);border-color:var(--panel);color:var(--warn)}
+.dentro-de + header{top:46px}
+@media (max-width:640px){
+  .dentro-de{position:static;padding:10px 14px;font-size:13px}
+  .dentro-de>span{white-space:normal;overflow:visible}
+  .dentro-de strong{overflow-wrap:anywhere}
+  .dentro-de button{min-height:44px}
+  .dentro-de + header{top:0}
+}
 </style>
 </head>
 <body>

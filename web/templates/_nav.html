@@ -1,6 +1,20 @@
 {# Cabecera del panel. La incluyen las 17 plantillas de la aplicacion, asi que
    `activo`, `usuario` y request.state.susc_aviso son contrato: cambiarlos aqui
    obliga a tocarlas todas. #}
+{# El dueno esta DENTRO de la cuenta de un cliente ("entrar como" desde
+   /admin/clientes). La franja va encima de todo, fija, en ambar, y con la
+   salida al lado: se entra a mirar una incidencia, se deja la pestana
+   abierta, y dos horas despues se guarda algo creyendo estar en la cuenta
+   propia. De nada sirve avisar si volver cuesta buscar. #}
+{% if request.session.get('admin_original') %}
+<div class="dentro-de" role="status">
+  <span>Estás dentro de la cuenta de <strong>{{ usuario.email }}</strong> como administrador.
+    Todo lo que hagas queda en sus datos.</span>
+  <form method="post" action="/admin/salir">
+    <button type="submit">Salir</button>
+  </form>
+</div>
+{% endif %}
 <header>
   <a class="brand" href="/panel">
     <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">

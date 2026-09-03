@@ -344,6 +344,112 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
     }
 
 
+# ─── Borrado en cascada ──────────────────────────────────
+
+# Tablas que NO se borran aunque apunten a la cuenta. El Libro de
+# Reclamaciones se conserva por ley (D.S. 101-2022-PCM: la hoja no se
+# destruye); su clave foranea es ON DELETE SET NULL y aqui se hace lo mismo
+# a mano, para que el bucle de abajo no la barra por llevar `usuario_id`.
+CONSERVAR = {"reclamaciones"}
+
+
+async def borrar_cuenta_completa(usuario_id: int) -> dict:
+    """Borra la cuenta y TODO lo que cuelga de ella, en una transaccion.
+
+    COMO CARGOXPREZ, Y POR QUE
+
+      Las cascadas declaradas (migraciones 0002-0013) ya se llevan casi todo
+      con un DELETE en usuarios, y `borrar_cuenta` de shared/db.py confia en
+      ellas. Este borrado NO confia: recorre todas las tablas que tengan una
+      columna que apunte a la cuenta o a sus empresas, propuestas, contratos
+      o suscripcion, y las va vaciando; la que falla por clave foranea se
+      reintenta en la vuelta siguiente, cuando sus hijas ya cayeron. Si una
+      vuelta entera no avanza, hay un ciclo y se aborta -- la transaccion
+      deshace todo -- en vez de dejar la cuenta a medio borrar.
+
+      Se hace asi porque el dia que alguien anada una tabla con `empresa_id`
+      y se olvide del ON DELETE CASCADE, el borrado desde el panel tiene que
+      seguir funcionando. Una lista de tablas a mano se desincroniza; una
+      cascada olvidada se ve como un 500 delante del dueno.
+
+    Los archivos de disco (logos, firmas, sellos) se borran ANTES y fuera de
+    la transaccion, por el mismo motivo que en `borrar_cuenta`: despues del
+    DELETE ya no quedan las rutas. Un archivo que no se puede borrar se
+    registra y no frena el resto.
+
+    Devuelve {tabla: filas_borradas, "archivos": n, "borrada": bool}.
+    """
+    from shared.archivos import TIPOS as TIPOS_IMAGEN, borrar_imagen, rutas_de
+
+    resumen: dict = {"archivos": 0, "borrada": False}
+
+    async with connection() as conn:
+        empresas = [r["id"] for r in await conn.fetch(
+            "SELECT id FROM empresas WHERE usuario_id = $1", usuario_id)]
+    for eid in empresas:
+        presentes = await rutas_de(eid)
+        for tipo in TIPOS_IMAGEN:
+            try:
+                await borrar_imagen(eid, tipo)
+                resumen["archivos"] += tipo in presentes
+            except Exception as e:  # noqa: BLE001
+                log.error("No se pudo borrar la imagen %s de la empresa %s: %s", tipo, eid, e)
+
+    async with connection() as conn:
+        async with conn.transaction():
+            # Los ids se fijan ANTES de empezar a borrar: si se resolvieran
+            # con subconsultas, al reintentar una tabla hija sus padres ya
+            # podrian no estar y la condicion no encontraria nada.
+            propuestas = [r["id"] for r in await conn.fetch(
+                "SELECT id FROM propuestas WHERE empresa_id = ANY($1::int[])", empresas)]
+            contratos = [r["id"] for r in await conn.fetch(
+                "SELECT id FROM contratos WHERE empresa_id = ANY($1::int[])", empresas)]
+            suscripciones = [r["id"] for r in await conn.fetch(
+                "SELECT id FROM suscripciones WHERE usuario_id = $1", usuario_id)]
+            claves = {
+                "usuario_id": [usuario_id], "empresa_id": empresas,
+                "propuesta_id": propuestas, "contrato_id": contratos,
+                "suscripcion_id": suscripciones,
+            }
+            filas = await conn.fetch(
+                """SELECT table_name, column_name FROM information_schema.columns
+                    WHERE table_schema = 'public' AND column_name = ANY($1::text[])
+                      AND table_name <> 'usuarios'
+                    ORDER BY table_name""", list(claves))
+            pendientes = [(f["table_name"], f["column_name"]) for f in filas
+                          if f["table_name"] not in CONSERVAR and claves[f["column_name"]]]
+
+            for tabla in CONSERVAR:
+                if any(f["table_name"] == tabla and f["column_name"] == "usuario_id" for f in filas):
+                    await conn.execute(
+                        f'UPDATE "{tabla}" SET usuario_id = NULL WHERE usuario_id = $1', usuario_id)
+
+            while pendientes:
+                quedan = []
+                for tabla, columna in pendientes:
+                    try:
+                        async with conn.transaction():  # savepoint: el fallo no aborta todo
+                            hecho = await conn.execute(
+                                f'DELETE FROM "{tabla}" WHERE "{columna}" = ANY($1::int[])',
+                                claves[columna])
+                        n = int(hecho.split()[-1])
+                        resumen[tabla] = resumen.get(tabla, 0) + n
+                    except asyncpg.ForeignKeyViolationError:
+                        quedan.append((tabla, columna))
+                if len(quedan) == len(pendientes):
+                    raise RuntimeError(
+                        "No se pudo eliminar la cuenta: dependencias sin resolver en "
+                        + ", ".join(sorted({t for t, _ in quedan})))
+                pendientes = quedan
+
+            borrada = await conn.fetchval(
+                "DELETE FROM usuarios WHERE id = $1 RETURNING id", usuario_id)
+            resumen["borrada"] = bool(borrada)
+
+    log.info("Cuenta %s eliminada del todo: %s", usuario_id, resumen)
+    return resumen
+
+
 async def anotar_acceso(usuario_id: int) -> None:
     """Marca la hora de entrada. Si la migracion 0014 no se ha aplicado aun,
     no falla: el acceso importa mas que la marca."""

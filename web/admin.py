@@ -38,10 +38,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import ia
 from shared.admin_cuentas import (
-    FILTROS_ESTADO, cambiar_password, crear_cuenta, cuenta, detalle_cuenta,
-    editar_cuenta, filtrar_cuentas, ingresos_del_mes, listar_cuentas, password_temporal,
-    planes_activos, poner_activo, resumir_cuentas,
+    FILTROS_ESTADO, borrar_cuenta_completa, cambiar_password, crear_cuenta, cuenta,
+    detalle_cuenta, editar_cuenta, filtrar_cuentas, ingresos_del_mes, listar_cuentas,
+    password_temporal, planes_activos, poner_activo, resumir_cuentas,
 )
+from shared.db import get_usuario
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import DIAS_PRUEBA, activar_manual
 from web.auth import usuario_actual
@@ -55,12 +56,20 @@ def _plantillas(request: Request):
 
 
 async def _exige_dueno(request: Request):
-    """El usuario de la sesion, si es el dueno. Si no, 404."""
+    """El usuario de la sesion, si es el dueno. Si no, 404.
+
+    Mientras el dueno esta DENTRO de la cuenta de un cliente ("entrar como"),
+    `usuario_id` en la sesion es el del cliente y `admin_original` guarda el
+    suyo. Aqui se mira el original: asi el panel de administracion sigue
+    respondiendo desde dentro -- para salir, para abrir otra ficha -- y las
+    acciones quedan registradas a nombre del dueno, no del cliente.
+    """
     correo_dueno = (os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip().lower()
     if not correo_dueno:
         raise HTTPException(status_code=404)
 
-    usuario = await usuario_actual(request)
+    original = request.session.get("admin_original")
+    usuario = await get_usuario(original) if original else await usuario_actual(request)
     if not usuario or (usuario["email"] or "").strip().lower() != correo_dueno:
         # Se registra el intento CON sesion: si alguien esta probando rutas de
         # administracion, conviene que quede escrito quien.
@@ -157,6 +166,83 @@ async def detalle(request: Request, usuario_id: int, aviso: str = "", error: str
         "es_dueno": (d["c"]["email"] or "").lower() == (usuario["email"] or "").lower(),
         "aviso": aviso, "error": error,
     })
+
+
+# ─── Entrar como, salir y eliminar ───────────────────────
+
+@router.post("/admin/clientes/{usuario_id}/entrar")
+async def entrar_como(request: Request, usuario_id: int):
+    """El dueno pasa a ver el producto exactamente como lo ve el cliente.
+
+    Es el "entrar a esta empresa" de CargoXprez: la sesion pasa a ser la del
+    cliente y se guarda de quien era antes para poder volver. La franja ambar
+    de _nav.html avisa mientras dure, porque lo que se haga dentro queda en
+    los datos del cliente.
+    """
+    usuario = await _exige_dueno(request)
+    c = await cuenta(usuario_id)
+    if not c:
+        raise HTTPException(status_code=404)
+    if (c["email"] or "").lower() == (usuario["email"] or "").lower():
+        return _volver(usuario_id, "detalle", error="Ya eres tú: no hay en qué entrar.")
+    if not c["activo"]:
+        # usuario_actual limpia la sesion si la cuenta esta desactivada: el
+        # dueno se quedaria fuera del todo en la peticion siguiente.
+        return _volver(usuario_id, "detalle", error="Activa la cuenta antes de entrar en ella.")
+    request.session["admin_original"] = usuario["id"]
+    request.session["usuario_id"] = c["id"]
+    log.info("Admin %s entro en la cuenta %s (%s)", usuario["email"], c["id"], c["email"])
+    return RedirectResponse("/panel", status_code=303)
+
+
+@router.post("/admin/salir")
+async def salir_de_cuenta(request: Request):
+    """Devuelve al dueno a su propia sesion.
+
+    Ruta propia y no "entra en tu cuenta": el camino de vuelta tiene que
+    funcionar siempre, incluso si la cuenta visitada se borro o se desactivo
+    mientras tanto y `usuario_actual` ya no la resuelve. Por eso no pasa por
+    _exige_dueno: basta con que la sesion lleve `admin_original`.
+    """
+    original = request.session.pop("admin_original", None)
+    if not original:
+        return RedirectResponse("/panel", status_code=303)
+    visitada = request.session.get("usuario_id")
+    request.session["usuario_id"] = original
+    log.info("Admin %s salio de la cuenta %s", original, visitada)
+    destino = f"/admin/clientes/{visitada}" if visitada else "/admin/clientes"
+    return RedirectResponse(destino, status_code=303)
+
+
+@router.post("/admin/clientes/{usuario_id}/eliminar")
+async def eliminar(request: Request, usuario_id: int, confirmacion: str = Form("")):
+    """Borra la cuenta y todo lo suyo. Exige escribir el correo exacto.
+
+    La comprobacion del correo se hace AQUI aunque el <dialog> ya la haga:
+    lo del navegador evita el clic en falso, esto evita el POST forjado.
+    """
+    usuario = await _exige_dueno(request)
+    c = await cuenta(usuario_id)
+    if not c:
+        raise HTTPException(status_code=404)
+    if (c["email"] or "").lower() == (usuario["email"] or "").lower():
+        return _volver(usuario_id, "detalle", error="Tu propia cuenta no se elimina desde aquí.")
+    if confirmacion.strip().lower() != (c["email"] or "").lower():
+        return _volver(usuario_id, "detalle",
+                       error="El correo escrito no coincide: no se eliminó nada.")
+    if request.session.get("usuario_id") == c["id"]:
+        # Se estaba dentro de esa cuenta: primero se sale, o la sesion
+        # quedaria apuntando a una fila que ya no existe.
+        request.session["usuario_id"] = request.session.pop("admin_original")
+    try:
+        resumen = await borrar_cuenta_completa(usuario_id)
+    except RuntimeError as e:
+        log.error("Admin %s no pudo eliminar la cuenta %s: %s", usuario["email"], usuario_id, e)
+        return _volver(usuario_id, "detalle", error=str(e))
+    log.warning("Admin %s ELIMINO la cuenta %s (%s): %s", usuario["email"], usuario_id, c["email"], resumen)
+    return RedirectResponse(
+        "/admin/clientes?" + urlencode({"aviso": f"Cuenta {c['email']} eliminada con todos sus datos."}),
+        status_code=303)
 
 
 # ─── Alta y edicion ──────────────────────────────────────
