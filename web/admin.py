@@ -38,8 +38,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import ia
 from shared.admin_cuentas import (
-    FILTROS_ESTADO, cambiar_password, crear_cuenta, cuenta, editar_cuenta,
-    filtrar_cuentas, ingresos_del_mes, listar_cuentas, password_temporal,
+    FILTROS_ESTADO, cambiar_password, crear_cuenta, cuenta, detalle_cuenta,
+    editar_cuenta, filtrar_cuentas, ingresos_del_mes, listar_cuentas, password_temporal,
     planes_activos, poner_activo, resumir_cuentas,
 )
 from shared.seguridad import hashear_password, password_debil
@@ -138,6 +138,25 @@ async def poner_plan(request: Request, usuario_id: int, plan: str = Form(...),
         return _volver(usuario_id, volver, error="Plan, estado o periodo no válidos")
     log.info("Plan puesto a mano por %s a la cuenta %s: %s/%s", usuario["email"], usuario_id, plan, estado)
     return _volver(usuario_id, volver, aviso="Plan guardado")
+
+
+# ─── Detalle ─────────────────────────────────────────────
+
+@router.get("/admin/clientes/{usuario_id}", response_class=HTMLResponse)
+async def detalle(request: Request, usuario_id: int, aviso: str = "", error: str = ""):
+    """Una cuenta entera: suscripcion, pagos, empresas, uso y canales, con las
+    acciones al lado de lo que describen. Es la ficha que se abre cuando un
+    cliente escribe diciendo que algo no le funciona."""
+    usuario = await _exige_dueno(request)
+    d = await detalle_cuenta(usuario_id)
+    if not d:
+        raise HTTPException(status_code=404)
+    return _plantillas(request).TemplateResponse("admin_cliente.html", {
+        "request": request, "usuario": usuario, **d,
+        "planes": await planes_activos(), "hoy": date.today(),
+        "es_dueno": (d["c"]["email"] or "").lower() == (usuario["email"] or "").lower(),
+        "aviso": aviso, "error": error,
+    })
 
 
 # ─── Alta y edicion ──────────────────────────────────────

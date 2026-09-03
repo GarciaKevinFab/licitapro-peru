@@ -1,0 +1,233 @@
+{% extends "_base.html" %}
+{% block titulo %}{{ c.nombre or c.email }} · Clientes · LicitaPro{% endblock %}
+{% set titulo_pagina = c.nombre or c.email %}
+{% set sub_pagina = c.email ~ ' · creada el ' ~ c.created_at.strftime('%d/%m/%Y') ~ (' · último acceso ' ~ c.ultimo_acceso.strftime('%d/%m/%Y %H:%M') if c.ultimo_acceso else ' · nunca ha entrado') %}
+{% block estilos %}
+{% include "_admin_estilos.html" %}
+.miga{font-size:12.5px;color:var(--ink-3);margin:0 0 14px}
+.miga a{color:var(--ink-3)}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.dos .tarjeta{margin-bottom:0}
+.dos+.tarjeta{margin-top:18px}
+/* Lista de datos: rotulo a la izquierda en mayusculas chicas, valor a la
+   derecha. La misma pieza para la suscripcion, la cuenta y los canales. */
+dl.datos-l{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:7px 16px;font-size:13.5px}
+dl.datos-l dt{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:500;padding-top:2px}
+dl.datos-l dd{margin:0;overflow-wrap:anywhere}
+dl.datos-l dd .pill{margin-left:2px}
+.poner{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 12px;margin-top:14px;
+  padding-top:14px;border-top:1px solid var(--line-soft)}
+.poner .ancho{grid-column:1 / -1}
+.poner .campo>span{font-size:10.5px}
+.acciones-cuenta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--line-soft)}
+.acciones-cuenta form{display:contents}
+.clave{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.clave input{font-family:"JetBrains Mono",monospace;flex:1 1 auto}
+.clave button{white-space:nowrap}
+.canales{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.empresa b{display:block;font-weight:600}
+.empresa span{font-size:12.5px;color:var(--ink-3)}
+.nota{font-size:12px;color:var(--ink-3)}
+@media (max-width:900px){ .dos{grid-template-columns:1fr} .dos .tarjeta{margin-bottom:18px} .dos+.tarjeta{margin-top:0} }
+@media (max-width:640px){
+  .poner{grid-template-columns:1fr 1fr}
+  .poner button{grid-column:1 / -1}
+  .clave{flex-direction:column}
+  .acciones-cuenta .btn,.acciones-cuenta button{flex:1 1 45%}
+  dl.datos-l{grid-template-columns:1fr;gap:2px}
+  dl.datos-l dd{margin-bottom:8px}
+  .tabla-caja table.datos.chica{min-width:0}
+  .chica thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .chica tbody tr{display:flex;flex-wrap:wrap;gap:8px 18px;padding:12px 2px;border-bottom:1px solid var(--line-soft)}
+  .chica tbody tr:last-child{border-bottom:none}
+  .chica tbody tr:hover{background:transparent}
+  .chica tbody tr td:first-child,.chica tbody tr:hover td:first-child{box-shadow:none}
+  .chica td,.chica td.num{display:block;padding:0;border:0;flex:1 1 40%;min-width:0;text-align:left}
+  .chica td:first-child{flex:1 1 100%}
+  .chica td[data-eti]::before{content:attr(data-eti);display:block;font-size:10.5px;
+    letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+}
+{% endblock %}
+{% block nav %}{% with activo='admin' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block acciones_pagina %}
+  <div class="cab-acc">
+    <a class="btn sec" href="/admin/clientes">Volver a clientes</a>
+    {% if not es_dueno and c.activo %}
+    <form method="post" action="/admin/clientes/{{ c.id }}/entrar" data-cargando="Entrando…">
+      <button type="submit" class="sec">Entrar como {{ (c.nombre or c.email) | truncate(24, True) }}</button>
+    </form>
+    {% endif %}
+    <a class="btn" href="/admin/clientes/{{ c.id }}/editar">Editar</a>
+  </div>
+{% endblock %}
+{% block contenido %}
+  {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+  {% if not c.activo %}
+    <div class="mensaje aviso"><strong>Cuenta desactivada.</strong> No puede entrar; sus datos siguen intactos. Actívala desde el bloque Cuenta.</div>
+  {% endif %}
+
+  <div class="tarjetas" aria-label="Uso de la cuenta">
+    <div class="t"><div class="n">{{ conteos.empresas }}</div><div class="l">empresas</div></div>
+    <div class="t"><div class="n">{{ conteos.propuestas }}</div><div class="l">propuestas</div></div>
+    <div class="t"><div class="n">{{ conteos.contratos }}</div><div class="l">contratos</div></div>
+    <div class="t"><div class="n">{{ conteos.seguidas }}</div><div class="l">licitaciones seguidas</div></div>
+    <div class="t"><div class="n">{{ ia.analisis }}{% if ia.tope %}<small class="nota"> / {{ ia.tope }}</small>{% endif %}</div>
+      <div class="l">análisis IA este mes · S/ {{ '{:,.2f}'.format(ia.soles) }}</div></div>
+  </div>
+
+  <div class="dos">
+    <div class="tarjeta" id="plan">
+      <h2>Suscripción</h2>
+      {% if susc %}
+        {% set cl = 'ok' if susc.estado_efectivo in ('activa','prueba') else ('pend' if susc.estado_efectivo == 'vencida' else 'urg') %}
+        <dl class="datos-l">
+          <dt>Plan</dt><dd><b>{{ susc.plan_nombre }}</b> · {{ susc.periodo }} · S/ {{ '%d' % (susc.precio_anual if susc.periodo == 'anual' and susc.precio_anual else susc.precio_mensual) }}{{ '/año' if susc.periodo == 'anual' else '/mes' }}</dd>
+          <dt>Estado</dt><dd><span class="pill {{ cl }}">{{ susc.estado_efectivo }}</span>
+            {% if susc.estado_efectivo != susc.estado %}<span class="nota">guardado como «{{ susc.estado }}»</span>{% endif %}</dd>
+          <dt>Inicia</dt><dd class="fecha">{{ susc.inicia.strftime('%d/%m/%Y') if susc.inicia else '—' }}</dd>
+          <dt>Vence</dt><dd class="fecha">{% if susc.vence %}{{ susc.vence.strftime('%d/%m/%Y') }}
+            {% if susc.dias_restantes is not none %}<span class="nota">{% if susc.dias_restantes >= 0 %}en {{ susc.dias_restantes }} días{% else %}hace {{ -susc.dias_restantes }} días{% endif %}</span>{% endif %}
+            {% else %}sin fecha{% endif %}</dd>
+          <dt>Tarjeta</dt><dd>{% if susc.tarjeta_ultimos %}{{ susc.tarjeta_marca or 'tarjeta' }} ···· {{ susc.tarjeta_ultimos }}{% if susc.intentos_fallidos %} <span class="pill urg">{{ susc.intentos_fallidos }} cobro(s) fallido(s)</span>{% endif %}{% else %}sin tarjeta guardada{% endif %}</dd>
+          {% if susc.cancelada_en %}<dt>Cancelada</dt><dd class="fecha">{{ susc.cancelada_en.strftime('%d/%m/%Y') }}</dd>{% endif %}
+        </dl>
+      {% else %}
+        <p class="sub">Esta cuenta no tiene fila de suscripción: el panel la deja pasar y avisa en el log. Ponle un plan aquí abajo.</p>
+      {% endif %}
+
+      <form class="poner" method="post" action="/admin/clientes/{{ c.id }}/plan" data-cargando="Guardando…">
+        <input type="hidden" name="volver" value="detalle">
+        <label class="campo"><span>Plan</span>
+          <select name="plan">
+            {% for p in planes %}
+              <option value="{{ p.codigo }}" {% if susc and p.codigo == susc.plan_codigo %}selected{% endif %}>{{ p.nombre }} · S/ {{ '%d' % p.precio_mensual }}/mes</option>
+            {% endfor %}
+          </select></label>
+        <label class="campo"><span>Estado</span>
+          <select name="estado">
+            {% for e in ['activa','prueba','vencida','suspendida','cancelada'] %}
+              <option value="{{ e }}" {% if e == (susc.estado if susc else 'activa') %}selected{% endif %}>{{ e }}</option>
+            {% endfor %}
+          </select></label>
+        <label class="campo"><span>Periodo</span>
+          <select name="periodo">
+            <option value="mensual" {% if not susc or susc.periodo != 'anual' %}selected{% endif %}>mensual</option>
+            <option value="anual" {% if susc and susc.periodo == 'anual' %}selected{% endif %}>anual</option>
+          </select></label>
+        <label class="campo"><span>Pagado hasta</span>
+          <input type="date" name="vence" value="{{ susc.vence.strftime('%Y-%m-%d') if susc and susc.vence else '' }}"></label>
+        <label class="campo"><span>Monto S/</span>
+          <input type="number" name="monto" step="0.01" min="0" placeholder="0"></label>
+        <label class="campo"><span>Nota</span>
+          <input type="text" name="nota" maxlength="200" placeholder="efectivo, Yape, recibo…"></label>
+        <button type="submit">Poner el plan a mano</button>
+        <p class="ayuda ancho">Lo que pongas aquí manda sobre la pasarela. Con monto, queda un pago manual en el historial.</p>
+      </form>
+    </div>
+
+    <div class="tarjeta" id="cuenta">
+      <h2>Cuenta</h2>
+      <dl class="datos-l">
+        <dt>Correo</dt><dd>{{ c.email }}</dd>
+        <dt>Nombre</dt><dd>{{ c.nombre or '—' }}</dd>
+        <dt>Acceso</dt><dd>{% if c.activo %}<span class="pill ok">activa</span>{% else %}<span class="pill urg">desactivada</span>{% endif %}</dd>
+        <dt>Creada</dt><dd class="fecha">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+        <dt>Último acceso</dt><dd class="fecha">{{ c.ultimo_acceso.strftime('%d/%m/%Y %H:%M') if c.ultimo_acceso else 'nunca' }}</dd>
+        <dt>Avisos</dt><dd>
+          <span class="canales">
+            <span class="pill {{ 'ok' if canales.telegram else 'neutro' }}">Telegram {{ 'conectado' if canales.telegram else 'no' }}</span>
+            <span class="pill {{ 'ok' if canales.whatsapp else 'neutro' }}">WhatsApp {{ 'activo' if canales.whatsapp else (canales.whatsapp_estado or 'no') }}</span>
+            <span class="pill {{ 'ok' if canales.correo else 'neutro' }}">correo {{ 'sí' if canales.correo else 'apagado' }}</span>
+          </span>
+          {% if canales.correo and canales.correo|lower != c.email|lower %}<span class="nota">avisos a {{ canales.correo }}</span>{% endif %}
+        </dd>
+      </dl>
+
+      <form class="clave" method="post" action="/admin/clientes/{{ c.id }}/password" data-validar data-cargando="Cambiando…" autocomplete="off">
+        <input type="hidden" name="volver" value="detalle">
+        <input type="text" name="password" required minlength="10" maxlength="200" spellcheck="false"
+               placeholder="contraseña nueva, mínimo 10 caracteres" aria-label="Contraseña nueva" data-error="Al menos 10 caracteres.">
+        <button type="submit" class="sec">Cambiar la contraseña</button>
+      </form>
+
+      <div class="acciones-cuenta">
+        <a class="btn sec" href="/admin/clientes/{{ c.id }}/editar">Editar datos</a>
+        {% if not es_dueno %}
+        <form method="post" action="/admin/clientes/{{ c.id }}/activo">
+          <input type="hidden" name="volver" value="detalle">
+          <input type="hidden" name="activo" value="{{ '0' if c.activo else '1' }}">
+          <button type="submit" class="sec">{{ 'Desactivar' if c.activo else 'Activar' }}</button>
+        </form>
+        {% if c.activo %}
+        <form method="post" action="/admin/clientes/{{ c.id }}/entrar" data-cargando="Entrando…">
+          <button type="submit" class="sec">Entrar como</button>
+        </form>
+        {% endif %}
+        <button type="button" class="peligro" data-dialogo="dlg-eliminar"
+                data-accion="/admin/clientes/{{ c.id }}/eliminar" data-correo="{{ c.email }}"
+                data-resumen="{{ conteos.empresas }} empresa(s), {{ conteos.propuestas }} propuesta(s) y {{ conteos.contratos }} contrato(s)">Eliminar la cuenta</button>
+        {% else %}
+        <p class="ayuda">Es tu propia cuenta: no se desactiva ni se elimina desde aquí.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Empresas</h2>
+    <p class="sub">Las inactivas conservan su historial pero no reciben avisos ni cuentan para el tope del plan.</p>
+    {% if not empresas %}
+      <div class="vacio"><p>Todavía no registró ninguna empresa.</p></div>
+    {% else %}
+    <div class="tabla-caja">
+      <table class="datos chica">
+        <thead><tr><th>Empresa</th><th>Región</th><th>Estado</th><th class="num">Propuestas</th><th class="num">Contratos</th><th>Registrada</th></tr></thead>
+        <tbody>
+        {% for e in empresas %}
+          <tr>
+            <td class="empresa"><b>{{ e.razon_social }}</b><span>RUC {{ e.ruc or 'sin RUC' }}</span></td>
+            <td data-eti="Región">{{ e.departamento or '—' }}</td>
+            <td data-eti="Estado">{% if e.activa %}<span class="pill ok">activa</span>{% else %}<span class="pill neutro">inactiva</span>{% endif %}</td>
+            <td class="num" data-eti="Propuestas">{{ e.propuestas }}</td>
+            <td class="num" data-eti="Contratos">{{ e.contratos }}</td>
+            <td class="fecha" data-eti="Registrada">{{ e.created_at.strftime('%d/%m/%Y') if e.created_at else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Pagos</h2>
+    <p class="sub">Los de la pasarela y los puestos a mano. Solo los <b>pagados</b> extienden la suscripción.</p>
+    {% if not pagos %}
+      <div class="vacio"><p>Sin pagos registrados.</p></div>
+    {% else %}
+    <div class="tabla-caja">
+      <table class="datos chica">
+        <thead><tr><th>Fecha</th><th class="num">Monto</th><th>Método</th><th>Estado</th><th>Referencia</th></tr></thead>
+        <tbody>
+        {% for p in pagos %}
+          <tr>
+            <td class="fecha">{{ (p.confirmado_en or p.created_at).strftime('%d/%m/%Y %H:%M') }}</td>
+            <td class="num" data-eti="Monto">{{ p.moneda or 'PEN' }} {{ '{:,.2f}'.format(p.monto) }}</td>
+            <td data-eti="Método">{{ p.metodo or 'izipay' }}</td>
+            <td data-eti="Estado">{% set cp = 'ok' if p.estado == 'pagado' else ('pend' if p.estado == 'pendiente' else 'urg') %}<span class="pill {{ cp }}">{{ p.estado }}</span></td>
+            <td data-eti="Referencia">{% if p.izipay_order_number %}<span class="mono">{{ p.izipay_order_number }}</span>{% endif %}
+              {% if p.respuesta and p.metodo == 'manual' %}<span class="nota">{{ p.respuesta.nota or '' }}{% if p.respuesta.por %} · por {{ p.respuesta.por }}{% endif %}</span>{% endif %}
+              {% if not p.izipay_order_number and not (p.respuesta and p.metodo == 'manual') %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  {% include "_admin_dialogo_eliminar.html" %}
+{% endblock %}

@@ -276,6 +276,74 @@ async def poner_activo(usuario_id: int, activo: bool) -> bool:
     return bool(hecho)
 
 
+async def detalle_cuenta(usuario_id: int) -> dict | None:
+    """Todo lo que el dueno quiere ver de una cuenta en una sola pantalla.
+
+    Suscripcion con su estado efectivo, historial de pagos, empresas con sus
+    recuentos, cuantas propuestas/contratos/seguimientos hay, el uso de IA
+    del mes y que canales de aviso tiene conectados. Son varias consultas
+    chicas y no una gigante: cada bloque se lee solo y se puede quitar sin
+    tocar los demas.
+    """
+    from shared import ia as modulo_ia
+
+    c = await cuenta(usuario_id)
+    if not c:
+        return None
+    async with connection() as conn:
+        susc = await conn.fetchrow(
+            """SELECT s.id, s.plan_codigo, s.estado, s.periodo, s.inicia, s.vence,
+                      s.cancelada_en, s.tarjeta_marca, s.tarjeta_ultimos,
+                      s.intentos_fallidos, s.ultimo_intento,
+                      p.nombre AS plan_nombre, p.precio_mensual, p.precio_anual,
+                      p.analisis_ia_mes
+                 FROM suscripciones s JOIN planes p ON p.codigo = s.plan_codigo
+                WHERE s.usuario_id = $1""", usuario_id)
+        pagos = await conn.fetch(
+            """SELECT ps.id, ps.monto, ps.moneda, ps.estado, ps.metodo, ps.created_at,
+                      ps.confirmado_en, ps.izipay_order_number, ps.respuesta
+                 FROM pagos_suscripcion ps JOIN suscripciones s ON s.id = ps.suscripcion_id
+                WHERE s.usuario_id = $1 ORDER BY ps.created_at DESC LIMIT 50""", usuario_id)
+        empresas = await conn.fetch(
+            """SELECT e.id, e.razon_social, e.ruc, e.departamento, e.activa, e.created_at,
+                      (SELECT count(*) FROM propuestas pr WHERE pr.empresa_id = e.id) AS propuestas,
+                      (SELECT count(*) FROM contratos ct WHERE ct.empresa_id = e.id) AS contratos
+                 FROM empresas e WHERE e.usuario_id = $1 ORDER BY e.activa DESC, e.id""",
+            usuario_id)
+        seguidas = await conn.fetchval(
+            "SELECT count(*) FROM licitaciones_seguidas WHERE usuario_id = $1", usuario_id)
+        uso_ia = await conn.fetchrow(
+            """SELECT count(*) AS analisis,
+                      COALESCE(SUM(tokens_entrada), 0) AS tokens_entrada,
+                      COALESCE(SUM(tokens_salida), 0) AS tokens_salida
+                 FROM analisis_ia
+                WHERE usuario_id = $1 AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+            usuario_id)
+        correo_avisos = await conn.fetchval(
+            "SELECT email_notificaciones FROM user_config WHERE usuario_id = $1", usuario_id)
+
+    s = dict(susc) if susc else None
+    if s:
+        s["estado_efectivo"] = estado_efectivo_de(s["estado"], s["vence"])
+        s["dias_restantes"] = (s["vence"] - datetime.now()).days if s["vence"] else None
+    usd = modulo_ia.coste_usd(uso_ia["tokens_entrada"], uso_ia["tokens_salida"])
+    return {
+        "c": c, "susc": s, "pagos": pagos, "empresas": empresas,
+        "conteos": {"empresas": len(empresas),
+                    "propuestas": sum(e["propuestas"] for e in empresas),
+                    "contratos": sum(e["contratos"] for e in empresas),
+                    "seguidas": seguidas or 0},
+        "ia": {"analisis": uso_ia["analisis"], "tokens_entrada": uso_ia["tokens_entrada"],
+               "tokens_salida": uso_ia["tokens_salida"],
+               "soles": usd * modulo_ia.SOLES_POR_DOLAR,
+               "tope": s["analisis_ia_mes"] if s else None},
+        "canales": {"telegram": bool(c["telegram_chat_id"]),
+                    "whatsapp": bool(c["whatsapp_numero"]) and c["whatsapp_estado"] == "activo",
+                    "whatsapp_estado": c["whatsapp_estado"],
+                    "correo": correo_avisos},
+    }
+
+
 async def anotar_acceso(usuario_id: int) -> None:
     """Marca la hora de entrada. Si la migracion 0014 no se ha aplicado aun,
     no falla: el acceso importa mas que la marca."""
