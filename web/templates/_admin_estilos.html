@@ -7,7 +7,7 @@ main{max-width:1240px}
 /* Pildoras de estado. Los colores salen de los tokens: ok para lo que
    funciona, warn para lo que esta en gracia, urg para lo cortado, neutro
    para lo que no tiene plan. */
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+.pill{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.09em;
   text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap;
   display:inline-block;vertical-align:middle}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
@@ -17,6 +17,9 @@ main{max-width:1240px}
 .ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
 .fecha{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
+/* Linea secundaria en minusculas: para frases ("mensual, pago el 25/08"), no
+   para rotulos. Los rotulos en mayusculas chicas son .ent. */
+.nota{font-size:12px;color:var(--ink-3);display:block}
 
 /* Cifras de cabecera: la misma rejilla que el panel del cliente, para que el
    dueno lea su negocio con la misma pieza con la que el cliente lee el suyo. */
@@ -45,7 +48,7 @@ main{max-width:1240px}
    escribir una linea de script para cada una de esas cosas. */
 dialog.confirmar{border:1px solid var(--line);border-radius:var(--r-card);background:var(--panel);
   color:var(--ink);padding:22px 24px;max-width:460px;width:calc(100% - 32px);
-  box-shadow:0 24px 60px -24px color-mix(in srgb,var(--ink) 50%,transparent)}
+  box-shadow:0 12px 28px -16px color-mix(in srgb,var(--ink) 45%,transparent)}
 dialog.confirmar::backdrop{background:color-mix(in srgb,var(--ink) 55%,transparent)}
 dialog.confirmar h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0 0 6px;
   letter-spacing:-.01em;color:var(--urg)}

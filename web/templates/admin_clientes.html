@@ -13,7 +13,7 @@
 .cuenta span{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
 .cuenta .pill{margin-top:4px}
 .plan b{display:block}
-.plan .ent{margin-top:3px}
+.plan .nota{margin-top:3px}
 /* Seis acciones en dos lineas de tres: con la columna al 1% se apilaban en
    vertical y cada fila medía doscientos pixeles. */
 table.datos td.acciones-c{width:262px}
@@ -38,7 +38,7 @@ table.datos th.num,table.datos td.num{padding-right:18px}
   .cuentas td{display:block;padding:0;border:0;flex:1 1 40%;min-width:0}
   .cuentas td.cuenta,.cuentas td.acciones-c{flex:1 1 100%;width:auto}
   .cuentas td.acciones-c .acciones{max-width:none}
-  .cuentas td[data-eti]::before{content:attr(data-eti);display:block;font-size:10.5px;
+  .cuentas td[data-eti]::before{content:attr(data-eti);display:block;font-size:11px;
     letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
   .cuentas .acciones{gap:8px}
   .cuentas .acciones .btn,.cuentas .acciones button{flex:1 1 30%}
@@ -118,7 +118,7 @@ table.datos th.num,table.datos td.num{padding-right:18px}
               <b>{{ c.plan_nombre }}</b>
               {% set cl = 'ok' if c.estado_efectivo in ('activa','prueba') else ('pend' if c.estado_efectivo == 'vencida' else 'urg') %}
               <span class="pill {{ cl }}">{{ c.estado_efectivo }}</span>
-              <span class="ent">{{ c.periodo }}{% if c.ultimo_pago %} · pagó {{ c.ultimo_pago.strftime('%d/%m/%Y') }} ({{ c.ultimo_metodo or 'pasarela' }}){% endif %}</span>
+              <span class="nota">{{ c.periodo }}{% if c.ultimo_pago %} · pagó {{ c.ultimo_pago.strftime('%d/%m/%Y') }} ({{ c.ultimo_metodo or 'pasarela' }}){% endif %}</span>
             {% else %}
               <span class="pill neutro">sin suscripción</span>
             {% endif %}
