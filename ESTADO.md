@@ -19,14 +19,48 @@ ser. Cada afirmacion sale de haberla ejecutado; donde no pude, lo digo.
 
 ---
 
-## 2. Bloqueante para cobrar: Izipay
+## 2. Bloqueante para cobrar: las llaves de Culqi
 
-**El codigo NO falta.** `shared/izipay.py` es un adaptador completo: genera
-token de sesion, procesa el webhook verificando la firma HMAC, y
-`tools/renovar_suscripciones.py` gestiona las renovaciones. Sin credenciales
-cae a modo `simulado`, y el flujo de suscripcion se puede recorrer entero.
+**El codigo NO falta.** `shared/culqi.py` es un adaptador completo -- planes,
+cliente, tarjeta, suscripcion, cancelacion y lectura de cargos --,
+`web/webhooks_culqi.py` recibe los avisos y los COMPRUEBA contra la API antes
+de dar un pago por bueno, y `tools/culqi_planes.py` crea los planes. Sin llaves
+cae a modo `simulado` y el flujo entero se puede recorrer sin cobrar nada.
+
+Por que Culqi y no Izipay: Izipay confirmo por escrito que la afiliacion admite
+**solo pagos unicos**, no recurrentes, y que cada dominio necesita afiliacion
+propia. Con eso, "suscripcion" era una palabra en la portada. Culqi cobra sola
+cada periodo y avisa por webhook.
 
 Lo que falta es de tu lado, y en este orden:
+
+- [ ] **Llaves de prueba de Culqi** (`pk_test_…`, `sk_test_…`) en el `.env`, con
+      `CULQI_MODO=prueba`.
+- [ ] **Comprobar el POR_CONFIRMAR que de verdad importa**: que valor de
+      `interval_unit_time` es mensual y cual anual. La documentacion publica
+      solo ensena `1` y no dice a que unidad corresponde. Se comprueba en cinco
+      minutos creando un plan sonda con cada valor; el `curl` exacto esta en
+      `shared/culqi.py` -> `intervalo_de()`. **No hay valor por defecto a
+      proposito**: adivinar no da error, da un plan mensual que cobra cada dia.
+- [ ] `python tools/culqi_planes.py` y luego `--aplicar`.
+- [ ] Dar de alta el webhook en el panel de Culqi:
+      `https://licitapro.sisac.pe/webhooks/culqi`
+- [ ] Comprar de punta a punta con tarjeta de prueba y comprobar que
+      `/suscripcion` queda activa con vencimiento a un periodo vista.
+- [ ] Cambiar las DOS llaves por las `pk_live_`/`sk_live_` y poner
+      `CULQI_MODO=produccion`. Con las de prueba se niega a arrancar: Culqi las
+      aceptaria y crearia suscripciones que no mueven dinero.
+
+---
+
+## 2.bis Izipay: el pago unico, que sigue vivo
+
+Se conserva entero. La afiliacion sigue activa, hay cobros registrados con su
+numero de orden y pagos manuales -- efectivo, Yape, transferencia -- en el mismo
+historial. Mientras Culqi este en simulado, el checkout es el suyo y los textos
+del sitio dicen "pago unico", que es lo que ocurriria.
+
+Lo que falta para usarlo, en este orden:
 
 - [ ] **Cuenta de comercio de Izipay aprobada.** Verifican la web desde fuera y
       exigen dominio propio con HTTPS valido. Eso ya lo tienes: era el requisito
