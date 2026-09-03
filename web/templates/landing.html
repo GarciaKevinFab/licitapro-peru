@@ -298,6 +298,11 @@ body::after{
    una ventana mas baja, lo de abajo queda inalcanzable para siempre. */
 .cifras-stage{position:relative;height:300svh}
 .cifras-pin{position:sticky;top:0;min-height:100svh;display:flex;align-items:center}
+/* En el telefono el escenario se queda en 170 alturas de pantalla: con 300, las
+   tres cifras ya estan encendidas a mitad de camino y el resto es un scroll
+   muerto de casi dos pantallas con la misma imagen clavada. Medido en un
+   viewport de 844 px: 2532 px de seccion para 700 px de contenido. */
+@media (max-width:640px){ .cifras-stage{height:170svh} }
 .cifras{display:grid;gap:calc(var(--paso) * 1.9);width:100%;grid-template-columns:1fr}
 @media (min-width:900px){ .cifras{grid-template-columns:repeat(3,1fr);gap:calc(var(--paso) * 1.4)} }
 .cifra{opacity:.2;transform:translate3d(0,14px,0);transition:opacity .7s var(--ease),transform .7s var(--ease);padding-top:calc(var(--paso) * .9);border-top:1px solid var(--hair)}
