@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.conosce")
 
@@ -131,7 +132,7 @@ def _parse_fecha(val) -> datetime | None:
     text = str(val).strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -455,7 +456,7 @@ async def scrape_conosce(user_id: int = 0) -> list[dict]:
     errores = 0
     error_detalle = None
 
-    current_year = date.today().year
+    current_year = fechas.hoy().year
 
     try:
         async with httpx.AsyncClient(

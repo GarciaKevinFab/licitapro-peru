@@ -43,6 +43,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from shared.db import log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.gob_pe")
 
@@ -108,7 +109,7 @@ def _fecha_es(texto: str | None) -> datetime | None:
     if not mes:
         return None
     try:
-        return datetime(int(m.group(3)), mes, int(m.group(1)))
+        return fechas.fija(int(m.group(3)), mes, int(m.group(1)))
     except ValueError:
         return None
 
@@ -173,7 +174,7 @@ def _parsear_item(item: dict) -> dict | None:
 
 async def scrape_gob_pe(user_id: int = 0) -> list[dict]:
     log_id = await log_scraping_start("gob_pe")
-    desde = (datetime.now() - timedelta(days=DIAS_VENTANA)).strftime("%Y-%m-%d")
+    desde = (fechas.ahora() - timedelta(days=DIAS_VENTANA)).strftime("%Y-%m-%d")
 
     vistos: set[str] = set()
     nuevas: list[dict] = []

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
+from shared import fechas
 
 log = logging.getLogger("shared.seguridad")
 
@@ -94,7 +95,7 @@ def nuevo_token_telegram() -> tuple[str, datetime]:
     el sistema no tendria forma de detectarlo. Con enlace profundo el chat_id lo
     entrega Telegram, no el usuario.
     """
-    return secrets.token_urlsafe(24), datetime.now() + timedelta(minutes=MINUTOS_TOKEN_TELEGRAM)
+    return secrets.token_urlsafe(24), fechas.ahora() + timedelta(minutes=MINUTOS_TOKEN_TELEGRAM)
 
 
 # ─── Credenciales cifradas ───────────────────────────────
@@ -139,7 +140,7 @@ def nuevo_token_recuperacion() -> tuple[str, str, datetime]:
     enlace.
     """
     token = secrets.token_urlsafe(32)
-    return token, hash_token(token), datetime.now() + timedelta(hours=HORAS_TOKEN_RECUPERACION)
+    return token, hash_token(token), fechas.ahora() + timedelta(hours=HORAS_TOKEN_RECUPERACION)
 
 
 def hash_token(token: str) -> str:

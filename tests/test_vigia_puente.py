@@ -28,8 +28,9 @@ from datetime import datetime, timedelta
 import pytest
 
 from tools.vigia_puente import decidir, evaluar
+from shared import fechas
 
-AHORA = datetime(2026, 8, 31, 10, 0, 0)
+AHORA = fechas.fija(2026, 8, 31, 10, 0, 0)
 SANO = {"estado": "sano", "desde": "2026-08-31T09:00:00", "motivo": "ok"}
 CAIDO = {"estado": "caido", "desde": "2026-08-31T09:30:00", "motivo": "x"}
 

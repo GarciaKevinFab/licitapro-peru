@@ -6,6 +6,7 @@ import unicodedata
 from functools import lru_cache
 
 from dotenv import load_dotenv
+from shared import fechas
 
 load_dotenv()
 
@@ -188,7 +189,7 @@ def dias_restantes(fecha_cierre) -> int | None:
     from datetime import date
     if hasattr(fecha_cierre, "date"):
         fecha_cierre = fecha_cierre.date()
-    return (fecha_cierre - date.today()).days
+    return (fecha_cierre - fechas.hoy()).days
 
 
 def prioridad_emoji(score: float | None, dias: int | None) -> str:

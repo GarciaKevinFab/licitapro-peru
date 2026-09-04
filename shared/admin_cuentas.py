@@ -31,6 +31,7 @@ import asyncpg
 
 from shared.db import connection
 from shared.suscripciones import estado_efectivo_de
+from shared import fechas
 
 log = logging.getLogger("shared.admin_cuentas")
 
@@ -77,7 +78,7 @@ def resumir_cuentas(filas, ahora: datetime | None = None) -> dict:
     y esa regla vive en `estado_efectivo_de`. Repetirla en una consulta seria
     tener dos definiciones que un dia discrepan.
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     r = {"total": 0, "activas": 0, "prueba": 0, "pagando": 0}
     for f in filas:
         r["total"] += 1
@@ -101,7 +102,7 @@ def filtrar_cuentas(filas, q: str = "", plan: str = "", estado: str = "",
     estado compara contra el efectivo, con dos valores extra que no estan en
     la suscripcion: `sin_suscripcion` y `desactivada` (la cuenta, no el plan).
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     q = (q or "").strip().lower()
     salida = []
     for f in filas:
@@ -324,7 +325,7 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
     s = dict(susc) if susc else None
     if s:
         s["estado_efectivo"] = estado_efectivo_de(s["estado"], s["vence"])
-        s["dias_restantes"] = (s["vence"] - datetime.now()).days if s["vence"] else None
+        s["dias_restantes"] = (s["vence"] - fechas.ahora()).days if s["vence"] else None
     usd = modulo_ia.coste_usd(uso_ia["tokens_entrada"], uso_ia["tokens_salida"])
     return {
         "c": c, "susc": s, "pagos": pagos, "empresas": empresas,

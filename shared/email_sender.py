@@ -9,6 +9,7 @@ import aiosmtplib
 
 from shared import plantillas_correo
 from shared.config import format_fecha, format_monto
+from shared import fechas
 
 log = logging.getLogger("licitapro.email")
 
@@ -116,7 +117,7 @@ async def notificar_plazo_proximo(plazo: dict, contrato: dict) -> bool:
     dias quedan. Quien no distingue esos tonos lee exactamente lo mismo.
     """
     from datetime import date
-    dias = (plazo["fecha_limite"] - date.today()).days
+    dias = (plazo["fecha_limite"] - fechas.hoy()).days
     if dias <= 1:
         acento = plantillas_correo.ROJO
     elif dias <= 3:

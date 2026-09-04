@@ -47,6 +47,7 @@ import httpx
 from shared import whatsapp
 from shared.db import connection, get_config_usuario, licitaciones_para_usuario
 from shared.suscripciones import estado_suscripcion
+from shared import fechas
 
 log = logging.getLogger("shared.notificaciones")
 
@@ -106,7 +107,7 @@ def _en_horario(config: dict | None) -> bool:
     fin = (config.get("horario_fin") or "").strip()
     if not inicio or not fin:
         return True
-    ahora = datetime.now().strftime("%H:%M")
+    ahora = fechas.ahora().strftime("%H:%M")
     if inicio <= fin:
         return inicio <= ahora <= fin
     # Franja que cruza la medianoche (22:00 a 07:00).

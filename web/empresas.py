@@ -33,6 +33,7 @@ from shared.config import DEPARTAMENTOS, normalizar, parse_monto
 from shared.db import connection, empresa_es_de, empresas_de
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
+from shared import fechas
 
 log = logging.getLogger("web.empresas")
 router = APIRouter()
@@ -124,7 +125,7 @@ async def form_editar(request: Request, empresa_id: int,
         "imagenes": await rutas_de(empresa_id),
         "tipos_imagen": TIPOS_IMAGEN,
         "experiencia": experiencia, "equipo": equipo,
-        "vencimientos": vencimientos, "hoy": date.today(),
+        "vencimientos": vencimientos, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
     })
 

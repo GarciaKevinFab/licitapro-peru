@@ -13,6 +13,7 @@ LO QUE SE PROTEGE
 
 from tests.conftest import sin_base
 from web import suscripcion as vista
+from shared import fechas
 
 
 class _CulqiFalso:
@@ -367,7 +368,7 @@ async def test_el_checkout_deja_la_cuenta_activa_y_el_pago_registrado(
             usuario["id"])
 
     assert (s["plan_codigo"], s["periodo"], s["estado"]) == ("pro", "mensual", "activa")
-    assert 29 <= (s["vence"] - datetime.now()).days <= 30
+    assert 29 <= (s["vence"] - fechas.ahora()).days <= 30
     assert s["culqi_customer_id"] == "cus_test_checkout1"
     assert s["culqi_card_id"] == "crd_test_checkout1"
     assert s["culqi_subscription_id"] == "sxn_test_nueva0"

@@ -16,14 +16,15 @@ from datetime import datetime
 import pytest
 
 from radar_bot.scrapers.gob_pe import _es_compra, _fecha_es, _parsear_item
+from shared import fechas
 
 # ─── La fecha en castellano ──────────────────────────────
 
 @pytest.mark.parametrize("texto, esperado", [
-    ("28 de agosto de 2026", datetime(2026, 8, 28)),
-    (" 8 de agosto de 2026", datetime(2026, 8, 8)),
-    ("3 de setiembre de 2026", datetime(2026, 9, 3)),   # variante peruana
-    ("3 de septiembre de 2026", datetime(2026, 9, 3)),
+    ("28 de agosto de 2026", fechas.fija(2026, 8, 28)),
+    (" 8 de agosto de 2026", fechas.fija(2026, 8, 8)),
+    ("3 de setiembre de 2026", fechas.fija(2026, 9, 3)),   # variante peruana
+    ("3 de septiembre de 2026", fechas.fija(2026, 9, 3)),
 ])
 def test_la_fecha_en_castellano_se_entiende(texto, esperado):
     assert _fecha_es(texto) == esperado
@@ -90,7 +91,7 @@ def test_un_item_bueno_produce_la_licitacion():
     assert d["entidad"].startswith("SUSALUD")
     assert d["url"] == "https://www.gob.pe/institucion/susalud/informes-publicaciones/691-x"
     assert d["bases_urls"] == ["https://cdn.www.gob.pe/uploads/documento.pdf"]
-    assert d["fecha_publicacion"] == datetime(2026, 8, 28)
+    assert d["fecha_publicacion"] == fechas.fija(2026, 8, 28)
     # El plazo vive en el PDF: NULL a proposito, jamas inventado.
     assert d["fecha_cierre"] is None
 

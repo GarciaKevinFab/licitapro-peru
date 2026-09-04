@@ -24,6 +24,7 @@ import openpyxl
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.ocds")
 
@@ -106,7 +107,7 @@ def _parse_fecha(val) -> datetime | None:
     text = str(val).strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -324,10 +325,10 @@ async def scrape_ocds(user_id: int = 0) -> list[dict]:
         async with httpx.AsyncClient(
             timeout=120, headers=HEADERS, follow_redirects=True
         ) as client:
-            current_year = date.today().year
+            current_year = fechas.hoy().year
             years = [current_year]
             # En enero/febrero tambien revisamos el anio anterior
-            if date.today().month <= 2:
+            if fechas.hoy().month <= 2:
                 years.append(current_year - 1)
 
             for year in years:

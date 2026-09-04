@@ -12,6 +12,7 @@ from prep_bot.document_gen import (
 )
 from shared.config import format_monto
 from shared.db import connection, get_empresa
+from shared import fechas
 
 log = logging.getLogger("prep.zip")
 
@@ -134,7 +135,7 @@ def _generar_indice(prop, empresa, documentos: list[tuple]) -> str:
         "=" * 60,
         "EXPEDIENTE DE PROPUESTA",
         "=" * 60,
-        f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        f"Fecha de generación: {fechas.ahora().strftime('%d/%m/%Y %H:%M')}",
         "",
         f"Licitación: {prop.get('nomenclatura') or prop['licitacion_id']}",
         f"Entidad: {prop['entidad']}",
@@ -190,7 +191,7 @@ async def listar_expedientes() -> list[dict]:
                 "nombre": f,
                 "path": path,
                 "size_mb": round(size_mb, 2),
-                "fecha": datetime.fromtimestamp(os.path.getmtime(path)),
+                "fecha": fechas.desde_marca(os.path.getmtime(path)),
             })
 
     return sorted(expedientes, key=lambda x: x["fecha"], reverse=True)

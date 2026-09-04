@@ -42,6 +42,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
 from shared.db import log_scraping_end, log_scraping_start, refrescar_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.ocds_oece")
 
@@ -381,7 +382,7 @@ async def scrape_ocds_oece(
     solo un tope de seguridad: quien manda es la fecha.
     """
     log_id = await log_scraping_start("ocds_oece")
-    corte = datetime.now() - timedelta(days=dias_atras)
+    corte = fechas.ahora() - timedelta(days=dias_atras)
     # Los umbrales se leen UNA vez por pasada, no por licitacion: salen de un
     # percentil sobre toda la tabla y no cambian a mitad del recorrido.
     umbrales = await umbrales_por_tipo()

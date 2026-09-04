@@ -10,6 +10,7 @@ from docx.shared import Pt
 from shared.config import format_fecha, format_monto
 from shared.db import connection
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
+from shared import fechas
 
 log = logging.getLogger("win.invoice")
 
@@ -88,7 +89,7 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     table_info = doc.add_table(rows=5, cols=2)
     table_info.style = "Table Grid"
     datos = [
-        ("Fecha de emisión:", format_fecha(date.today())),
+        ("Fecha de emisión:", format_fecha(fechas.hoy())),
         ("Señor(es):", contrato["entidad"]),
         ("Referencia:", contrato.get("nomenclatura") or f"Contrato #{contrato_id}"),
         ("N° Contrato:", contrato.get("numero_contrato") or "—"),
@@ -175,7 +176,7 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
                                    estado, numero_factura, comprobante)
             VALUES ($1, $2, $3, $4, 'facturado', $5, $6)
             ON CONFLICT DO NOTHING""",
-            contrato_id, concepto, monto, date.today(), numero_factura, path,
+            contrato_id, concepto, monto, fechas.hoy(), numero_factura, path,
         )
 
     log.info(f"Factura generada: {path}")

@@ -59,6 +59,7 @@ from dotenv import load_dotenv
 load_dotenv(RAIZ / ".env")
 
 import httpx
+from shared import fechas
 
 REGISTRO = RAIZ / "data" / "vigia_puente.log"
 ARCHIVO_ESTADO = RAIZ / "data" / "vigia_puente.estado"
@@ -299,7 +300,7 @@ def main() -> int:
             if detalle:
                 motivo = f"{motivo} [{detalle[:120]}]"
 
-    ahora = datetime.now()
+    ahora = fechas.ahora()
     estado, mensaje = decidir(leer_estado(), sano, motivo, ahora)
     guardar_estado(estado)
 

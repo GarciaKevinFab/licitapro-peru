@@ -37,6 +37,7 @@ from shared.db import (
     vincular_telegram,
 )
 from shared.notificaciones import repartir
+from shared import fechas
 
 
 # ─── Formatters ──────────────────────────────────────────
@@ -170,7 +171,7 @@ async def cmd_hoy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        f"📊 <b>Resumen del día</b> — {datetime.now().strftime('%d/%m/%Y')}\n"
+        f"📊 <b>Resumen del día</b> — {fechas.ahora().strftime('%d/%m/%Y')}\n"
         f"Se encontraron {len(lics)} licitaciones relevantes:",
         parse_mode="HTML",
     )

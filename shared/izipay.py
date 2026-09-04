@@ -37,6 +37,7 @@ import secrets
 from datetime import datetime
 
 import httpx
+from shared import fechas
 
 log = logging.getLogger("shared.izipay")
 
@@ -121,12 +122,12 @@ def _host() -> str:
 
 def nuevo_numero_orden(prefijo: str = "LP") -> str:
     """Numero de orden unico. Es la llave de idempotencia del cobro."""
-    return f"{prefijo}{datetime.now():%y%m%d%H%M%S}{secrets.token_hex(3).upper()}"
+    return f"{prefijo}{fechas.ahora():%y%m%d%H%M%S}{secrets.token_hex(3).upper()}"
 
 
 def _transaction_id() -> str:
     """Izipay pide un identificador numerico de transaccion por peticion."""
-    return f"{datetime.now():%H%M%S}{secrets.randbelow(10000):04d}"
+    return f"{fechas.ahora():%H%M%S}{secrets.randbelow(10000):04d}"
 
 
 async def generar_token_sesion(numero_orden: str, monto: float,

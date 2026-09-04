@@ -26,6 +26,7 @@ from prep_bot.document_gen import (
     generar_experiencia_postor,
 )
 from shared.db import connection, get_empresa
+from shared import fechas
 
 log = logging.getLogger("prep.autofill.annexes")
 
@@ -211,7 +212,7 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
     )
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")
@@ -293,7 +294,7 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
         doc.add_paragraph(f"  - {c}")
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")

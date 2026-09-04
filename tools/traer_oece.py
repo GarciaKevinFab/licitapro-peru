@@ -65,6 +65,7 @@ sys.path.insert(0, str(RAIZ))
 #   Ejecutandolo a mano desde la carpeta del proyecto funciona igual, y por eso
 #   este fallo solo aparece cuando ya nadie mira.
 from dotenv import load_dotenv
+from shared import fechas
 
 load_dotenv(RAIZ / ".env")
 
@@ -127,7 +128,7 @@ async def _principal() -> int:
 
 def main() -> int:
     _preparar_log()
-    logging.info("--- inicio %s ---", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logging.info("--- inicio %s ---", fechas.ahora().strftime("%Y-%m-%d %H:%M:%S"))
     try:
         codigo = asyncio.run(_principal())
     except Exception as exc:

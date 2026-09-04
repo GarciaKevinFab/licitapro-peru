@@ -26,6 +26,7 @@ from shared.plazos_pago import (
     fecha_limite_pago,
 )
 from web.auth import usuario_actual
+from shared import fechas
 
 log = logging.getLogger("web.contratos")
 router = APIRouter()
@@ -115,7 +116,7 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
                    fecha_entrega_final, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'adjudicado') RETURNING id""",
             propuesta_id, prop["licitacion_id"], prop["empresa_id"], monto,
-            date.today(), plazo_dias, date.today() + timedelta(days=plazo_dias))
+            fechas.hoy(), plazo_dias, fechas.hoy() + timedelta(days=plazo_dias))
         await conn.execute(
             "UPDATE propuestas SET estado='ganada', updated_at=NOW() WHERE id=$1",
             propuesta_id)
@@ -164,7 +165,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
         ],
         "consulta_mef": enlace_consulta_mef(),
         "estados": ESTADOS,
-        "cobrado": cobrado, "pendiente": pendiente, "hoy": date.today(),
+        "cobrado": cobrado, "pendiente": pendiente, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
     })
 
@@ -278,7 +279,7 @@ async def registrar_cobro(request: Request, contrato_id: int,
                    fecha_limite_pago, fecha_pago_esperada, expediente_siaf, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10)""",
             contrato_id, concepto.strip(), monto, numero_factura.strip() or None,
-            date.today(), date.today() if ya_cobrado else None,
+            fechas.hoy(), fechas.hoy() if ya_cobrado else None,
             conformidad, limite, expediente_siaf.strip() or None,
             "pagado" if ya_cobrado else "facturado")
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Registrado", status_code=303)

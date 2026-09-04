@@ -26,6 +26,7 @@ from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 
+from shared import fechas
 from shared.db import (
     connection,
     get_config,
@@ -83,7 +84,7 @@ def _parse_fecha(text: str):
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S",
                 "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -541,7 +542,7 @@ async def _diagnosticos(fuentes) -> dict:
 async def run_all_scrapers(user_id: int = 0) -> dict:
     """Ejecuta todos los scrapers disponibles. Si uno falla, los otros siguen."""
     results = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": fechas.ahora().isoformat(),
         "total_nuevas": 0,
         "por_fuente": {},
         "errores": [],

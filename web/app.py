@@ -25,6 +25,7 @@ from shared.config import DEPARTAMENTOS
 from shared.db import connection, licitaciones_para_usuario
 from shared.seguridad import clave_sesion
 from web import limites
+from shared import fechas
 
 log = logging.getLogger("web.app")
 
@@ -400,7 +401,7 @@ def _dias(fecha) -> int | None:
     if not fecha:
         return None
     from datetime import datetime
-    return (fecha - datetime.now()).days
+    return (fecha - fechas.ahora()).days
 
 
 async def _resumen(usuario_id: int) -> dict:
@@ -411,7 +412,7 @@ async def _resumen(usuario_id: int) -> dict:
     """
     from datetime import datetime, timedelta
     suyas = await licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False)
-    ahora = datetime.now()
+    ahora = fechas.ahora()
     vigentes = [l for l in suyas if l["fecha_cierre"] and l["fecha_cierre"] > ahora]
     urgentes = [l for l in vigentes if l["fecha_cierre"] < ahora + timedelta(days=3)]
     fila = {"total": len(suyas), "vigentes": len(vigentes), "urgentes": len(urgentes)}
@@ -537,7 +538,7 @@ _MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
 
 def _hoy_en_letras() -> str:
     from datetime import date
-    h = date.today()
+    h = fechas.hoy()
     return f"{h.day} de {_MESES[h.month - 1]} de {h.year}"
 
 

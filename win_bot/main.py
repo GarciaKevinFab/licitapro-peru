@@ -28,6 +28,7 @@ from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicacione
 from win_bot.conformity_gen import generar_acta_conformidad, generar_informe_entrega
 from win_bot.invoice_gen import generar_factura
 from win_bot.payment_tracker import registrar_pago
+from shared import fechas
 
 
 # ─── Email sender ────────────────────────────────────────
@@ -82,7 +83,7 @@ async def check_plazos_proximos(app):
         if plazo["alerta_enviada"]:
             continue
         
-        dias_faltan = (plazo["fecha_limite"] - date.today()).days
+        dias_faltan = (plazo["fecha_limite"] - fechas.hoy()).days
         urgencia = "🔴" if dias_faltan <= 1 else "🟡" if dias_faltan <= 3 else "🟢"
         
         if ADMIN_ID:
@@ -155,7 +156,7 @@ async def cmd_plazos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     texto = "📅 <b>Próximos plazos (30 días)</b>\n\n"
     for p in plazos:
-        dias = (p["fecha_limite"] - date.today()).days
+        dias = (p["fecha_limite"] - fechas.hoy()).days
         emoji = "🔴" if dias <= 3 else "🟡" if dias <= 7 else "🟢"
         check = "✅" if p["completado"] else emoji
         texto += f"{check} {format_fecha(p['fecha_limite'])} ({dias}d) — {p['descripcion']}\n"
@@ -216,7 +217,7 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Propuesta no encontrada")
             return
         
-        hoy = date.today()
+        hoy = fechas.hoy()
         # Crear contrato
         contrato_id = await conn.fetchval(
             """INSERT INTO contratos 

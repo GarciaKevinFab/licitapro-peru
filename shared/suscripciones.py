@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta
 
 from shared.db import connection
+from shared import fechas
 
 log = logging.getLogger("shared.suscripciones")
 
@@ -42,7 +43,7 @@ def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str
     pueda probar con fechas inventadas. Cambiarla aqui cambia las dos cosas, que
     es lo que se quiere: una sola definicion de "vencida" y de "suspendida".
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     if estado in ("prueba", "activa") and vence and vence < ahora:
         estado = "vencida"
     if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
@@ -70,7 +71,7 @@ async def estado_suscripcion(usuario_id: int) -> dict:
                 "dias_restantes": None, "en_gracia": False}
 
     d = dict(fila)
-    ahora = datetime.now()
+    ahora = fechas.ahora()
     vence = d.get("vence")
     dias = (vence - ahora).days if vence else None
 

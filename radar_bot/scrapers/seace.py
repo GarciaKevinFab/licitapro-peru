@@ -24,6 +24,7 @@ from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.seace")
 
@@ -73,7 +74,7 @@ def parse_fecha(text: str) -> datetime | None:
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S",
                 "%d-%m-%Y", "%d.%m.%Y"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -222,7 +223,7 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
     encontradas = 0
     errores = 0
 
-    hoy = date.today()
+    hoy = fechas.hoy()
     fecha_inicio = (hoy - timedelta(days=7)).strftime("%d/%m/%Y")
     fecha_fin = hoy.strftime("%d/%m/%Y")
 

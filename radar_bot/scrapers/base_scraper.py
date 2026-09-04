@@ -7,6 +7,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -26,7 +27,7 @@ def parse_fecha(text: str) -> datetime | None:
     text = text.strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d-%m-%Y"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None

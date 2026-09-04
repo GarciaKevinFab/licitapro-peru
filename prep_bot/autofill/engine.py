@@ -6,6 +6,7 @@ from datetime import date
 from docx import Document
 
 from shared.db import connection, get_empresa, kb_get, kb_set
+from shared import fechas
 
 log = logging.getLogger("prep.autofill")
 
@@ -139,7 +140,7 @@ async def generar_carta_presentacion(datos: dict, licitacion: dict) -> str:
     doc = Document()
     
     # Encabezado
-    doc.add_paragraph(f"Lima, {date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"Lima, {fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph("")
     doc.add_paragraph("Señores")
     doc.add_paragraph(f"{licitacion.get('entidad', '')}")
@@ -220,7 +221,7 @@ async def generar_declaracion_jurada(datos: dict, licitacion: dict) -> str:
         doc.add_paragraph(f"{i}. {decl}")
     
     doc.add_paragraph("")
-    doc.add_paragraph(f"Lima, {date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"Lima, {fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph("")
     doc.add_paragraph("______________________________")
     doc.add_paragraph(f"{rep}")

@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse
 
 from shared.db import connection
 from web.auth import usuario_actual
+from shared import fechas
 
 log = logging.getLogger("web.reclamaciones")
 router = APIRouter()
@@ -168,7 +169,7 @@ async def registrar(
             datos["direccion"] or None, menor, datos["apoderado"] or None,
             datos["bien_contratado"], datos["descripcion_bien"] or None, monto,
             datos["detalle"], datos["pedido"],
-            limite_respuesta(datetime.now()), usuario["id"] if usuario else None,
+            limite_respuesta(fechas.ahora()), usuario["id"] if usuario else None,
             request.client.host if request.client else None,
         )
 

@@ -37,6 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from web import limites
+from shared import fechas
 
 # Rango reservado para documentacion (RFC 5737): nunca es de nadie.
 IP_A = b"203.0.113.7"
@@ -220,7 +221,7 @@ def _fila(estado, monto, orden="chr_live_1"):
     """Una fila de pagos_suscripcion como la devuelve la consulta."""
     from datetime import datetime
     return {
-        "estado": estado, "monto": monto, "created_at": datetime(2026, 9, 3, 20, 44),
+        "estado": estado, "monto": monto, "created_at": fechas.fija(2026, 9, 3, 20, 44),
         "izipay_order_number": None, "culqi_charge_id": orden,
     }
 

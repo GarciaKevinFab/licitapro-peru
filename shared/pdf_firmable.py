@@ -43,6 +43,7 @@ from reportlab.platypus import (
 )
 
 from shared.archivos import rutas_de
+from shared import fechas
 
 log = logging.getLogger("shared.pdf_firmable")
 
@@ -190,7 +191,7 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
         topMargin=2 * cm, bottomMargin=2 * cm,
         title=titulo, author=empresa.get("razon_social") or "")
 
-    hoy = date.today()
+    hoy = fechas.hoy()
     partes = _cabecera(empresa, imagenes, est)
     partes.append(Paragraph(titulo, est["titulo"]))
     if subtitulo:

@@ -3,6 +3,7 @@ import logging
 from datetime import date, timedelta
 
 from shared.db import connection
+from shared import fechas
 
 log = logging.getLogger("win.timeline")
 
@@ -52,10 +53,10 @@ async def crear_timeline_contrato(contrato_id: int, tipo_proc: str = "default",
         if not contrato:
             return []
 
-    fecha_base = contrato.get("fecha_adjudicacion") or date.today()
+    fecha_base = contrato.get("fecha_adjudicacion") or fechas.hoy()
     if isinstance(fecha_base, str):
         from datetime import datetime
-        fecha_base = datetime.strptime(fecha_base, "%Y-%m-%d").date()
+        fecha_base = fechas.desde_texto(fecha_base, "%Y-%m-%d").date()
 
     plantilla = PLAZOS_DEFAULT.get(tipo_proc, PLAZOS_DEFAULT["default"])
 

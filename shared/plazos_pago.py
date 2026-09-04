@@ -43,6 +43,7 @@ LOS FERIADOS
 """
 import logging
 from datetime import date, timedelta
+from shared import fechas
 
 log = logging.getLogger("shared.plazos_pago")
 
@@ -164,7 +165,7 @@ def dias_de_mora(limite: date | None, hoy: date | None = None) -> int:
     """
     if not limite:
         return 0
-    hoy = hoy or date.today()
+    hoy = hoy or fechas.hoy()
     if hoy <= limite:
         return 0
     dias, actual = 0, limite

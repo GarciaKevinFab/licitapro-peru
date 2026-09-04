@@ -9,6 +9,7 @@ from docx.shared import Pt
 
 from shared.config import format_fecha, format_monto
 from shared.db import connection
+from shared import fechas
 
 log = logging.getLogger("win.conformity")
 
@@ -44,13 +45,13 @@ async def generar_acta_conformidad(contrato_id: int, observaciones: str = "") ->
 
     subtitulo = doc.add_paragraph()
     subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitulo.add_run(f"N° {contrato_id:04d}-{date.today().year}")
+    subtitulo.add_run(f"N° {contrato_id:04d}-{fechas.hoy().year}")
 
     doc.add_paragraph()
 
     # Datos del contrato
-    doc.add_paragraph(f"En la ciudad de ____________, a los {date.today().day} días del mes "
-                      f"de {date.today().strftime('%B')} de {date.today().year}, se procede "
+    doc.add_paragraph(f"En la ciudad de ____________, a los {fechas.hoy().day} días del mes "
+                      f"de {fechas.hoy().strftime('%B')} de {fechas.hoy().year}, se procede "
                       f"a emitir la presente Acta de Conformidad respecto a:")
 
     doc.add_paragraph()
@@ -64,7 +65,7 @@ async def generar_acta_conformidad(contrato_id: int, observaciones: str = "") ->
         ("Objeto:", contrato["objeto"][:200]),
         ("N° Contrato:", contrato.get("numero_contrato") or "—"),
         ("Monto:", format_monto(contrato["monto_adjudicado"]) if contrato.get("monto_adjudicado") else "—"),
-        ("Fecha conformidad:", format_fecha(date.today())),
+        ("Fecha conformidad:", format_fecha(fechas.hoy())),
     ]
     for i, (label, value) in enumerate(datos):
         table.rows[i].cells[0].text = label
@@ -156,7 +157,7 @@ async def generar_informe_entrega(contrato_id: int, descripcion_entrega: str) ->
     doc.add_heading("INFORME DE ENTREGA", level=0).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
-    doc.add_paragraph(f"Fecha: {format_fecha(date.today())}")
+    doc.add_paragraph(f"Fecha: {format_fecha(fechas.hoy())}")
     doc.add_paragraph(f"Contrato: {contrato.get('numero_contrato', '—')}")
     doc.add_paragraph(f"Entidad: {contrato['entidad']}")
     doc.add_paragraph(f"Objeto: {contrato['objeto'][:200]}")
@@ -172,7 +173,7 @@ async def generar_informe_entrega(contrato_id: int, descripcion_entrega: str) ->
 
     output_dir = os.path.join(TEMPLATES_DIR, "output", "entregas")
     os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, f"informe_entrega_{contrato_id}_{date.today().isoformat()}.docx")
+    path = os.path.join(output_dir, f"informe_entrega_{contrato_id}_{fechas.hoy().isoformat()}.docx")
     doc.save(path)
 
     # Actualizar estado

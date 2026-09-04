@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
+from shared import fechas
 
 log = logging.getLogger("radar.datos_abiertos")
 
@@ -113,7 +114,7 @@ def _parse_fecha(val) -> datetime | None:
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d",
                 "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
