@@ -11,7 +11,22 @@ import re
 import sys
 
 RAIZ = pathlib.Path(os.getenv('AUDIT_ROOT', '.'))
-SQL_INICIO = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\b', re.IGNORECASE)
+# La palabra clave SOLA no es una consulta: hace falta algo detras.
+#
+# Sin ese `\s+\S`, "DELETE" a secas cuenta como SQL, y ese literal aparece en
+# dos sitios donde es un VERBO HTTP y no una consulta:
+#
+#   shared/culqi.py   _peticion("DELETE", f"{RUTA_SUSCRIPCIONES}/{sxn}")
+#   web/limites.py    ("DELETE", None, 120, 60)  -- una regla de limite
+#
+# Los dos daban "PostgresSyntaxError: syntax error at end of input", que es
+# justo lo que responde Postgres a un DELETE sin FROM: el auditor tenia razon
+# en que eso no es SQL valido, pero es que no era SQL. El primero dejo la rama
+# `main` en rojo al fusionar el PR #18.
+#
+# Una consulta de verdad siempre tiene mas palabras, asi que exigir un token
+# mas no deja pasar nada que antes se detectara.
+SQL_INICIO = re.compile(r'^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\b\s+\S', re.IGNORECASE)
 
 
 def _es_ajeno(py: pathlib.Path) -> bool:
