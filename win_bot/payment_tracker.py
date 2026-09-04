@@ -2,17 +2,17 @@
 import logging
 from datetime import date
 
+from shared import fechas
 from shared.config import format_monto
 from shared.db import connection
-from shared import fechas
 
 log = logging.getLogger("win.payments")
 
 
 async def registrar_factura(contrato_id: int, monto: float, concepto: str,
-                             factura_numero: str = None,
-                             fecha_conformidad: date = None,
-                             expediente_siaf: str = None) -> int:
+                             factura_numero: str | None = None,
+                             fecha_conformidad: date | None = None,
+                             expediente_siaf: str | None = None) -> int:
     """Registra una factura emitida y calcula cuando vence el plazo legal.
 
     Antes ponia "factura + 30 dias corridos", un numero a ojo. La Ley 32069 fija
@@ -80,7 +80,7 @@ async def registrar_conformidad(pago_id: int, fecha: date) -> dict:
     return {"fecha_limite": limite, "explicacion": explicacion}
 
 
-async def pagos_vencidos(empresa_id: int = None) -> list[dict]:
+async def pagos_vencidos(empresa_id: int | None = None) -> list[dict]:
     """Pagos cuyo plazo legal ya vencio, con los dias de mora.
 
     Es la consulta que da sentido a todo esto: no "cuando me pagan" sino "a
@@ -112,8 +112,8 @@ async def pagos_vencidos(empresa_id: int = None) -> list[dict]:
     return salida
 
 
-async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,
-                          pago_id: int = None) -> int:
+async def registrar_pago(contrato_id: int, monto: float, concepto: str | None = None,
+                          pago_id: int | None = None) -> int:
     """Registra un pago recibido."""
     async with connection() as conn:
         if pago_id:
@@ -134,7 +134,7 @@ async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,
             return new_id
 
 
-async def obtener_resumen_pagos(empresa_id: int = None) -> dict:
+async def obtener_resumen_pagos(empresa_id: int | None = None) -> dict:
     """Resumen completo de pagos."""
     async with connection() as conn:
         where = "WHERE c.empresa_id=$1" if empresa_id else ""

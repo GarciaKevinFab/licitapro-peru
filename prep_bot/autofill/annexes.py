@@ -25,8 +25,8 @@ from prep_bot.document_gen import (
     generar_declaracion_jurada,
     generar_experiencia_postor,
 )
-from shared.db import connection, get_empresa
 from shared import fechas
+from shared.db import connection, get_empresa
 
 log = logging.getLogger("prep.autofill.annexes")
 
@@ -95,7 +95,7 @@ async def generar_anexos_complementarios(
             if ruta:
                 salida.append((nombre, ruta))
         except Exception as e:
-            log.error("El anexo %s fallo: %s", nombre, e, exc_info=True)
+            log.exception("El anexo %s fallo: %s", nombre, e)
 
     return salida
 
@@ -189,7 +189,6 @@ async def _generar_anexo(anexo: dict, propuesta_id: int, empresa_id: int,
 
 async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Declaración Jurada de plazo de entrega."""
-    from datetime import date
 
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -261,7 +260,6 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
 
 async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Pacto de Integridad."""
-    from datetime import date
 
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH

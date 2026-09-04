@@ -34,9 +34,9 @@ import hmac
 import logging
 import os
 import secrets
-from datetime import datetime
 
 import httpx
+
 from shared import fechas
 
 log = logging.getLogger("shared.izipay")
@@ -168,7 +168,7 @@ async def generar_token_sesion(numero_orden: str, monto: float,
             r = await cliente.post(_host() + RUTA_TOKEN, json=cuerpo, headers=cabeceras)
         datos = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
-        log.error("Izipay Token/Generate fallo: %s", e, exc_info=True)
+        log.exception("Izipay Token/Generate fallo: %s", e)
         return {"ok": False, "modo": modo(), "token": None, "detalle": str(e)[:200]}
 
     # El envoltorio {code, message, response} si esta verificado.
@@ -212,7 +212,7 @@ async def cobrar_con_token(token_tarjeta: str, numero_orden: str, monto: float,
                                    headers=cabeceras)
         datos = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
-        log.error("Izipay cobro con token fallo: %s", e, exc_info=True)
+        log.exception("Izipay cobro con token fallo: %s", e)
         return {"ok": False, "estado": "error", "transaction_id": None,
                 "detalle": str(e)[:200]}
 

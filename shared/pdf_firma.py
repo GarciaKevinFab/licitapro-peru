@@ -82,7 +82,7 @@ async def docx_a_pdf(ruta_docx: str, carpeta_destino: str | None = None) -> tupl
             proceso.kill()
             return None, "La conversión a PDF tardó demasiado y se canceló."
     except Exception as e:
-        log.error("Fallo al invocar LibreOffice: %s", e, exc_info=True)
+        log.exception("Fallo al invocar LibreOffice: %s", e)
         return None, "No se pudo ejecutar el conversor de PDF."
 
     esperado = Path(destino) / (Path(ruta_docx).stem + ".pdf")
@@ -125,8 +125,8 @@ def instrucciones_dnie() -> dict:
         "pasos": [
             "Descarga el PDF a tu computadora.",
             "Conecta el lector con tu DNI electrónico insertado.",
-            "Ábrelo con Firma Perú (RENIEC) o con Adobe Reader configurado "
-            "con el controlador del lector.",
+            ("Ábrelo con Firma Perú (RENIEC) o con Adobe Reader configurado "
+            "con el controlador del lector."),
             "Firma con el certificado de tu DNIe e ingresa tu PIN.",
             "Vuelve aquí y sube el PDF firmado.",
         ],

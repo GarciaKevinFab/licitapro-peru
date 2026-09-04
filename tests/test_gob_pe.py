@@ -11,7 +11,6 @@ QUE PROTEGEN
   Ninguna toca la red: se prueba la REGLA sobre items reales copiados de la
   API, que es lo que se rompe al editar el codigo.
 """
-from datetime import datetime
 
 import pytest
 

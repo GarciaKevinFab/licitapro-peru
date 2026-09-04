@@ -195,7 +195,7 @@ Maximo tres o cuatro parrafos por seccion."""
         # Se cae a la plantilla: no lleva IA, pero produce un documento
         # presentable. Quedarse sin propuesta tecnica es peor -- en un concurso
         # publico o una licitacion publica es el documento que puntua.
-        log.error("La propuesta tecnica con IA fallo: %s", e, exc_info=True)
+        log.exception("La propuesta tecnica con IA fallo: %s", e)
 
     return _generar_plantilla(licitacion, empresa, datos)
 
@@ -207,11 +207,11 @@ def _generar_plantilla(licitacion: dict, empresa, datos: dict) -> dict:
             {
                 "titulo": "1. RESUMEN EJECUTIVO",
                 "contenido": [
-                    f"{empresa['razon_social']} presenta esta propuesta técnica para la contratación de: "
-                    f"{licitacion['objeto']}.",
-                    "Nuestra empresa cuenta con la experiencia, el equipo técnico y los recursos "
+                    (f"{empresa['razon_social']} presenta esta propuesta técnica para la contratación de: "
+                    f"{licitacion['objeto']}."),
+                    ("Nuestra empresa cuenta con la experiencia, el equipo técnico y los recursos "
                     "necesarios para ejecutar el presente servicio dentro de los plazos y condiciones "
-                    "establecidos en las bases del procedimiento de selección.",
+                    "establecidos en las bases del procedimiento de selección."),
                 ],
             },
             {
@@ -227,16 +227,16 @@ def _generar_plantilla(licitacion: dict, empresa, datos: dict) -> dict:
             {
                 "titulo": "3. ALCANCE DEL SERVICIO",
                 "contenido": [
-                    f"El alcance comprende la totalidad de lo solicitado en el objeto de contratación: "
-                    f"{licitacion['objeto'][:200]}.",
+                    (f"El alcance comprende la totalidad de lo solicitado en el objeto de contratación: "
+                    f"{licitacion['objeto'][:200]}."),
                 ],
             },
             {
                 "titulo": "4. METODOLOGIA",
                 "contenido": [
-                    "Nuestra metodología se basa en las mejores prácticas del sector, "
+                    ("Nuestra metodología se basa en las mejores prácticas del sector, "
                     "con un enfoque estructurado en fases: planificación, ejecución, "
-                    "control de calidad y entrega.",
+                    "control de calidad y entrega."),
                 ],
             },
             {

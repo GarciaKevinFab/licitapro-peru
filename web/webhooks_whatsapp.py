@@ -78,7 +78,7 @@ async def recibir(request: Request):
         except Exception as e:
             # Un fallo con un mensaje no puede tumbar el resto del lote ni
             # provocar que Meta reintente todo el paquete.
-            log.error("Fallo procesando mensaje de %s: %s", numero, e, exc_info=True)
+            log.exception("Fallo procesando mensaje de %s: %s", numero, e)
 
     return JSONResponse({"ok": True})
 

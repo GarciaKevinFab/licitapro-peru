@@ -2,7 +2,6 @@
 import logging
 import os
 import zipfile
-from datetime import datetime
 
 from prep_bot.document_gen import (
     generar_carta_presentacion,
@@ -10,9 +9,9 @@ from prep_bot.document_gen import (
     generar_experiencia_postor,
     generar_propuesta_economica,
 )
+from shared import fechas
 from shared.config import format_monto
 from shared.db import connection, get_empresa
-from shared import fechas
 
 log = logging.getLogger("prep.zip")
 
@@ -101,7 +100,7 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         except Exception as e:
             # No tumba el expediente: los cinco documentos principales ya están
             # y valen por sí solos. Se registra para poder arreglarlo.
-            log.error("Los anexos complementarios fallaron: %s", e, exc_info=True)
+            log.exception("Los anexos complementarios fallaron: %s", e)
 
         # Crear ZIP
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

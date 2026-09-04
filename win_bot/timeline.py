@@ -2,8 +2,8 @@
 import logging
 from datetime import date, timedelta
 
-from shared.db import connection
 from shared import fechas
+from shared.db import connection
 
 log = logging.getLogger("win.timeline")
 
@@ -38,7 +38,7 @@ PLAZOS_DEFAULT = {
 
 
 async def crear_timeline_contrato(contrato_id: int, tipo_proc: str = "default",
-                                    plazo_ejecucion_dias: int = None) -> list[dict]:
+                                    plazo_ejecucion_dias: int | None = None) -> list[dict]:
     """Crea timeline de plazos para un contrato nuevo.
 
     Args:
@@ -55,7 +55,6 @@ async def crear_timeline_contrato(contrato_id: int, tipo_proc: str = "default",
 
     fecha_base = contrato.get("fecha_adjudicacion") or fechas.hoy()
     if isinstance(fecha_base, str):
-        from datetime import datetime
         fecha_base = fechas.desde_texto(fecha_base, "%Y-%m-%d").date()
 
     plantilla = PLAZOS_DEFAULT.get(tipo_proc, PLAZOS_DEFAULT["default"])

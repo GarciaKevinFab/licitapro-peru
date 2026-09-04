@@ -184,8 +184,12 @@ async def usuario(marca):
     finally:
         try:
             await borrar_cuenta(uid)
-        except Exception:
-            pass
+        except Exception as e:
+            # La limpieza no puede tumbar la prueba: si el fallo real fue otro,
+            # este error taparia el que importa. Pero se imprime, o una cuenta
+            # que no se borra se convierte en una prueba que falla mañana sin
+            # motivo aparente.
+            print(f"aviso: no se pudo borrar la cuenta de prueba {uid}: {e}")
 
 
 @pytest_asyncio.fixture

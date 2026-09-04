@@ -119,8 +119,7 @@ async def analizar(usuario_id: int, empresa_id: int, licitacion: dict) -> dict:
     except Exception as e:
         # exc_info a proposito: un except mudo aqui tapo durante semanas un
         # error de esquema, y el analisis nunca llegaba a guardarse.
-        log.error("Analisis IA de %s fallo: %s", licitacion.get("id"), e,
-                  exc_info=True)
+        log.exception("Analisis IA de %s fallo: %s", licitacion.get("id"), e)
         resultado = heuristico(licitacion)
         await ia.guardar_analisis(usuario_id, empresa_id, licitacion["id"],
                                   resultado, ia.ORIGEN_HEURISTICO)

@@ -29,13 +29,13 @@ POR QUE 404 Y NO 403
 """
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from shared import ia
+from shared import fechas, ia
 from shared.admin_cuentas import (
     FILTROS_ESTADO,
     borrar_cuenta_completa,
@@ -56,7 +56,6 @@ from shared.db import get_usuario
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import DIAS_PRUEBA, activar_manual
 from web.auth import usuario_actual
-from shared import fechas
 
 log = logging.getLogger("web.admin")
 router = APIRouter()

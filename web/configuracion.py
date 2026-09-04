@@ -122,7 +122,15 @@ async def borrar(request: Request, tipo: str = Form(...)):
 
 
 @router.post("/configuracion/filtros")
-async def guardar_filtros(request: Request, regiones: list[str] = Form([]),
+# `Form(...)` en el valor por defecto NO es el error que B008 persigue.
+#
+#   La regla avisa de llamadas evaluadas una sola vez al definir la funcion --
+#   el clasico `def f(x=[])`. Aqui es al reves: asi es COMO SE DECLARA un campo
+#   de formulario en FastAPI. Lo que devuelve `Form()` no es un valor por
+#   defecto, es el descriptor que FastAPI lee al montar la ruta para saber que
+#   ese parametro viene del cuerpo. Moverlo dentro de la funcion, que es lo que
+#   sugiere la regla, deja el endpoint sin leer el formulario.
+async def guardar_filtros(request: Request, regiones: list[str] = Form([]),  # noqa: B008
                           keywords: str = Form(""), keywords_excluir: str = Form(""),
                           monto_min: float = Form(0), monto_max: float = Form(999999999)):
     usuario = await usuario_actual(request)
@@ -141,7 +149,7 @@ async def guardar_filtros(request: Request, regiones: list[str] = Form([]),
                 -usuario["id"], usuario["id"])
 
     # El tope de regiones del plan se aplica al guardar, no al pintar la lista.
-    limpias, aviso_tope = await regiones_permitidas(
+    limpias, _aviso_tope = await regiones_permitidas(
         usuario["id"], [r for r in regiones if r in DEPARTAMENTOS])
 
     await update_config(

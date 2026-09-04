@@ -59,7 +59,20 @@ from dotenv import load_dotenv
 load_dotenv(RAIZ / ".env")
 
 import httpx
+
 from shared import fechas
+
+# El logger del modulo, en vez de las funciones sueltas de `logging`.
+#
+# `log.info(...)` escribe en el logger RAIZ. Funciona mientras este script
+# sea lo unico que corre, pero en cuanto alguien importe algo de `shared` -- que
+# ya trae sus propios loggers -- los mensajes de los dos se mezclan sin que se
+# pueda distinguir de donde sale cada uno, ni silenciar uno sin silenciar el
+# otro. Con un logger propio, el nombre viaja en cada linea.
+#
+# basicConfig() se queda: configurar los manejadores SI es cosa del script de
+# entrada, y este lo es.
+log = logging.getLogger("puente.vigia")
 
 REGISTRO = RAIZ / "data" / "vigia_puente.log"
 ARCHIVO_ESTADO = RAIZ / "data" / "vigia_puente.estado"
@@ -242,7 +255,7 @@ def avisar(texto: str) -> bool:
     token = os.getenv("RADAR_BOT_TOKEN") or os.getenv("WIN_BOT_TOKEN")
     chat = os.getenv("TELEGRAM_ADMIN_ID")
     if not token or not chat:
-        logging.error("Sin RADAR_BOT_TOKEN o TELEGRAM_ADMIN_ID: no se puede "
+        log.error("Sin RADAR_BOT_TOKEN o TELEGRAM_ADMIN_ID: no se puede "
                       "avisar. El vigilante esta mudo.")
         return False
     try:
@@ -251,11 +264,11 @@ def avisar(texto: str) -> bool:
                              "disable_web_page_preview": True},
                        timeout=20)
         if r.status_code != 200:
-            logging.error("Telegram respondio %s: %s", r.status_code,
+            log.error("Telegram respondio %s: %s", r.status_code,
                           r.text[:200])
         return r.status_code == 200
     except Exception as e:
-        logging.error("No se pudo avisar por Telegram: %s", e)
+        log.error("No se pudo avisar por Telegram: %s", e)
         return False
 
 
@@ -269,7 +282,7 @@ def main() -> int:
         sano, motivo = evaluar(codigo, datos)
         if sano:
             break
-        logging.info("Intento %d de %d: %s%s", n, INTENTOS, motivo,
+        log.info("Intento %d de %d: %s%s", n, INTENTOS, motivo,
                      f" [{detalle}]" if detalle else "")
         if n < INTENTOS:
             time.sleep(ESPERA)
@@ -281,7 +294,7 @@ def main() -> int:
         codigo, datos, _ = sondear(url, solo_ipv4=True)
         sano4, _ = evaluar(codigo, datos)
         if sano4:
-            logging.warning("La ruta por defecto fallo pero IPv4 responde: "
+            log.warning("La ruta por defecto fallo pero IPv4 responde: "
                             "el sitio esta sano; la IPv6 del proveedor esta "
                             "rota a ratos. No se avisa.")
             sano, motivo = True, "ok"
@@ -289,7 +302,7 @@ def main() -> int:
             # Sin salida a internet no se sabe nada del sitio. No se toca el
             # estado: contarlo como caida inventaria la duracion del proximo
             # "estuvo caido X minutos".
-            logging.warning("Sin salida a internet (el testigo %s tampoco "
+            log.warning("Sin salida a internet (el testigo %s tampoco "
                             "responde). Pasada saltada sin tocar el estado.",
                             TESTIGO)
             return 0
@@ -305,14 +318,14 @@ def main() -> int:
     guardar_estado(estado)
 
     if mensaje:
-        logging.warning("CAMBIO DE ESTADO: %s", mensaje)
+        log.warning("CAMBIO DE ESTADO: %s", mensaje)
         if not avisar(mensaje):
             # Se devuelve fallo para que el Programador de tareas lo marque en
             # rojo: un vigilante que detecta la caida y no consigue contarla
             # sirve exactamente igual que no tenerlo.
             return 1
     else:
-        logging.info("Sin cambios: %s (%s)", estado["estado"], motivo)
+        log.info("Sin cambios: %s (%s)", estado["estado"], motivo)
     return 0
 
 

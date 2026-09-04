@@ -1,7 +1,7 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
 import logging
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 load_dotenv()
 log = logging.getLogger("win_bot")
 
+from shared import fechas
 from shared.config import ADMIN_ID, format_fecha, format_monto
 from shared.db import (
     connection,
@@ -28,7 +29,6 @@ from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicacione
 from win_bot.conformity_gen import generar_acta_conformidad, generar_informe_entrega
 from win_bot.invoice_gen import generar_factura
 from win_bot.payment_tracker import registrar_pago
-from shared import fechas
 
 
 # ─── Email sender ────────────────────────────────────────
@@ -72,7 +72,7 @@ async def _renovar_suscripciones():
         from tools.renovar_suscripciones import main as renovar
         await renovar()
     except Exception as e:
-        log.error("Fallo el cobro de renovaciones: %s", e, exc_info=True)
+        log.exception("Fallo el cobro de renovaciones: %s", e)
 
 
 async def check_plazos_proximos(app):

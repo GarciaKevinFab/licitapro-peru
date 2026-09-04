@@ -18,6 +18,7 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from shared import fechas
 from shared.db import connection
 from shared.plazos_pago import (
     dias_de_mora,
@@ -26,7 +27,6 @@ from shared.plazos_pago import (
     fecha_limite_pago,
 )
 from web.auth import usuario_actual
-from shared import fechas
 
 log = logging.getLogger("web.contratos")
 router = APIRouter()
@@ -125,7 +125,7 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
         from win_bot.timeline import crear_timeline_contrato
         await crear_timeline_contrato(contrato_id)
     except Exception as e:
-        log.error("No se pudo crear el timeline de %s: %s", contrato_id, e, exc_info=True)
+        log.exception("No se pudo crear el timeline de %s: %s", contrato_id, e)
 
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Buena+pro+registrada",
                             status_code=303)
@@ -348,7 +348,7 @@ async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
                                      pago["concepto"] or "Servicio prestado",
                                      pago["numero_factura"])
     except Exception as e:
-        log.error("Proforma del pago %s fallo: %s", pago_id, e, exc_info=True)
+        log.exception("Proforma del pago %s fallo: %s", pago_id, e)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):
@@ -380,8 +380,7 @@ async def descargar_conformidad(request: Request, contrato_id: int,
         from win_bot.conformity_gen import generar_acta_conformidad
         ruta = await generar_acta_conformidad(contrato_id, observaciones.strip())
     except Exception as e:
-        log.error("Acta de conformidad de %s fallo: %s", contrato_id, e,
-                  exc_info=True)
+        log.exception("Acta de conformidad de %s fallo: %s", contrato_id, e)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):

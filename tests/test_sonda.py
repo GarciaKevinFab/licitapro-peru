@@ -250,7 +250,7 @@ def test_la_sopa_prefiere_lxml_cuando_esta():
 
     usados = []
     real = orchestrator.BeautifulSoup
-    monkeypatch_parser = lambda t, p: (usados.append(p), real(t, p))[1]  # noqa: E731
+    monkeypatch_parser = lambda t, p: (usados.append(p), real(t, p))[1]
     orchestrator.BeautifulSoup = monkeypatch_parser
     try:
         orchestrator._sopa("<table><tr><td>x</td></tr></table>")

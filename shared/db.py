@@ -294,7 +294,7 @@ async def update_config(user_id: int, **kwargs):
 
 
 # ─── Contratos ───────────────────────────────────────────
-async def get_contratos_activos(empresa_id: int = None):
+async def get_contratos_activos(empresa_id: int | None = None):
     async with connection() as conn:
         if empresa_id:
             return await conn.fetch(
@@ -334,7 +334,7 @@ async def log_scraping_start(fuente: str) -> int:
         )
 
 
-async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: int = 0, error_detalle: str = None):
+async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: int = 0, error_detalle: str | None = None):
     async with connection() as conn:
         await conn.execute(
             """UPDATE scraping_log SET fin=NOW(), registros_encontrados=$2,

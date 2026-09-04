@@ -2,7 +2,6 @@
 import html
 import logging
 import os
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -18,6 +17,7 @@ load_dotenv()
 log = logging.getLogger("radar_bot")
 
 from radar_bot.scrapers.orchestrator import format_scraping_report, run_all_scrapers
+from shared import fechas
 from shared.config import (
     ADMIN_ID,
     DEPARTAMENTOS,
@@ -37,7 +37,6 @@ from shared.db import (
     vincular_telegram,
 )
 from shared.notificaciones import repartir
-from shared import fechas
 
 
 # ─── Formatters ──────────────────────────────────────────
@@ -325,7 +324,7 @@ async def _vigilar_fuente(app: Application):
             await app.bot.send_message(ADMIN_ID, vigilancia.mensaje(estado),
                                        parse_mode="HTML")
     except Exception as e:
-        log.error("La vigilancia de fuentes fallo: %s", e, exc_info=True)
+        log.exception("La vigilancia de fuentes fallo: %s", e)
 
 
 async def scheduled_scrape(app: Application):

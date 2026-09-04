@@ -39,10 +39,10 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
 from shared.db import log_scraping_end, log_scraping_start, refrescar_licitacion
-from shared import fechas
 
 log = logging.getLogger("radar.ocds_oece")
 
@@ -440,7 +440,7 @@ async def scrape_ocds_oece(
     except Exception as e:
         errores += 1
         detalle_error = str(e)[:200]
-        log.error(f"OCDS OECE fallo: {e}", exc_info=True)
+        log.exception(f"OCDS OECE fallo: {e}")
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle_error)
 

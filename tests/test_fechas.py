@@ -29,7 +29,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from shared import fechas  # noqa: E402
+from shared import fechas
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_todo_sale_naive():
 
 def test_se_compara_con_lo_que_devuelve_la_base():
     """La comprobacion de verdad: comparar y restar sin que salte TypeError."""
-    de_la_base = datetime(2026, 9, 3, 12, 0)  # noqa: DTZ001  (asi llega de asyncpg)
+    de_la_base = datetime(2026, 9, 3, 12, 0)  # noqa: DTZ001
     assert fechas.ahora() > de_la_base
     assert (fechas.ahora() - de_la_base).days >= 0
     assert fechas.hoy() >= de_la_base.date()

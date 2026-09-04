@@ -23,8 +23,8 @@ import httpx
 import openpyxl
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 from shared import fechas
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.ocds")
 

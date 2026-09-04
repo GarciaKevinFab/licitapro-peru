@@ -247,7 +247,7 @@ async def test_crear_plan_sin_intervalo_no_llega_a_llamar_a_culqi(monkeypatch, c
     """
     _entorno(monkeypatch)
     monkeypatch.delenv("CULQI_INTERVALO_MENSUAL", raising=False)
-    responder, caja = culqi_falso
+    responder, _caja = culqi_falso
     visto = responder((201, PLAN_OK))
     with pytest.raises(culqi.ConfiguracionCulqi):
         await culqi.crear_plan("Pro", "plan-pro-mensual", "Pro mensual",

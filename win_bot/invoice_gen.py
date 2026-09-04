@@ -1,16 +1,15 @@
 """Invoice Generator — Genera facturas para cobro."""
 import logging
 import os
-from datetime import date
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
+from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
-from shared import fechas
 
 log = logging.getLogger("win.invoice")
 
@@ -18,7 +17,7 @@ TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
 
 
 async def generar_factura(contrato_id: int, monto: float, concepto: str,
-                           numero_factura: str = None) -> str:
+                           numero_factura: str | None = None) -> str:
     """Genera documento de factura para cobro.
 
     Returns: path al archivo generado

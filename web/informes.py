@@ -27,14 +27,13 @@ TODO FILTRA POR usuario_id
 import csv
 import io
 import logging
-from datetime import date
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
+from shared import fechas
 from shared.db import connection
 from web.auth import usuario_actual
-from shared import fechas
 
 log = logging.getLogger("web.informes")
 router = APIRouter()

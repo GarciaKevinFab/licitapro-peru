@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
+
 from shared import fechas
 
 log = logging.getLogger("shared.seguridad")

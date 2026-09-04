@@ -30,8 +30,8 @@ import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 from shared import fechas
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.datos_abiertos")
 

@@ -20,6 +20,7 @@ from fastapi.responses import (
     RedirectResponse,
 )
 
+from shared import fechas
 from shared.archivos import (
     TIPOS as TIPOS_IMAGEN,
 )
@@ -33,7 +34,6 @@ from shared.config import DEPARTAMENTOS, normalizar, parse_monto
 from shared.db import connection, empresa_es_de, empresas_de
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
-from shared import fechas
 
 log = logging.getLogger("web.empresas")
 router = APIRouter()
@@ -410,7 +410,10 @@ async def desactivar(request: Request, empresa_id: int):
 
 @router.post("/empresas/{empresa_id}/imagen")
 async def subir_imagen(request: Request, empresa_id: int,
-                       tipo: str = Form(...), archivo: UploadFile = File(...)):
+                       # `File(...)` en el default es como FastAPI declara una
+                       # subida, no el `def f(x=[])` que persigue B008: el
+                       # objeto es el descriptor que la ruta lee al montarse.
+                       tipo: str = Form(...), archivo: UploadFile = File(...)):  # noqa: B008
     """Sube el logo, la firma o el sello de una empresa.
 
     La imagen se valida y se reescribe en firma_manager: aqui solo se comprueba

@@ -20,8 +20,8 @@ que alguien mande el formulario igual.
 import logging
 from datetime import datetime, timedelta
 
-from shared.db import connection
 from shared import fechas
+from shared.db import connection
 
 log = logging.getLogger("shared.suscripciones")
 
@@ -230,7 +230,7 @@ async def registrar_intento_fallido(usuario_id: int) -> None:
 
 
 async def guardar_token_tarjeta(usuario_id: int, token: str,
-                                marca: str = None, ultimos: str = None) -> None:
+                                marca: str | None = None, ultimos: str | None = None) -> None:
     """Guarda el token cifrado. Nunca se guarda el numero de tarjeta."""
     from shared.seguridad import cifrar
     async with connection() as conn:

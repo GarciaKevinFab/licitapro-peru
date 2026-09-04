@@ -54,9 +54,9 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                         if "json" in ct:
                             data = resp.json()
                             break
-                except Exception:
-                    pass
-                
+                except Exception as e:
+                    log.debug("GET %s fallo (%s); se prueba POST", path, e)
+
                 try:
                     # Try POST
                     resp = await client.post(f"{BASE_URL}{path}", json={
@@ -67,8 +67,9 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                         if "json" in ct:
                             data = resp.json()
                             break
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("POST %s fallo (%s); se prueba la ruta siguiente",
+                              path, e)
 
             if not data:
                 log.warning("Contratos Menores: API no encontrada. Necesita reverse-engineering del frontend React.")

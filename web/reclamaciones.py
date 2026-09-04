@@ -32,9 +32,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
+from shared import fechas
 from shared.db import connection
 from web.auth import usuario_actual
-from shared import fechas
 
 log = logging.getLogger("web.reclamaciones")
 router = APIRouter()
@@ -216,12 +216,11 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
         ("Plazo para responderte", limite.strftime("%d/%m/%Y")),
     ]
     texto, cuerpo = plantillas_correo.componer(
-        titulo="Registramos tu %s" % datos["tipo"],
-        preencabezado="Hoja %s · te respondemos antes del %s"
-                      % (codigo, limite.strftime("%d/%m/%Y")),
-        intro=["Recibimos tu %s y quedó registrada en nuestro Libro de "
+        titulo="Registramos tu {}".format(datos["tipo"]),
+        preencabezado="Hoja {} · te respondemos antes del {}".format(codigo, limite.strftime("%d/%m/%Y")),
+        intro=["Recibimos tu {} y quedó registrada en nuestro Libro de "
                "Reclamaciones. Guarda el número de hoja: es el que necesitas "
-               "si acudes a INDECOPI." % datos["tipo"]],
+               "si acudes a INDECOPI.".format(datos["tipo"])],
         filas=datos_hoja,
         cierre=["Te responderemos a esta misma dirección dentro del plazo."],
     )
@@ -238,15 +237,15 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
     if not interno:
         return
     texto_int, cuerpo_int = plantillas_correo.componer(
-        titulo="Nueva %s en el Libro" % datos["tipo"],
-        preencabezado="%s · %s" % (codigo, datos["nombre"]),
-        intro=["Entró una %s nueva por la web. El plazo para responder ya "
-               "corre." % datos["tipo"]],
+        titulo="Nueva {} en el Libro".format(datos["tipo"]),
+        preencabezado="{} · {}".format(codigo, datos["nombre"]),
+        intro=["Entró una {} nueva por la web. El plazo para responder ya "
+               "corre.".format(datos["tipo"])],
         filas=datos_hoja + [
-            ("Quién reclama", "%s (%s %s)" % (datos["nombre"],
+            ("Quién reclama", "{} ({} {})".format(datos["nombre"],
                                               datos["documento_tipo"],
                                               datos["documento_numero"])),
-            ("Contacto", "%s %s" % (datos["email"], datos["telefono"])),
+            ("Contacto", "{} {}".format(datos["email"], datos["telefono"])),
         ],
     )
     try:

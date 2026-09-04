@@ -47,7 +47,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -65,7 +64,20 @@ sys.path.insert(0, str(RAIZ))
 #   Ejecutandolo a mano desde la carpeta del proyecto funciona igual, y por eso
 #   este fallo solo aparece cuando ya nadie mira.
 from dotenv import load_dotenv
+
 from shared import fechas
+
+# El logger del modulo, en vez de las funciones sueltas de `logging`.
+#
+# `log.info(...)` escribe en el logger RAIZ. Funciona mientras este script
+# sea lo unico que corre, pero en cuanto alguien importe algo de `shared` -- que
+# ya trae sus propios loggers -- los mensajes de los dos se mezclan sin que se
+# pueda distinguir de donde sale cada uno, ni silenciar uno sin silenciar el
+# otro. Con un logger propio, el nombre viaja en cada linea.
+#
+# basicConfig() se queda: configurar los manejadores SI es cosa del script de
+# entrada, y este lo es.
+log = logging.getLogger("puente.oece")
 
 load_dotenv(RAIZ / ".env")
 
@@ -96,14 +108,14 @@ async def _principal() -> int:
         # Desde esta maquina hay que ir DIRECTO. Si alguien copio las variables
         # del servidor al .env local, las peticiones darian la vuelta por
         # Cloudflare para acabar bloqueadas igual, y costaria entender por que.
-        logging.error(
+        log.error(
             "OECE_PROXY_URL esta configurada en el .env local. Desde esta "
             "maquina hay que ir directo: vacia esa variable."
         )
         return 2
 
     nuevas = await scrape_ocds_oece(max_paginas=40, dias_atras=7)
-    logging.info("OECE: guardadas %d licitaciones nuevas.", len(nuevas))
+    log.info("OECE: guardadas %d licitaciones nuevas.", len(nuevas))
 
     # SI GORE FALLA, LA TAREA NO SE PONE EN ROJO. A PROPOSITO.
     #
@@ -119,25 +131,25 @@ async def _principal() -> int:
     try:
         from radar_bot.scrapers.orchestrator import _run_gore_portals
         gore = await _run_gore_portals(0)
-        logging.info("GORE cotizaciones: guardadas %d nuevas.", len(gore))
+        log.info("GORE cotizaciones: guardadas %d nuevas.", len(gore))
     except Exception as exc:
-        logging.error("GORE cotizaciones fallo (OECE si entro): %s", exc)
+        log.error("GORE cotizaciones fallo (OECE si entro): %s", exc)
 
     return 0
 
 
 def main() -> int:
     _preparar_log()
-    logging.info("--- inicio %s ---", fechas.ahora().strftime("%Y-%m-%d %H:%M:%S"))
+    log.info("--- inicio %s ---", fechas.ahora().strftime("%Y-%m-%d %H:%M:%S"))
     try:
         codigo = asyncio.run(_principal())
     except Exception as exc:
         # Se registra y se devuelve fallo para que el Programador de tareas lo
         # marque en rojo. Terminar en 0 tras un error es como esta fuente
         # estuvo doce corridas caida sin que nadie se enterara.
-        logging.exception("La pasada fallo: %s", exc)
+        log.exception("La pasada fallo: %s", exc)
         return 1
-    logging.info("--- fin (codigo %d) ---", codigo)
+    log.info("--- fin (codigo %d) ---", codigo)
     return codigo
 
 

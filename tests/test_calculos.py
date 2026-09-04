@@ -5,11 +5,12 @@ Devuelven una fecha plausible, una bandera de mas o un numero con un digito
 cambiado, y nadie se entera hasta que un cliente reclama fuera de plazo o un
 aviso llega al telefono de un desconocido. Por eso van cubiertas al detalle.
 """
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
 from radar_bot.scrapers.orchestrator import _fechas_cotizacion
+from shared import fechas
 from shared.banderas import NIVEL_ALTO, NIVEL_BAJO, NIVEL_MEDIO, _umbral, calcular
 from shared.config import match_keywords
 from shared.plazos_pago import (
@@ -22,7 +23,6 @@ from shared.plazos_pago import (
     plazo_legal,
 )
 from shared.whatsapp import _limpiar_parametro, es_baja, normalizar_numero
-from shared import fechas
 
 # ─── Feriados y dias habiles ─────────────────────────────
 

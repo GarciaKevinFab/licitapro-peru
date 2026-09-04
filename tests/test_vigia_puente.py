@@ -23,12 +23,12 @@ NINGUNA TOCA LA RED
   los dias que Cloudflare tosa. Eso ensena a ignorar el rojo, que es como se
   pierde una suite.
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
-from tools.vigia_puente import decidir, evaluar
 from shared import fechas
+from tools.vigia_puente import decidir, evaluar
 
 AHORA = fechas.fija(2026, 8, 31, 10, 0, 0)
 SANO = {"estado": "sano", "desde": "2026-08-31T09:00:00", "motivo": "ok"}

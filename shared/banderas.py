@@ -67,31 +67,31 @@ DESCRIPCIONES = {
     "postor_unico": (
         NIVEL_ALTO,
         "Un solo postor",
-        "Se adjudicó con un único participante. Puede ser un rubro donde no hay "
-        "más proveedores, o unas bases escritas a la medida de uno."),
+        ("Se adjudicó con un único participante. Puede ser un rubro donde no hay "
+        "más proveedores, o unas bases escritas a la medida de uno.")),
     "pocos_postores": (
         NIVEL_BAJO,
         "Muy pocos postores",
-        "Participaron dos o tres. Poca competencia no prueba nada por sí sola, "
-        "pero conviene mirar quién ganó antes en esta entidad."),
+        ("Participaron dos o tres. Poca competencia no prueba nada por sí sola, "
+        "pero conviene mirar quién ganó antes en esta entidad.")),
     "plazo_consultas_corto": (
         NIVEL_MEDIO,
         "Plazo de consultas muy corto",
-        "La entidad dejó menos días para consultas y observaciones que la "
+        ("La entidad dejó menos días para consultas y observaciones que la "
         "mayoría de procesos de su mismo tipo. Es el plazo con el que se "
-        "cuestionan unas bases dirigidas."),
+        "cuestionan unas bases dirigidas.")),
     "entidad_postor_unico_frecuente": (
         NIVEL_MEDIO,
         "Esta entidad suele adjudicar con un solo postor",
-        "En sus procesos ya resueltos, la mitad o más se adjudicaron con un "
+        ("En sus procesos ya resueltos, la mitad o más se adjudicaron con un "
         "único participante. La media nacional está en el 21%. Puede ser un "
-        "rubro sin competencia, o bases que dejan fuera a casi todos."),
+        "rubro sin competencia, o bases que dejan fuera a casi todos.")),
     "ganador_recurrente": (
         NIVEL_MEDIO,
         "El mismo proveedor gana siempre aquí",
-        "Este proveedor ha ganado buena parte de los procesos adjudicados por "
+        ("Este proveedor ha ganado buena parte de los procesos adjudicados por "
         "esta entidad. Puede ser el único capaz de cumplir, o una relación ya "
-        "establecida."),
+        "establecida.")),
 }
 
 

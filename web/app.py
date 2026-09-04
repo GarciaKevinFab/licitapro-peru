@@ -21,11 +21,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from shared import fechas
 from shared.config import DEPARTAMENTOS
 from shared.db import connection, licitaciones_para_usuario
 from shared.seguridad import clave_sesion
 from web import limites
-from shared import fechas
 
 log = logging.getLogger("web.app")
 
@@ -400,7 +400,6 @@ app.include_router(router_informes)
 def _dias(fecha) -> int | None:
     if not fecha:
         return None
-    from datetime import datetime
     return (fecha - fechas.ahora()).days
 
 
@@ -410,7 +409,7 @@ async def _resumen(usuario_id: int) -> dict:
     El pozo de licitaciones es compartido -- son datos publicos -- pero el
     numero que le importa a cada cuenta es cuantas le corresponden a ella.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     suyas = await licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False)
     ahora = fechas.ahora()
     vigentes = [l for l in suyas if l["fecha_cierre"] and l["fecha_cierre"] > ahora]
@@ -537,7 +536,6 @@ _MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
 
 
 def _hoy_en_letras() -> str:
-    from datetime import date
     h = fechas.hoy()
     return f"{h.day} de {_MESES[h.month - 1]} de {h.year}"
 

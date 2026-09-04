@@ -24,7 +24,6 @@ Por eso estos documentos salen en PDF y no en DOCX: ReFirma firma PDF.
 """
 import logging
 import os
-from datetime import date
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -42,8 +41,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from shared.archivos import rutas_de
 from shared import fechas
+from shared.archivos import rutas_de
 
 log = logging.getLogger("shared.pdf_firmable")
 

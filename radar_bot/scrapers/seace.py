@@ -17,14 +17,14 @@ For now, the GORE cotizaciones portals and other sources fill the gap.
 import hashlib
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 from shared import fechas
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.seace")
 

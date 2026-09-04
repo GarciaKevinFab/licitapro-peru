@@ -21,12 +21,11 @@ POR QUE MERECE PRUEBA UN FALLO QUE AUN NO HA PASADO
   otras cinco averias. Se buscaria en el reparto, en la suscripcion y en los
   filtros antes de mirar un ampersand.
 """
-from datetime import datetime
 
 import pytest
 
-from shared.notificaciones import _esc, _resumen_html, _resumen_texto
 from shared import fechas
+from shared.notificaciones import _esc, _resumen_html, _resumen_texto
 
 
 def _licitacion(**cambios) -> dict:

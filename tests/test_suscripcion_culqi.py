@@ -11,9 +11,9 @@ LO QUE SE PROTEGE
       recurrentes que el cliente descubre en su extracto, un mes despues.
 """
 
+from shared import fechas
 from tests.conftest import sin_base
 from web import suscripcion as vista
-from shared import fechas
 
 
 class _CulqiFalso:
@@ -335,7 +335,6 @@ async def test_el_checkout_deja_la_cuenta_activa_y_el_pago_registrado(
     falta cualquiera de esas piezas, hay un cargo en la tarjeta del cliente sin
     su contrapartida aqui.
     """
-    from datetime import datetime
 
     from shared.db import connection
 

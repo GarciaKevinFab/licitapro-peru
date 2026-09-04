@@ -30,8 +30,8 @@ import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 from shared import fechas
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.conosce")
 
@@ -173,15 +173,20 @@ async def _resolve_tinyurl(client: httpx.AsyncClient, tinyurl: str) -> str | Non
         r = await client.head(tinyurl, follow_redirects=True)
         if r.status_code == 200:
             return str(r.url)
-    except Exception:
-        pass
+    except Exception as e:
+        # Que HEAD no funcione es normal en acortadores: muchos solo responden
+        # a GET. Por eso hay un segundo intento debajo y esto no es un error.
+        log.debug("HEAD de %s no resolvio (%s); se prueba con GET", tinyurl, e)
     # Fallback: GET con follow
     try:
         r = await client.get(tinyurl, follow_redirects=False)
         if r.status_code in (301, 302, 303, 307):
             return r.headers.get("location")
-    except Exception:
-        pass
+    except Exception as e:
+        # Aqui si se agotaron los caminos: se devuelve None y quien llama sigue
+        # con la siguiente URL. Queda escrito para que una fuente que deja de
+        # resolverse no parezca una fuente sin novedades.
+        log.debug("GET de %s tampoco resolvio (%s)", tinyurl, e)
     return None
 
 
@@ -247,8 +252,11 @@ async def _download_xlsx_cached(
         if head.status_code != 200:
             return None
         remote_size = int(head.headers.get("content-length", 0))
-    except Exception:
-        pass
+    except Exception as e:
+        # Sin HEAD no se sabe el tamano remoto y se cae al cache: no es un
+        # fallo, es el camino alternativo. Pero se deja dicho, porque si esto
+        # empieza a fallar SIEMPRE el cache no se refresca nunca.
+        log.debug("HEAD de %s no respondio (%s); se usara el cache", url, e)
 
     # Check cache
     if cache_file.exists() and cache_size_file.exists():

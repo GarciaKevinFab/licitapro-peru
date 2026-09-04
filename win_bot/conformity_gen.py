@@ -1,15 +1,14 @@
 """Conformity Generator — Genera actas de conformidad del servicio."""
 import logging
 import os
-from datetime import date
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
+from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection
-from shared import fechas
 
 log = logging.getLogger("win.conformity")
 

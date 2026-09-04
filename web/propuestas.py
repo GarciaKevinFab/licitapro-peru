@@ -222,8 +222,7 @@ async def postular(request: Request, licitacion_id: str = Form(...),
         from prep_bot.questioner import generar_preguntas_propuesta
         await generar_preguntas_propuesta(propuesta_id, empresa_id)
     except Exception as e:
-        log.error("No se pudieron generar preguntas para %s: %s", propuesta_id, e,
-                  exc_info=True)
+        log.exception("No se pudieron generar preguntas para %s: %s", propuesta_id, e)
 
     return RedirectResponse(f"/propuestas/{propuesta_id}", status_code=303)
 
@@ -298,7 +297,7 @@ async def _validacion(propuesta_id: int) -> dict | None:
         from prep_bot.autofill.validator import validar_propuesta
         return await validar_propuesta(propuesta_id)
     except Exception as e:
-        log.error("Validacion de %s fallo: %s", propuesta_id, e, exc_info=True)
+        log.exception("Validacion de %s fallo: %s", propuesta_id, e)
         return None
 
 
@@ -319,8 +318,7 @@ async def _precio_de_mercado(prop) -> dict | None:
         })
         return None if estimado.get("error") else estimado
     except Exception as e:
-        log.error("Estimacion de precio de %s fallo: %s", prop["id"], e,
-                  exc_info=True)
+        log.exception("Estimacion de precio de %s fallo: %s", prop["id"], e)
         return None
 
 
@@ -367,7 +365,7 @@ async def generar(request: Request, propuesta_id: int):
         from prep_bot.autofill.engine import autofill_propuesta
         await autofill_propuesta(propuesta_id, prop["emp_id"])
     except Exception as e:
-        log.error("Autofill fallo en %s: %s", propuesta_id, e, exc_info=True)
+        log.exception("Autofill fallo en %s: %s", propuesta_id, e)
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error=No+se+pudieron+generar+los+documentos",
             status_code=303)
@@ -430,7 +428,7 @@ async def _propuesta_tecnica(usuario_id: int, prop) -> str:
                       else "no hay clave de IA configurada")
             return f"Propuesta técnica con plantilla, porque {motivo}."
     except Exception as e:
-        log.error("Propuesta tecnica de %s fallo: %s", prop["id"], e, exc_info=True)
+        log.exception("Propuesta tecnica de %s fallo: %s", prop["id"], e)
         return "La propuesta técnica no se pudo generar; el resto sí."
 
     return "La propuesta técnica no se pudo generar; el resto sí."
@@ -462,7 +460,7 @@ async def armar_expediente(request: Request, propuesta_id: int):
         from prep_bot.zip_builder import generar_expediente_zip
         ruta = await generar_expediente_zip(propuesta_id)
     except Exception as e:
-        log.error("ZIP fallo en %s: %s", propuesta_id, e, exc_info=True)
+        log.exception("ZIP fallo en %s: %s", propuesta_id, e)
         ruta = None
 
     if not ruta:
@@ -550,26 +548,26 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
 
     emp = dict(empresa)
     parrafos = [
-        f"El que suscribe, {emp.get('representante_legal') or '________________'}, "
+        (f"El que suscribe, {emp.get('representante_legal') or '________________'}, "
         f"identificado con DNI N.º {emp.get('dni_representante') or '________'}, "
         f"en calidad de {emp.get('cargo_representante') or 'representante legal'} "
         f"de {emp.get('razon_social')}, con RUC N.º {emp.get('ruc') or '___________'} "
         f"y domicilio en {emp.get('direccion') or '________________________'}, "
-        f"DECLARO BAJO JURAMENTO lo siguiente:",
+        f"DECLARO BAJO JURAMENTO lo siguiente:"),
 
-        "1. Que los datos consignados en el presente documento son veraces y "
-        "corresponden a la situación actual de mi representada.",
+        ("1. Que los datos consignados en el presente documento son veraces y "
+        "corresponden a la situación actual de mi representada."),
 
-        "2. Que no me encuentro incurso en ninguno de los impedimentos para "
+        ("2. Que no me encuentro incurso en ninguno de los impedimentos para "
         "contratar con el Estado establecidos en la Ley General de "
-        "Contrataciones Públicas.",
+        "Contrataciones Públicas."),
 
-        "3. Que conozco, acepto y me someto a las bases, condiciones y "
-        "procedimientos del proceso de selección.",
+        ("3. Que conozco, acepto y me someto a las bases, condiciones y "
+        "procedimientos del proceso de selección."),
 
-        "4. Que me comprometo a mantener vigente mi oferta durante el plazo "
+        ("4. Que me comprometo a mantener vigente mi oferta durante el plazo "
         "señalado en las bases y a suscribir el contrato en caso de resultar "
-        "adjudicado.",
+        "adjudicado."),
 
         f"Proceso: {prop.get('objeto') or ''}",
         f"Entidad convocante: {prop.get('entidad') or ''}",
@@ -587,8 +585,8 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             con_dnie=con_dnie,
         )
     except Exception as e:
-        log.error("No se pudo generar la declaracion jurada de la propuesta %s: %s",
-                  propuesta_id, e, exc_info=True)
+        log.exception("No se pudo generar la declaracion jurada de la propuesta %s: %s",
+                  propuesta_id, e)
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error="
             + quote_plus("No se pudo generar el documento. Inténtalo de nuevo."),

@@ -11,10 +11,11 @@ QUE PROTEGEN
   Las de logica pura corren siempre; las que necesitan base se saltan sin
   ella, como el resto de la suite (ver conftest.py).
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from shared import fechas
 from shared.admin_cuentas import (
     correo_valido,
     filtrar_cuentas,
@@ -24,7 +25,6 @@ from shared.admin_cuentas import (
 from shared.seguridad import password_debil
 from shared.suscripciones import DIAS_GRACIA, estado_efectivo_de
 from tests.conftest import sin_base
-from shared import fechas
 
 AHORA = fechas.fija(2026, 9, 3, 12, 0)
 
