@@ -203,3 +203,56 @@ def test_las_reglas_de_produccion_terminan_en_un_techo_general():
 def test_los_webhooks_siguen_exentos_en_la_configuracion_real():
     """La exencion vive en EXENTAS, no en la prueba de arriba."""
     assert "/webhooks" in limites.EXENTAS
+
+
+# ---------------------------------------------------------------------------
+# El comprobante del ultimo cobro
+# ---------------------------------------------------------------------------
+# Va aqui, sin base de datos, porque el fallo que motiva estas pruebas era un
+# ImportError: `_comprobante` importaba `desglose` en vez de `_desglose`, y como
+# se la llama en CADA carga de /suscripcion, la pagina devolvia 500 a cualquiera
+# que fuera a ver su plan. Las pruebas que pasaban por ahi necesitaban Postgres
+# y se saltaban en local, asi que el fallo llego hasta produccion.
+#
+# Estas no necesitan nada: le pasan las filas a mano.
+
+def _fila(estado, monto, orden="chr_live_1"):
+    """Una fila de pagos_suscripcion como la devuelve la consulta."""
+    from datetime import datetime
+    return {
+        "estado": estado, "monto": monto, "created_at": datetime(2026, 9, 3, 20, 44),
+        "izipay_order_number": None, "culqi_charge_id": orden,
+    }
+
+
+def test_el_comprobante_sale_del_ultimo_cobro_pagado():
+    from web.suscripcion import _comprobante
+
+    c = _comprobante([_fila("pagado", 149.00)])
+    assert c is not None
+    assert c["orden"] == "chr_live_1"
+    # 149.00 con IGV dentro: base + IGV tienen que sumar EXACTAMENTE el total,
+    # que es lo que el cliente compara con el cargo de su tarjeta.
+    assert c["base"] + c["igv"] == c["total"]
+    assert float(c["total"]) == 149.00
+
+
+def test_sin_ningun_cobro_pagado_no_hay_comprobante():
+    """Un comprobante de algo que no se cobro hace creer que ya se pago."""
+    from web.suscripcion import _comprobante
+
+    assert _comprobante([]) is None
+    assert _comprobante(None) is None
+    assert _comprobante([_fila("pendiente", 149.00), _fila("fallido", 149.00)]) is None
+
+
+def test_se_coge_el_pagado_mas_reciente():
+    """El historial llega ordenado por fecha descendente."""
+    from web.suscripcion import _comprobante
+
+    c = _comprobante([
+        _fila("pendiente", 199.00, "chr_nuevo"),
+        _fila("pagado", 149.00, "chr_reciente"),
+        _fila("pagado", 99.00, "chr_viejo"),
+    ])
+    assert c["orden"] == "chr_reciente"

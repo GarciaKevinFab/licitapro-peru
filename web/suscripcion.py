@@ -54,12 +54,20 @@ def _comprobante(historial):
     pantalla lo hiciera por su cuenta, un cambio en el redondeo las dejaria
     discrepando en un centimo justo donde el cliente compara con su tarjeta.
     """
-    from web.comprar import desglose  # dentro: comprar.py ya importa este modulo
+    # El import va aqui dentro y no arriba porque comprar.py ya importa este
+    # modulo (_con_error, iniciar_cobro): a nivel de fichero seria circular.
+    #
+    # Se llama _desglose, CON guion bajo. Escribirlo sin el reventaba esta
+    # funcion con ImportError, y como se la llama en cada carga de
+    # /suscripcion, la pagina entera devolvia 500 a cualquiera que fuera a ver
+    # su plan. Local no lo cazo -- las pruebas que llegan aqui necesitan base de
+    # datos y se saltaban --; lo cazo el CI.
+    from web.comprar import _desglose
 
     for h in historial or []:
         if h["estado"] != "pagado":
             continue
-        partes = desglose(h["monto"])
+        partes = _desglose(h["monto"])
         return {
             "orden": h["izipay_order_number"] or h["culqi_charge_id"] or "—",
             "fecha": h["created_at"],
