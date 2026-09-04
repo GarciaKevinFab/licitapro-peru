@@ -1,9 +1,10 @@
 """Shared configuration and utility functions."""
+import logging
 import os
 import re
-import logging
 import unicodedata
 from functools import lru_cache
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -113,7 +114,7 @@ def match_keywords(texto: str, keywords: list[str]) -> bool:
 # ("1,234.56"). Un entero pelado en una celda casi nunca es plata: es el ano,
 # un correlativo o un conteo de items.
 _RE_FECHA_HORA = re.compile(r"\d{1,4}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{1,4}|\d{1,2}:\d{2}")
-_RE_MONEDA = re.compile(r"s/\.?|us\$|u\$s|\$|pen|usd|soles", re.IGNORECASE)
+_RE_MONEDA = re.compile(r"s/\.?|us\$|u\$s|\$|\bpen\b|\busd\b|\bsoles\b", re.IGNORECASE)
 _RE_NUMERO = re.compile(r"\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+")
 
 

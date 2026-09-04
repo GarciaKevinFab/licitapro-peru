@@ -4,7 +4,8 @@ La clave del sistema: pregunta UNA vez, guarda para SIEMPRE.
 Después de 10-15 licitaciones, el bot ya sabe TODO.
 """
 import logging
-from shared.db import connection, kb_get, kb_set, get_empresa
+
+from shared.db import connection, get_empresa, kb_get, kb_set
 
 log = logging.getLogger("prep.questioner")
 

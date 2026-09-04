@@ -1,8 +1,9 @@
 """Payment Tracker — Seguimiento de pagos pendientes y recibidos."""
 import logging
 from datetime import date
-from shared.db import connection
+
 from shared.config import format_monto
+from shared.db import connection
 
 log = logging.getLogger("win.payments")
 

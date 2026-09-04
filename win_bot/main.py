@@ -1,20 +1,24 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
-import os
 import logging
+import os
 from datetime import date, timedelta
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 load_dotenv()
 log = logging.getLogger("win_bot")
 
-from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicaciones
+from shared.config import ADMIN_ID, format_fecha, format_monto
 from shared.db import (
-    get_pool, get_contratos_activos, get_plazos_proximos, connection,
+    connection,
+    get_contratos_activos,
+    get_plazos_proximos,
+    get_pool,
 )
-from shared.config import format_monto, format_fecha, ADMIN_ID
+from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicaciones
 
 # Estos cuatro se USABAN sin importarse. `/factura`, `/conformidad`, `/entrega`
 # y `/pago` no fallaban al arrancar el bot -- Python resuelve los nombres al

@@ -9,21 +9,28 @@ antes de tocar nada. Es el patron de scoping en el borde: el id llega del
 formulario, o sea de fuera, y no se puede confiar en el.
 """
 import logging
-
+from datetime import date
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import (
-    FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse,
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
 )
 
-from datetime import date
-
+from shared.archivos import (
+    TIPOS as TIPOS_IMAGEN,
+)
+from shared.archivos import (
+    ArchivoInvalido,
+    borrar_imagen,
+    guardar_imagen,
+    rutas_de,
+)
 from shared.config import DEPARTAMENTOS, normalizar, parse_monto
 from shared.db import connection, empresa_es_de, empresas_de
-from shared.archivos import (
-    ArchivoInvalido, TIPOS as TIPOS_IMAGEN, borrar_imagen, guardar_imagen, rutas_de,
-)
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
 

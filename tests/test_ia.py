@@ -91,8 +91,8 @@ async def test_el_plan_pro_tiene_ia_con_tope(usuario):
 
 async def test_el_tope_frena_cuando_se_agota(usuario, empresa, marca):
     """Sin esto, una cuenta que pulse en bucle gasta sin limite."""
-    from shared.db import connection
     from shared import ia
+    from shared.db import connection
     from shared.suscripciones import cambiar_plan
 
     lid = await _licitacion_de_prueba(marca)
@@ -147,9 +147,9 @@ async def test_el_analisis_de_uno_no_lo_ve_otro(usuario, empresa, marca):
     constructora se le mostraria a la siguiente empresa que abriera la ficha.
     Es el mismo fallo que tuvo `licitaciones.notificado`.
     """
+    from shared import ia
     from shared.db import borrar_cuenta, crear_usuario
     from shared.seguridad import hashear_password
-    from shared import ia
 
     lid = await _licitacion_de_prueba(marca)
     otro = await crear_usuario(f"otro-{marca}@ejemplo.pe",

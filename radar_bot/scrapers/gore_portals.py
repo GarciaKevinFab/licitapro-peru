@@ -1,6 +1,8 @@
 """Scraper para portales de Gobiernos Regionales (GORE)."""
 import logging
+
 from bs4 import BeautifulSoup
+
 from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_monto
 
 log = logging.getLogger("radar.gore")
@@ -25,9 +27,10 @@ class GOREPortalsScraper(BaseScraper):
     FUENTE = "gore_portals"
 
     async def scrape(self, user_id: int = 0) -> list[dict]:
-        from shared.db import log_scraping_start, log_scraping_end, get_config, upsert_licitacion
-        from radar_bot.scrapers.base_scraper import match_config_filters, HEADERS
         import httpx
+
+        from radar_bot.scrapers.base_scraper import HEADERS, match_config_filters
+        from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
         log_id = await log_scraping_start(self.FUENTE)
         config = await get_config(user_id)

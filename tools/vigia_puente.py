@@ -54,11 +54,11 @@ sys.path.insert(0, str(RAIZ))
 # Windows arranca en C:\Windows\System32, donde no hay ningun .env. Sin esto la
 # tarea correria sin token y no avisaria de nada, en silencio. Es el mismo
 # tropiezo que ya documenta tools/traer_oece.py.
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
 load_dotenv(RAIZ / ".env")
 
-import httpx  # noqa: E402
+import httpx
 
 REGISTRO = RAIZ / "data" / "vigia_puente.log"
 ARCHIVO_ESTADO = RAIZ / "data" / "vigia_puente.estado"

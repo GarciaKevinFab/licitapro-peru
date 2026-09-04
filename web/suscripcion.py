@@ -8,8 +8,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from shared import culqi, izipay
 from shared.db import connection
 from shared.suscripciones import (
-    activar_por_culqi, cambiar_plan, cancelar, confirmar_pago, datos_culqi,
-    estado_suscripcion, limpiar_culqi, registrar_intento,
+    activar_por_culqi,
+    cambiar_plan,
+    cancelar,
+    confirmar_pago,
+    datos_culqi,
+    estado_suscripcion,
+    limpiar_culqi,
+    registrar_intento,
 )
 from web.auth import usuario_actual
 

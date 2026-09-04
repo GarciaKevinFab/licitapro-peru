@@ -30,7 +30,6 @@ from tests.conftest import sin_base
 from web.comprar import PERIODOS, _comercio, _desglose
 from web.suscripcion import _con_error
 
-
 # ─── El desglose que se ensena en el resumen del pedido ──
 
 @pytest.mark.parametrize("total", ["49.00", "99.00", "199.00", "490.00",

@@ -44,9 +44,9 @@ from datetime import datetime
 
 import httpx
 
-from shared.db import connection, licitaciones_para_usuario, get_config_usuario
-from shared.suscripciones import estado_suscripcion
 from shared import whatsapp
+from shared.db import connection, get_config_usuario, licitaciones_para_usuario
+from shared.suscripciones import estado_suscripcion
 
 log = logging.getLogger("shared.notificaciones")
 

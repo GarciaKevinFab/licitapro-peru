@@ -42,10 +42,9 @@ import os
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import quote
 
+import asyncpg
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-
-import asyncpg
 
 from shared import culqi
 from shared.db import connection, crear_usuario
@@ -120,8 +119,7 @@ def _tel_uri(telefono: str) -> str:
     limpio = "".join(c for c in telefono if c.isdigit() or c == "+")
     if limpio.startswith("+"):
         return limpio
-    if limpio.startswith("0"):
-        limpio = limpio[1:]
+    limpio = limpio.removeprefix("0")
     return _PREFIJO_PAIS + limpio if limpio else ""
 
 

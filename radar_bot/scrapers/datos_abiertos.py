@@ -19,18 +19,18 @@ Nota: Muchos datasets de OSCE en datosabiertos apuntan a bi.seace.gob.pe
 (portal Pentaho de CONOSCE). Los recursos XLSX que se descargan directamente
 desde datosabiertos.gob.pe son generalmente de entidades individuales.
 """
-import logging
 import hashlib
 import io
+import logging
 import re
-from datetime import datetime, date
+from datetime import date, datetime
 
 import httpx
 import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.datos_abiertos")
 
@@ -392,7 +392,14 @@ async def _download_and_parse_xlsx(
                 break  # Limit to avoid processing huge files
 
             # Extract values using header map
-            def _get(key, default=""):
+            # `cols=cols` ata la fila de ESTA vuelta en la definicion. Hoy da
+            # igual -- la funcion se define y se llama dentro de la misma
+            # iteracion --, pero sin esa atadura el closure leeria la variable
+            # del bucle cuando se ejecuta y no cuando se define: el dia que
+            # alguien guarde este `_get` para llamarlo mas tarde, todas las
+            # copias devolverian los datos de la ULTIMA fila del fichero. Es un
+            # fallo que no revienta, solo mezcla licitaciones.
+            def _get(key, default="", cols=cols):
                 idx = header_map.get(key)
                 if idx is None:
                     return default

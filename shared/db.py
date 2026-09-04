@@ -1,8 +1,9 @@
 """Shared database module — PostgreSQL connection and helpers."""
-import os
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
+
 import asyncpg
 from dotenv import load_dotenv
 
@@ -751,22 +752,21 @@ async def consumir_token_y_cambiar_password(token_hash: str,
     Al terminar se invalidan los demas tokens del usuario: si pidio el enlace
     tres veces, los otros dos dejan de servir en cuanto uno se usa.
     """
-    async with connection() as conn:
-        async with conn.transaction():
-            fila = await conn.fetchrow(
-                """UPDATE tokens_recuperacion SET usado_en = NOW()
+    async with connection() as conn, conn.transaction():
+        fila = await conn.fetchrow(
+            """UPDATE tokens_recuperacion SET usado_en = NOW()
                     WHERE token_hash = $1 AND usado_en IS NULL AND expira > NOW()
                  RETURNING usuario_id""",
-                token_hash)
-            if not fila:
-                return False
-            await conn.execute(
-                "UPDATE usuarios SET password_hash = $2 WHERE id = $1",
-                fila["usuario_id"], password_hash)
-            await conn.execute(
-                """UPDATE tokens_recuperacion SET usado_en = NOW()
+            token_hash)
+        if not fila:
+            return False
+        await conn.execute(
+            "UPDATE usuarios SET password_hash = $2 WHERE id = $1",
+            fila["usuario_id"], password_hash)
+        await conn.execute(
+            """UPDATE tokens_recuperacion SET usado_en = NOW()
                     WHERE usuario_id = $1 AND usado_en IS NULL""",
-                fila["usuario_id"])
+            fila["usuario_id"])
     return True
 
 
@@ -852,7 +852,8 @@ async def borrar_cuenta(usuario_id: int) -> dict:
 
     Las tablas hijas caen por las cascadas declaradas en la migracion 0006.
     """
-    from shared.archivos import borrar_imagen, rutas_de, TIPOS as TIPOS_IMAGEN
+    from shared.archivos import TIPOS as TIPOS_IMAGEN
+    from shared.archivos import borrar_imagen, rutas_de
 
     resumen = {"empresas": 0, "archivos": 0, "borrada": False}
 

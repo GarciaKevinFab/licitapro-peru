@@ -1,6 +1,8 @@
 """Scraper para Portal del Poder Judicial — Convocatorias PJ."""
 import logging
+
 from bs4 import BeautifulSoup
+
 from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_monto
 
 log = logging.getLogger("radar.poder_judicial")

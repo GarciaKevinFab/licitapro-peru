@@ -11,11 +11,11 @@ QUE PROTEGEN
   Ninguna toca la red: se prueba la REGLA sobre items reales copiados de la
   API, que es lo que se rompe al editar el codigo.
 """
+from datetime import datetime
+
 import pytest
 
 from radar_bot.scrapers.gob_pe import _es_compra, _fecha_es, _parsear_item
-from datetime import datetime
-
 
 # ─── La fecha en castellano ──────────────────────────────
 

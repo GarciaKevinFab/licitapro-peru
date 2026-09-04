@@ -1,22 +1,33 @@
 """Bot 2: LicitaPrep — Prepara propuestas y pregunta lo que falta."""
-import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes,
-)
+import os
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 load_dotenv()
 log = logging.getLogger("prep_bot")
 
+from shared.config import ADMIN_ID, format_monto
 from shared.db import (
-    get_pool, get_preguntas_pendientes, responder_pregunta,
-    kb_get, kb_set, get_empresa, get_empresas_activas, connection,
+    connection,
+    get_empresa,
+    get_empresas_activas,
+    get_pool,
+    get_preguntas_pendientes,
+    kb_get,
+    kb_set,
+    responder_pregunta,
 )
-from shared.config import format_monto, ADMIN_ID
 from shared.firma_manager import guardar_firma, obtener_todas_firmas
 
 

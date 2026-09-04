@@ -1,7 +1,8 @@
 """Pricing — Calcula precio económico competitivo con histórico."""
 import logging
-from shared.db import connection, kb_get
+
 from shared.config import format_monto, normalizar
+from shared.db import connection, kb_get
 
 log = logging.getLogger("prep.autofill.pricing")
 

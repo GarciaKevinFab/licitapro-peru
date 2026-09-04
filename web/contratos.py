@@ -18,10 +18,13 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from shared.plazos_pago import (
-    dias_de_mora, en_prorroga, enlace_consulta_mef, fecha_limite_pago,
-)
 from shared.db import connection
+from shared.plazos_pago import (
+    dias_de_mora,
+    en_prorroga,
+    enlace_consulta_mef,
+    fecha_limite_pago,
+)
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.contratos")

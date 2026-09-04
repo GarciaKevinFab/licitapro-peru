@@ -302,7 +302,8 @@ async def test_la_bandera_de_entidad_cae_en_licitaciones_ABIERTAS(marca):
     quien convoca, que si se sabe antes de postular.
     """
     from shared.banderas import (
-        CUOTA_POSTOR_UNICO, MIN_RESUELTOS_ENTIDAD,
+        CUOTA_POSTOR_UNICO,
+        MIN_RESUELTOS_ENTIDAD,
         marcar_entidades_con_mal_historial,
     )
     from shared.db import connection
@@ -499,7 +500,7 @@ async def test_no_se_puede_agregar_experiencia_a_una_empresa_ajena(
     por cuanto. Poder escribirla en la empresa de otro seria, ademas de una
     fuga, una forma de estropearle la calificacion.
     """
-    from shared.db import borrar_cuenta, crear_usuario, connection
+    from shared.db import borrar_cuenta, connection, crear_usuario
     from shared.seguridad import hashear_password
 
     email = f"intruso-exp-{marca}@ejemplo.pe"
@@ -813,7 +814,7 @@ async def test_los_terminos_no_se_publican_a_medias(cliente):
     import re
     t = (await cliente.get("/terminos")).text
 
-    huecos = re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.I)
+    huecos = re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.IGNORECASE)
     assert not huecos, f"quedan marcadores sin resolver: {huecos}"
     assert "pendiente de revisión legal" not in t
 
@@ -846,7 +847,7 @@ async def test_la_privacidad_avisa_mientras_falten_datos_del_responsable(cliente
     t = (await cliente.get("/privacidad")).text
     assert "Política incompleta" in t
     # Y nunca un corchete de marcador delante del lector.
-    assert not re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.I)
+    assert not re.findall(r"\[[^\]]*pendiente[^\]]*\]", t, flags=re.IGNORECASE)
 
 
 async def test_el_aviso_de_privacidad_se_apaga_solo_al_completar_la_identidad(cliente, monkeypatch):

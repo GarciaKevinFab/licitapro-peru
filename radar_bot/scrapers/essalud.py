@@ -1,6 +1,8 @@
 """Scraper para EsSalud — Convocatorias y contrataciones."""
 import logging
+
 from bs4 import BeautifulSoup
+
 from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_monto
 
 log = logging.getLogger("radar.essalud")
