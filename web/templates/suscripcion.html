@@ -50,6 +50,69 @@ main{max-width:900px}
 .estadobox div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ink-3);margin-bottom:2px}
 .estadobox div b{font-family:"JetBrains Mono",monospace;font-weight:600}
+
+/* ---------- EL COMPROBANTE QUE SE IMPRIME ----------
+   El ultimo cobro sale por la ranura de algo con forma de impresora.
+
+   POR QUE clip-path Y NO transform
+
+   Lo primero que se probo fue mover el papel con translateY(-100%) -> 0
+   dentro de un contenedor con overflow:hidden. En una captura fija se ve
+   bien, pero la animacion entera esta AL REVES: lo que asoma por la ranura es
+   el PIE del ticket y la cabecera llega la ultima. Una impresora imprime de
+   arriba abajo.
+
+   Con clip-path el papel no se mueve: se descubre de arriba hacia abajo. Y el
+   hueco esta reservado desde el primer fotograma, asi que el historial de
+   cobros que hay debajo no da ningun salto.
+
+   steps() y no una curva suave: una termica alimenta el papel a tirones.
+
+   Todo es CSS, sin una linea de JavaScript. */
+.tk-caja{max-width:420px}
+.tk-impresora{background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-card) var(--r-card) 3px 3px;padding:18px 20px;position:relative;z-index:2}
+.tk-marca{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px}
+.tk-marca>span:first-child{font-family:"JetBrains Mono",monospace;font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ac)}
+.tk-cabecera{display:flex;justify-content:space-between;align-items:baseline;gap:14px}
+.tk-cabecera strong{font-family:Sora,sans-serif;font-size:15px}
+.tk-cabecera small{display:block;font-family:"DM Sans",sans-serif;font-weight:400;
+  font-size:12px;color:var(--ink-3)}
+.tk-cabecera .cifra{font-family:Sora,sans-serif;font-weight:600;font-size:1.5rem;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* La ranura. Los margenes negativos la sacan hasta el borde de la caja. */
+.tk-ranura{margin:16px -8px -8px;height:6px;border-radius:3px;background:#0b1013;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.85)}
+.tk-salida{padding:0 22px}
+.tk-papel{animation:tk-imprimir 1.8s steps(22,end) .25s both}
+@keyframes tk-imprimir{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+/* El papel es claro en los dos temas: es papel, no una tarjeta mas. */
+.tk{--papel:#F7F5EF;--tinta:#23282C;--gris:#6B7075;
+  background:var(--papel);color:var(--tinta);
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.75;padding:18px 18px 14px}
+/* El borde de papel arrancado. En su propio elemento para que la mascara de
+   los dientes no recorte tambien el texto del ticket. */
+.tk-borde{height:9px;background:#F7F5EF;filter:drop-shadow(0 12px 22px rgba(0,0,0,.35));
+  -webkit-mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg)
+    bottom/11px 100% repeat-x;
+  mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg)
+    bottom/11px 100% repeat-x}
+.tk-titulo{text-align:center;letter-spacing:.2em;font-weight:600;font-size:11px;margin:0 0 3px}
+.tk-sub{text-align:center;font-size:9.5px;color:var(--gris);margin:0 0 12px;line-height:1.5}
+.tk-linea{border-top:1px dashed #C9C5BA;margin:10px 0}
+.tk-fila{display:flex;justify-content:space-between;gap:10px}
+.tk-fila span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.tk-fila.tk-total{font-weight:600;font-size:13px;padding-top:3px}
+.tk-barras{height:30px;margin:12px 0 5px;background:repeating-linear-gradient(90deg,
+  var(--tinta) 0 2px,transparent 2px 4px,var(--tinta) 4px 5px,transparent 5px 9px,
+  var(--tinta) 9px 12px,transparent 12px 13px,var(--tinta) 13px 14px,transparent 14px 18px)}
+.tk-codigo{text-align:center;font-size:9.5px;letter-spacing:.26em;color:var(--gris);margin:0}
+.tk-pie{text-align:center;font-size:9.5px;color:var(--gris);margin:12px 0 0;line-height:1.6}
+.tk-pie a{color:var(--gris)}
+/* Quien pide menos movimiento ve el comprobante entero desde el primer
+   fotograma. La informacion es la misma; lo que sobra es el espectaculo. */
+@media (prefers-reduced-motion:reduce){.tk-papel{animation:none}}
 {% endblock %}
 {% block nav %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
@@ -173,6 +236,68 @@ main{max-width:900px}
       {% endfor %}
     </div>
   </div>
+
+  {# El comprobante del ultimo cobro. Solo aparece si de verdad hubo uno
+     pagado: una cuenta en prueba, o con el pago pendiente, no ve nada. Un
+     comprobante de algo que no se cobro es justo lo que hace que alguien crea
+     que ya pago. #}
+  {% if comprobante %}
+  {# Quien cobra sale de identidad() -- las mismas variables de entorno que el
+     pie del checkout --, no de un literal en la plantilla. Y lo que falte NO
+     se pinta: un dato de relleno en un comprobante es peor que un hueco. #}
+  {% set emisor = identidad() %}
+  <div class="tarjeta tk-caja">
+    <h2>Tu último comprobante</h2>
+    <div class="tk-impresora">
+      <div class="tk-marca">
+        <span>LicitaPro</span>
+        <span class="pill ok">pagado</span>
+      </div>
+      <div class="tk-cabecera">
+        <strong>{{ s.plan_nombre or 'Suscripción' }}<small>
+          {{ comprobante.fecha.strftime('%d/%m/%Y') if comprobante.fecha else '' }}</small></strong>
+        <span class="cifra">S/ {{ '%.2f'|format(comprobante.total) }}</span>
+      </div>
+      <div class="tk-ranura"></div>
+    </div>
+    <div class="tk-salida">
+     <div class="tk-papel">
+      <div class="tk">
+        <p class="tk-titulo">COMPROBANTE</p>
+        {% if emisor.razon_social or emisor.ruc %}
+        <p class="tk-sub">{% if emisor.razon_social %}{{ emisor.razon_social }}{% endif %}
+          {%- if emisor.razon_social and emisor.ruc %}<br>{% endif %}
+          {%- if emisor.ruc %}RUC {{ emisor.ruc }}{% endif %}</p>
+        {% endif %}
+
+        <div class="tk-fila"><span>Orden</span><span>{{ comprobante.orden }}</span></div>
+        <div class="tk-fila"><span>Fecha</span><span>
+          {{ comprobante.fecha.strftime('%d/%m/%Y %H:%M') if comprobante.fecha else '—' }}</span></div>
+        <div class="tk-fila"><span>Estado</span><span>PAGADO</span></div>
+
+        <div class="tk-linea"></div>
+
+        <div class="tk-fila"><span>{{ s.plan_nombre or 'Suscripción' }}</span>
+          <span>{{ '%.2f'|format(comprobante.base) }}</span></div>
+        <div class="tk-fila"><span>IGV 18%</span>
+          <span>{{ '%.2f'|format(comprobante.igv) }}</span></div>
+
+        <div class="tk-linea"></div>
+
+        <div class="tk-fila tk-total"><span>TOTAL S/</span>
+          <span>{{ '%.2f'|format(comprobante.total) }}</span></div>
+
+        <div class="tk-barras" aria-hidden="true"></div>
+        <p class="tk-codigo">{{ comprobante.orden }}</p>
+        <p class="tk-pie">Guarda este número para cualquier consulta.
+           {%- if emisor.email %}<br>
+           <a href="mailto:{{ emisor.email }}">{{ emisor.email }}</a>{% endif %}</p>
+      </div>
+      <div class="tk-borde" aria-hidden="true"></div>
+     </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if historial %}
   <div class="tarjeta">

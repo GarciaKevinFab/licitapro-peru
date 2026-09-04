@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from shared.db import connection, licitaciones_para_usuario
 from shared.config import DEPARTAMENTOS
 from shared.seguridad import clave_sesion
+from web import limites
 
 log = logging.getLogger("web.app")
 
@@ -272,6 +273,16 @@ async def cabeceras_seguridad(request: Request, call_next):
             "max-age=31536000; includeSubDomains")
     return respuesta
 
+
+# Limite de peticiones por IP. Ver web/limites.py para las reglas, por que los
+# webhooks van exentos y por que el contador vive en memoria.
+#
+# Va ANTES que SessionMiddleware en el codigo, y eso importa: Starlette monta
+# el ULTIMO middleware anadido como el mas EXTERNO, asi que este queda por
+# dentro y solo corta peticiones que ya han pasado por el resto de la pila. La
+# pagina de 429 sale entonces con las mismas cabeceras que cualquier otra del
+# panel, en vez de como una respuesta cruda de un middleware suelto.
+app.add_middleware(limites.LimitePeticiones)
 
 # Cookie de sesion firmada. https_only se activa fuera de desarrollo; en local
 # forzarlo impediria entrar, porque no hay TLS.
