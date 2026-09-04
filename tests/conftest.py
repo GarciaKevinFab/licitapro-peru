@@ -184,7 +184,7 @@ async def usuario(marca):
     finally:
         try:
             await borrar_cuenta(uid)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # La limpieza no puede tumbar la prueba: si el fallo real fue otro,
             # este error taparia el que importa. Pero se imprime, o una cuenta
             # que no se borra se convierte en una prueba que falla mañana sin

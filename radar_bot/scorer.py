@@ -143,8 +143,7 @@ async def _score_experiencia(lic: dict, empresa_id: int) -> float:
         palabras_lic = {w for w in objeto_lic.split() if len(w) > 4}
         palabras_exp = {w for w in exp_text.split() if len(w) > 4}
         common = len(palabras_lic & palabras_exp)
-        if common > max_match:
-            max_match = common
+        max_match = max(max_match, common)
 
     if max_match >= 4:
         return 20
@@ -212,7 +211,7 @@ async def recalcular_scores_pendientes(limite: int = 200) -> int:
         try:
             await calcular_score(dict(lic))
             scoreadas += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error(f"Score fallo en {lic['id']}: {e}")
 
     log.info(f"Recalculados {scoreadas}/{len(lics)} scores")

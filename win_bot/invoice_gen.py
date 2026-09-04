@@ -96,7 +96,7 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     ]
     for i, (label, value) in enumerate(datos):
         table_info.rows[i].cells[0].text = label
-        table_info.rows[i].cells[0].paragraphs[0].runs[0].bold = True if table_info.rows[i].cells[0].paragraphs[0].runs else False
+        table_info.rows[i].cells[0].paragraphs[0].runs[0].bold = bool(table_info.rows[i].cells[0].paragraphs[0].runs)
         table_info.rows[i].cells[1].text = value
 
     doc.add_paragraph()

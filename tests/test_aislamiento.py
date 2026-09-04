@@ -463,7 +463,7 @@ async def test_una_cuenta_nueva_recibe_la_guia(usuario, cliente):
     pasos = await _primeros_pasos(usuario["id"])
     assert pasos is not None
     assert pasos["hechos"] == 0
-    assert [p["titulo"] for p in pasos["pasos"]][0] == "Carga tu empresa"
+    assert next(p["titulo"] for p in pasos["pasos"]) == "Carga tu empresa"
 
 
 async def test_la_guia_desaparece_al_completar_los_pasos(usuario, empresa):

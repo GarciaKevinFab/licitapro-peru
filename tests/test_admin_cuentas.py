@@ -277,7 +277,7 @@ async def test_crear_y_editar_cuenta_respetan_el_correo_unico(usuario, marca):
     try:
         assert fila and error is None
         c = await cuenta(fila["id"])
-        assert "password_hash" not in c.keys()
+        assert "password_hash" not in c
         assert await editar_cuenta(fila["id"], "Alta", usuario["email"], True) == "Ya existe otra cuenta con ese correo."
         assert await editar_cuenta(fila["id"], "Alta", "no-es-correo", True) == "Ese correo no parece válido."
         assert await editar_cuenta(fila["id"], "Nuevo nombre", f"ALTA-{marca}@ejemplo.pe", False) is None

@@ -199,7 +199,7 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
     # que pase aqui puede convertir un reclamo registrado en un error.
     try:
         from shared.email_sender import enviar_email
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Modulo de correo no disponible; %s queda registrado sin "
                   "copia enviada: %s", codigo, e)
         return
@@ -228,7 +228,7 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
         await enviar_email(datos["email"],
                            f"Tu {datos['tipo']} {codigo} · LicitaPro",
                            cuerpo, texto)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo enviar la copia de %s a %s: %s", codigo,
                   datos["email"], e)
 
@@ -252,5 +252,5 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
         await enviar_email(interno,
                            f"[{codigo}] {datos['tipo']} nuevo en el Libro",
                            cuerpo_int, texto_int)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo avisar internamente de %s: %s", codigo, e)

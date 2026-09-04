@@ -94,8 +94,8 @@ async def generar_anexos_complementarios(
             ruta = await tarea
             if ruta:
                 salida.append((nombre, ruta))
-        except Exception as e:
-            log.exception("El anexo %s fallo: %s", nombre, e)
+        except Exception:
+            log.exception("El anexo %s fallo", nombre)
 
     return salida
 
@@ -140,7 +140,7 @@ async def llenar_anexos(propuesta_id: int, empresa_id: int,
                     "nota": "Faltan datos",
                 })
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error(f"Error generando Anexo {anexo['num']}: {e}")
             detalle.append({
                 "anexo": f"Anexo {anexo['num']}: {anexo['nombre']}",

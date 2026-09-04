@@ -124,8 +124,8 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
     try:
         from win_bot.timeline import crear_timeline_contrato
         await crear_timeline_contrato(contrato_id)
-    except Exception as e:
-        log.exception("No se pudo crear el timeline de %s: %s", contrato_id, e)
+    except Exception:
+        log.exception("No se pudo crear el timeline de %s", contrato_id)
 
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Buena+pro+registrada",
                             status_code=303)
@@ -347,8 +347,8 @@ async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
         ruta = await generar_factura(contrato_id, float(pago["monto"]),
                                      pago["concepto"] or "Servicio prestado",
                                      pago["numero_factura"])
-    except Exception as e:
-        log.exception("Proforma del pago %s fallo: %s", pago_id, e)
+    except Exception:
+        log.exception("Proforma del pago %s fallo", pago_id)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):
@@ -379,8 +379,8 @@ async def descargar_conformidad(request: Request, contrato_id: int,
     try:
         from win_bot.conformity_gen import generar_acta_conformidad
         ruta = await generar_acta_conformidad(contrato_id, observaciones.strip())
-    except Exception as e:
-        log.exception("Acta de conformidad de %s fallo: %s", contrato_id, e)
+    except Exception:
+        log.exception("Acta de conformidad de %s fallo", contrato_id)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):

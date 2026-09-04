@@ -226,10 +226,16 @@ def test_la_sopa_funciona_sin_lxml(monkeypatch):
     real = orchestrator.BeautifulSoup
     intentos = []
 
+    # Con nombre propio y no `Exception` a secas: asi la prueba dice QUE esta
+    # simulando. BeautifulSoup lanza FeatureNotFound cuando le piden un parser
+    # que no esta instalado, que es exactamente el caso que se reproduce.
+    class LxmlNoInstalado(Exception):
+        pass
+
     def _falso(texto, parser):
         intentos.append(parser)
         if parser == "lxml":
-            raise Exception("FeatureNotFound: lxml no instalado")
+            raise LxmlNoInstalado("FeatureNotFound: lxml no instalado")
         return real(texto, parser)
 
     monkeypatch.setattr(orchestrator, "BeautifulSoup", _falso)

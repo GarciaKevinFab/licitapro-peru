@@ -323,8 +323,8 @@ async def _vigilar_fuente(app: Application):
         if estado["avisar"] and ADMIN_ID:
             await app.bot.send_message(ADMIN_ID, vigilancia.mensaje(estado),
                                        parse_mode="HTML")
-    except Exception as e:
-        log.exception("La vigilancia de fuentes fallo: %s", e)
+    except Exception:
+        log.exception("La vigilancia de fuentes fallo")
 
 
 async def scheduled_scrape(app: Application):
@@ -347,7 +347,7 @@ async def scheduled_scrape(app: Application):
             try:
                 await app.bot.send_message(
                     ADMIN_ID, format_scraping_report(results), parse_mode="HTML")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.error(f"No se pudo enviar el parte al administrador: {e}")
 
         # Reparto real: a cada usuario lo suyo, por sus canales, sin repetir.
@@ -356,7 +356,7 @@ async def scheduled_scrape(app: Application):
             f"Scraping completado: {results['total_nuevas']} nuevas de "
             f"{len(results['por_fuente'])} fuentes | avisos: {parte}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Scheduled scrape failed: {e}")
 
     # LA VIGILANCIA VA FUERA DEL TRY DE ARRIBA, Y NO ES UN DETALLE DE ESTILO

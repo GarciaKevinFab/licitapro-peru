@@ -98,11 +98,11 @@ class BaseScraper:
                         is_new = await upsert_licitacion(data)
                         if is_new:
                             nuevas.append(data)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         errores += 1
                         self.log.error(f"Error parsing item: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             errores += 1
             self.log.error(f"{self.FUENTE} scraping failed: {e}")
 

@@ -393,7 +393,7 @@ async def borrar_cuenta_completa(usuario_id: int) -> dict:
             try:
                 await borrar_imagen(eid, tipo)
                 resumen["archivos"] += tipo in presentes
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.error("No se pudo borrar la imagen %s de la empresa %s: %s", tipo, eid, e)
 
     async with connection() as conn, conn.transaction():
@@ -459,5 +459,5 @@ async def anotar_acceso(usuario_id: int) -> None:
                 "UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = $1", usuario_id)
     except asyncpg.UndefinedColumnError:
         log.warning("usuarios.ultimo_acceso no existe: aplica la migracion 0014")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo anotar el acceso de %s: %s", usuario_id, e)

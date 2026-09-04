@@ -282,7 +282,7 @@ async def _por_telegram(chat_id: int, lics: list[dict]) -> bool:
         if r.status_code != 200:
             log.error("Telegram rechazo el aviso a %s: %s", chat_id, r.text[:200])
         return r.status_code == 200
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Telegram: fallo de red avisando a %s: %s", chat_id, e)
         return False
 
@@ -476,7 +476,7 @@ async def _por_telegram_texto(chat_id: int, texto: str) -> bool:
                 json={"chat_id": chat_id, "text": texto[:4000],
                       "parse_mode": "HTML", "disable_web_page_preview": True})
         return r.status_code == 200
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Telegram: fallo avisando a %s: %s", chat_id, e)
         return False
 

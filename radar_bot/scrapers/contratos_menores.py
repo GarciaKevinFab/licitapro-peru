@@ -54,7 +54,7 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                         if "json" in ct:
                             data = resp.json()
                             break
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     log.debug("GET %s fallo (%s); se prueba POST", path, e)
 
                 try:
@@ -67,7 +67,7 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                         if "json" in ct:
                             data = resp.json()
                             break
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     log.debug("POST %s fallo (%s); se prueba la ruta siguiente",
                               path, e)
 
@@ -122,11 +122,11 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                     if is_new:
                         nuevas.append(parsed)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     log.error(f"Error parsing CM item: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.error(f"Contratos Menores scraping failed: {e}")
 

@@ -221,8 +221,8 @@ async def postular(request: Request, licitacion_id: str = Form(...),
     try:
         from prep_bot.questioner import generar_preguntas_propuesta
         await generar_preguntas_propuesta(propuesta_id, empresa_id)
-    except Exception as e:
-        log.exception("No se pudieron generar preguntas para %s: %s", propuesta_id, e)
+    except Exception:
+        log.exception("No se pudieron generar preguntas para %s", propuesta_id)
 
     return RedirectResponse(f"/propuestas/{propuesta_id}", status_code=303)
 
@@ -296,8 +296,8 @@ async def _validacion(propuesta_id: int) -> dict | None:
     try:
         from prep_bot.autofill.validator import validar_propuesta
         return await validar_propuesta(propuesta_id)
-    except Exception as e:
-        log.exception("Validacion de %s fallo: %s", propuesta_id, e)
+    except Exception:
+        log.exception("Validacion de %s fallo", propuesta_id)
         return None
 
 
@@ -317,8 +317,8 @@ async def _precio_de_mercado(prop) -> dict | None:
             "departamento": prop["departamento"],
         })
         return None if estimado.get("error") else estimado
-    except Exception as e:
-        log.exception("Estimacion de precio de %s fallo: %s", prop["id"], e)
+    except Exception:
+        log.exception("Estimacion de precio de %s fallo", prop["id"])
         return None
 
 
@@ -364,8 +364,8 @@ async def generar(request: Request, propuesta_id: int):
     try:
         from prep_bot.autofill.engine import autofill_propuesta
         await autofill_propuesta(propuesta_id, prop["emp_id"])
-    except Exception as e:
-        log.exception("Autofill fallo en %s: %s", propuesta_id, e)
+    except Exception:
+        log.exception("Autofill fallo en %s", propuesta_id)
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error=No+se+pudieron+generar+los+documentos",
             status_code=303)
@@ -427,8 +427,8 @@ async def _propuesta_tecnica(usuario_id: int, prop) -> str:
             motivo = ("tu plan no incluye IA" if not permiso["por_plan"]
                       else "no hay clave de IA configurada")
             return f"Propuesta técnica con plantilla, porque {motivo}."
-    except Exception as e:
-        log.exception("Propuesta tecnica de %s fallo: %s", prop["id"], e)
+    except Exception:
+        log.exception("Propuesta tecnica de %s fallo", prop["id"])
         return "La propuesta técnica no se pudo generar; el resto sí."
 
     return "La propuesta técnica no se pudo generar; el resto sí."
@@ -459,8 +459,8 @@ async def armar_expediente(request: Request, propuesta_id: int):
     try:
         from prep_bot.zip_builder import generar_expediente_zip
         ruta = await generar_expediente_zip(propuesta_id)
-    except Exception as e:
-        log.exception("ZIP fallo en %s: %s", propuesta_id, e)
+    except Exception:
+        log.exception("ZIP fallo en %s", propuesta_id)
         ruta = None
 
     if not ruta:
@@ -584,9 +584,9 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             empresa=emp,
             con_dnie=con_dnie,
         )
-    except Exception as e:
-        log.exception("No se pudo generar la declaracion jurada de la propuesta %s: %s",
-                  propuesta_id, e)
+    except Exception:
+        log.exception("No se pudo generar la declaracion jurada de la propuesta %s",
+                  propuesta_id)
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error="
             + quote_plus("No se pudo generar el documento. Inténtalo de nuevo."),

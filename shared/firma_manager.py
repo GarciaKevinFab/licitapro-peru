@@ -127,7 +127,7 @@ def insertar_imagen_en_docx(doc, image_path: str, width_cm: float = 4.0):
         try:
             doc.add_picture(image_path, width=Cm(width_cm))
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.warning(f"No se pudo insertar imagen {image_path}: {e}")
     return False
 

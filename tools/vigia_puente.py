@@ -129,11 +129,11 @@ def sondear(url: str, solo_ipv4: bool = False) -> tuple[int, dict | None, str]:
     try:
         with httpx.Client(timeout=25, follow_redirects=True, **kwargs) as c:
             r = c.get(url)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return 0, None, f"{type(e).__name__}: {e}"[:200]
     try:
         return r.status_code, r.json(), ""
-    except Exception:
+    except Exception:  # noqa: BLE001
         return r.status_code, None, "el cuerpo no es JSON"
 
 
@@ -151,7 +151,7 @@ def hay_internet() -> bool:
         with httpx.Client(timeout=10,
                           transport=httpx.HTTPTransport(local_address="0.0.0.0")) as c:
             return c.get(TESTIGO).status_code < 500
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 
@@ -237,7 +237,7 @@ def decidir(previo: dict | None, sano: bool, motivo: str,
 def leer_estado() -> dict | None:
     try:
         return json.loads(ARCHIVO_ESTADO.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Un estado ilegible se trata como "no habia": se pierde la memoria de
         # una caida en curso, no el vigilante entero.
         return None
@@ -267,7 +267,7 @@ def avisar(texto: str) -> bool:
             log.error("Telegram respondio %s: %s", r.status_code,
                           r.text[:200])
         return r.status_code == 200
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo avisar por Telegram: %s", e)
         return False
 

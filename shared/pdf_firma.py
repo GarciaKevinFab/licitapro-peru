@@ -81,8 +81,8 @@ async def docx_a_pdf(ruta_docx: str, carpeta_destino: str | None = None) -> tupl
         except asyncio.TimeoutError:
             proceso.kill()
             return None, "La conversión a PDF tardó demasiado y se canceló."
-    except Exception as e:
-        log.exception("Fallo al invocar LibreOffice: %s", e)
+    except Exception:
+        log.exception("Fallo al invocar LibreOffice")
         return None, "No se pudo ejecutar el conversor de PDF."
 
     esperado = Path(destino) / (Path(ruta_docx).stem + ".pdf")
@@ -114,7 +114,7 @@ def tiene_firma_digital(datos: bytes) -> bool | None:
         lector = PdfReader(BytesIO(datos))
         campos = lector.get_fields() or {}
         return any(c.get("/FT") == "/Sig" for c in campos.values())
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.info("No se pudo inspeccionar el PDF: %s", e)
         return None
 

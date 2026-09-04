@@ -97,10 +97,10 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
             datos = await obtener_datos_empresa_completos(empresa_id)
             documentos_generados.extend(await generar_anexos_complementarios(
                 propuesta_id, empresa_id, licitacion, datos))
-        except Exception as e:
+        except Exception:
             # No tumba el expediente: los cinco documentos principales ya están
             # y valen por sí solos. Se registra para poder arreglarlo.
-            log.exception("Los anexos complementarios fallaron: %s", e)
+            log.exception("Los anexos complementarios fallaron")
 
         # Crear ZIP
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -123,7 +123,7 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         log.info(f"Expediente ZIP generado: {zip_path} ({len(documentos_generados)} documentos)")
         return zip_path
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Error generando expediente ZIP: {e}")
         return None
 

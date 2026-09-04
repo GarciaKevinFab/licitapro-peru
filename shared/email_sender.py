@@ -77,7 +77,7 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str,
         )
         log.info(f"Email enviado a {destinatario}: {asunto}")
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Error enviando email: {e}")
         return False
 

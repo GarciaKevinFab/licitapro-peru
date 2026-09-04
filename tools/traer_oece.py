@@ -132,7 +132,7 @@ async def _principal() -> int:
         from radar_bot.scrapers.orchestrator import _run_gore_portals
         gore = await _run_gore_portals(0)
         log.info("GORE cotizaciones: guardadas %d nuevas.", len(gore))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         log.error("GORE cotizaciones fallo (OECE si entro): %s", exc)
 
     return 0
@@ -143,11 +143,11 @@ def main() -> int:
     log.info("--- inicio %s ---", fechas.ahora().strftime("%Y-%m-%d %H:%M:%S"))
     try:
         codigo = asyncio.run(_principal())
-    except Exception as exc:
+    except Exception:
         # Se registra y se devuelve fallo para que el Programador de tareas lo
         # marque en rojo. Terminar en 0 tras un error es como esta fuente
         # estuvo doce corridas caida sin que nadie se enterara.
-        log.exception("La pasada fallo: %s", exc)
+        log.exception("La pasada fallo")
         return 1
     log.info("--- fin (codigo %d) ---", codigo)
     return codigo

@@ -397,7 +397,7 @@ async def scrape_ocds_oece(
             for page in range(1, max_paginas + 1):
                 try:
                     data = await _pagina(cliente, page)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     detalle_error = f"pagina {page}: {str(e)[:150]}"
                     log.warning(f"Fallo la pagina {page}: {e}")
@@ -440,7 +440,7 @@ async def scrape_ocds_oece(
     except Exception as e:
         errores += 1
         detalle_error = str(e)[:200]
-        log.exception(f"OCDS OECE fallo: {e}")
+        log.exception("OCDS OECE fallo")
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle_error)
 

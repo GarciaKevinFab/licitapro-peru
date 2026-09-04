@@ -65,7 +65,7 @@ def _sopa(texto: str) -> BeautifulSoup:
     """
     try:
         return BeautifulSoup(texto, "lxml")
-    except Exception:
+    except Exception:  # noqa: BLE001
         return BeautifulSoup(texto, "html.parser")
 
 
@@ -265,9 +265,7 @@ def _apply_filters(entidad, objeto, monto, depto, filters) -> bool:
     # matar falsos positivos por homonimia -- "servidores" matchea tanto un
     # servidor informatico como los servidores publicos de una entidad.
     excluir = filters.get("keywords_excluir") or []
-    if excluir and _match_keywords(f"{objeto} {entidad}", excluir):
-        return False
-    return True
+    return not (excluir and _match_keywords(f"{objeto} {entidad}", excluir))
 
 
 # ==================== Sonda de fuentes ====================
@@ -341,7 +339,7 @@ class Sonda:
         """
         try:
             resp = await client.get(url)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # El fallo se GUARDA (va a `scraping_log` en el diagnostico) y
             # ademas se registra: la tabla sirve para enterarse de que algo se
             # rompio, y el log para ver el mensaje entero al arreglarlo.
@@ -585,7 +583,7 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
             results["por_fuente"][nombre] = count
             results["total_nuevas"] += count
             log.info(f"[OK] {nombre}: {count} nuevas")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if nombre in FUENTES_DEL_PUENTE:
                 # El fallo ESPERADO: OECE bloquea al VPS y la cosecha la hace
                 # el puente. Contarlo como "Error" en el parte hacia parecer
@@ -608,7 +606,7 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
     try:
         from radar_bot.scorer import recalcular_scores_pendientes
         results["scoreadas"] = await recalcular_scores_pendientes()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         results["errores"].append(f"scoring: {str(e)[:120]}")
         results["scoreadas"] = 0
         log.error(f"[FAIL] scoring: {e}")
@@ -617,7 +615,7 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
     # escrito en una tabla que solo se mira cuando ya hay un cliente enfadado.
     try:
         results["diagnosticos"] = await _diagnosticos(results["por_fuente"])
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         results["diagnosticos"] = {}
         log.error(f"No se pudieron leer los diagnosticos: {e}")
 
@@ -762,7 +760,7 @@ async def _scrape_gore_cotizaciones_app(
             if is_new:
                 nuevas.append(licit)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"GORE {region} cotizaciones app: {e}")
 
@@ -897,7 +895,7 @@ async def _scrape_gore_generic(
             if is_new:
                 nuevas.append(licit)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.debug(f"GORE {region} generic ({url}): {e}")
 
@@ -943,14 +941,14 @@ async def _run_gore_portals(user_id):
                         encontradas += enc
                         errores += err
                         nuevas.extend(new)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         errores += 1
                         # Contar el fallo sin registrar la causa fue justo lo que
                         # mantuvo invisibles los bugs de esquema.
                         log.warning(f"fila descartada: {e}")
                     await asyncio.sleep(1)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"GORE portals: {e}")
 
@@ -1038,13 +1036,13 @@ async def _run_peru_compras(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     # Contar el fallo sin registrar la causa fue justo lo que
                     # mantuvo invisibles los bugs de esquema.
                     log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"Peru Compras: {e}")
 
@@ -1127,13 +1125,13 @@ async def _run_poder_judicial(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     # Contar el fallo sin registrar la causa fue justo lo que
                     # mantuvo invisibles los bugs de esquema.
                     log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"Poder Judicial: {e}")
 
@@ -1217,13 +1215,13 @@ async def _run_essalud(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     # Contar el fallo sin registrar la causa fue justo lo que
                     # mantuvo invisibles los bugs de esquema.
                     log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"EsSalud: {e}")
 
@@ -1303,13 +1301,13 @@ async def _run_sbs(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     # Contar el fallo sin registrar la causa fue justo lo que
                     # mantuvo invisibles los bugs de esquema.
                     log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"SBS: {e}")
 
@@ -1391,13 +1389,13 @@ async def _run_transparencia_mef(user_id):
                             if is_new:
                                 nuevas.append(licit)
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     # Contar el fallo sin registrar la causa fue justo lo que
                     # mantuvo invisibles los bugs de esquema.
                     log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"Transparencia MEF: {e}")
 
@@ -1492,13 +1490,13 @@ async def _run_municipalidades(user_id):
                                 if is_new:
                                     nuevas.append(licit)
 
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         errores += 1
                         # Contar el fallo sin registrar la causa fue justo lo que
                         # mantuvo invisibles los bugs de esquema.
                         log.warning(f"fila descartada: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         log.warning(f"Municipalidades: {e}")
 

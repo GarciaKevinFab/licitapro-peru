@@ -97,7 +97,7 @@ def _cabecera(empresa: dict, imagenes: dict, est: dict) -> list:
             logo = ImagenPDF(imagenes["logo"], width=3.2 * cm, height=2 * cm,
                              kind="proportional")
             tabla = Table([[logo, bloque]], colWidths=[3.6 * cm, 12.4 * cm])
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # Un logo ilegible no puede impedir que se genere el documento.
             log.warning("No se pudo incrustar el logo: %s", e)
     if tabla is None:
@@ -136,7 +136,7 @@ def _bloque_firma(empresa: dict, imagenes: dict, est: dict, con_dnie: bool) -> l
         try:
             elementos.append(ImagenPDF(imagenes["firma"], width=5.5 * cm,
                                        height=2.2 * cm, kind="proportional"))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.warning("No se pudo incrustar la firma: %s", e)
             elementos.append(Spacer(1, ALTO_FIRMA))
     else:
@@ -157,7 +157,7 @@ def _bloque_firma(empresa: dict, imagenes: dict, est: dict, con_dnie: bool) -> l
             elementos += [Spacer(1, 10),
                           ImagenPDF(imagenes["sello"], width=3 * cm,
                                     height=3 * cm, kind="proportional")]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.warning("No se pudo incrustar el sello: %s", e)
 
     if con_dnie:

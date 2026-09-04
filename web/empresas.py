@@ -381,7 +381,7 @@ async def guardar(request: Request, empresa_id: int = Form(0), rubros: str = For
                     _fecha(formulario.get('rnp_vigencia') or ''),
                     lista_rubros, usuario["id"],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.warning("Alta de empresa fallida: %s", e)
                 return RedirectResponse(
                     "/empresas?error=No+se+pudo+crear.+Revisa+que+el+RUC+no+este+ya+registrado",

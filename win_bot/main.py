@@ -71,8 +71,8 @@ async def _renovar_suscripciones():
     try:
         from tools.renovar_suscripciones import main as renovar
         await renovar()
-    except Exception as e:
-        log.exception("Fallo el cobro de renovaciones: %s", e)
+    except Exception:
+        log.exception("Fallo el cobro de renovaciones")
 
 
 async def check_plazos_proximos(app):

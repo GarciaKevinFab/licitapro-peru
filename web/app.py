@@ -770,7 +770,7 @@ async def salud():
     try:
         async with connection() as conn:
             await conn.fetchval("SELECT 1")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Salud: la base no responde: %s", e)
         # Sin base no hay servicio. 503 y no 500: es indisponibilidad
         # temporal, y es lo que un monitor entiende como "vuelve a mirar".
@@ -783,7 +783,7 @@ async def salud():
         from shared import vigilancia
         horas = await vigilancia.horas_sin_cosecha()
         detalle["oece_horas"] = round(horas, 1) if horas is not None else None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.warning("Salud: no se pudo medir la frescura de OECE: %s", e)
 
     return detalle

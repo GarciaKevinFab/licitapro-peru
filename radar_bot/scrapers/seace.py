@@ -337,13 +337,13 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
                                 is_new = await upsert_licitacion(data)
                                 if is_new:
                                     nuevas.append(data)
-                            except Exception as e:
+                            except Exception as e:  # noqa: BLE001
                                 errores += 1
                                 log.debug(f"Error parsing SEACE row: {e}")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     log.debug(f"SEACE AJAX request failed: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             errores += 1
             log.warning(f"SEACE {base_url}: {e}")
 

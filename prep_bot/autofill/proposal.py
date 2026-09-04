@@ -191,11 +191,11 @@ Maximo tres o cuatro parrafos por seccion."""
     try:
         contenido, _uso = await ia.pedir_json(SISTEMA, prompt, ESQUEMA)
         return contenido
-    except Exception as e:
+    except Exception:
         # Se cae a la plantilla: no lleva IA, pero produce un documento
         # presentable. Quedarse sin propuesta tecnica es peor -- en un concurso
         # publico o una licitacion publica es el documento que puntua.
-        log.exception("La propuesta tecnica con IA fallo: %s", e)
+        log.exception("La propuesta tecnica con IA fallo")
 
     return _generar_plantilla(licitacion, empresa, datos)
 
