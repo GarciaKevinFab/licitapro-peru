@@ -1,3 +1,17 @@
+# ruff: noqa: UP031
+#
+# El `%` con diccionario se queda, y no es pereza.
+#
+#   `documento()` termina rellenando una plantilla de sesenta lineas de HTML de
+#   correo con huecos nombrados: `%(titulo)s`, `%(lienzo)s`, `%(panel)s`.
+#   Pasarla a f-string obliga a interpolar en el sitio -- mezclando el HTML con
+#   el codigo que lo rellena -- y a duplicar las llaves de cada `style="{...}"`.
+#   El `%` con diccionario es justo la herramienta para esto: separa la
+#   plantilla de los datos, que es lo que hace legible este fichero.
+#
+#   Va como directiva de MODULO y no en la linea del `%` porque ruff senala el
+#   inicio de la expresion multilinea, que cae dentro del propio HTML: un noqa
+#   ahi acabaria impreso en el correo que recibe el cliente.
 """
 Plantillas de correo de LicitaPro.
 ==================================
@@ -236,7 +250,7 @@ def documento(titulo, intro=(), filas=(), boton=None, aviso=None, pasos=(),
 
   </table>
 </td></tr></table>
-</body></html>""" % {  # noqa: UP031  (ver el comentario de abajo)
+</body></html>""" % {
     # El `%` con diccionario se queda a proposito, y no es pereza.
     #
     # Esto es una PLANTILLA: sesenta lineas de HTML de correo con sus huecos
