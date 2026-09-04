@@ -98,7 +98,25 @@ jobs:
       # este proyecto no acata estan justificadas en ruff.toml.
       - name: Estilo (ruff)
         run: |
-          python -m pip install ruff
+          # LA VERSION VA FIJADA, Y NO ES UN CAPRICHO
+          #
+          #   `pip install ruff` a secas instala la ultima, y ruff amplia su
+          #   conjunto de reglas POR DEFECTO de vez en cuando. El dia que lo
+          #   hace, este flujo se pone en rojo sin que nadie haya tocado una
+          #   linea del repositorio, y el fallo le aparece en el PR a quien
+          #   pasaba por ahi.
+          #
+          #   Paso el 2026-09-03: la 0.16.6 sumo DTZ (fechas sin zona horaria) y
+          #   UP (modernizacion de sintaxis) a los defaults, y saltaron 450
+          #   avisos de golpe en scrapers y bots que llevaban meses igual. Con
+          #   la 0.15 el mismo codigo pasa limpio. No se vio antes porque el
+          #   paso de ruff nunca llegaba a ejecutarse: la auditoria de SQL
+          #   fallaba delante y cortaba el trabajo.
+          #
+          #   Subir esta version es una tarea con su propio trabajo detras --
+          #   mirar lo que salga y arreglarlo --, no algo que deba ocurrir solo
+          #   porque alguien publique una release.
+          python -m pip install ruff==0.15.22
           ruff check .
 
       - name: Validar la configuracion de pytest
