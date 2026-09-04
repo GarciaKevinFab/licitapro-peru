@@ -61,7 +61,10 @@ def pedir(middleware, ruta, metodo="GET", ip=IP_A):
 
 
 def _middleware(reglas, exentas=limites.EXENTAS):
-    return limites.LimitePeticiones(_app_ok, reglas=reglas, exentas=exentas)
+    # `activo=True` explicito: el conftest apaga el limite para el resto de la
+    # suite (ver LICITAPRO_LIMITE_PETICIONES alli), y sin esto estas pruebas
+    # pasarian en verde sin comprobar absolutamente nada.
+    return limites.LimitePeticiones(_app_ok, reglas=reglas, exentas=exentas, activo=True)
 
 
 def test_deja_pasar_hasta_el_limite_y_luego_corta():
@@ -161,3 +164,27 @@ def test_las_reglas_de_produccion_terminan_en_un_techo_general():
 def test_los_webhooks_siguen_exentos_en_la_configuracion_real():
     """La exencion vive en EXENTAS, no en la prueba de arriba."""
     assert "/webhooks" in limites.EXENTAS
+
+
+def test_apagado_deja_pasar_todo():
+    """El interruptor que usa el conftest tiene que apagarlo de verdad."""
+    m = limites.LimitePeticiones(_app_ok, reglas=[(None, "/", 1, 60)], activo=False)
+    assert [pedir(m, "/propuestas")[0] for _ in range(20)] == [200] * 20
+
+
+def test_la_variable_de_entorno_manda(monkeypatch):
+    """Encendido por omision; solo 'off' lo apaga.
+
+    Si un valor cualquiera lo apagara, una errata en el .env del VPS dejaria
+    produccion sin limite y sin que nada avisara.
+    """
+    monkeypatch.delenv("LICITAPRO_LIMITE_PETICIONES", raising=False)
+    assert limites.activo_por_entorno() is True
+
+    for valor in ("off", "OFF", " off "):
+        monkeypatch.setenv("LICITAPRO_LIMITE_PETICIONES", valor)
+        assert limites.activo_por_entorno() is False, valor
+
+    for valor in ("on", "", "1", "si", "false"):
+        monkeypatch.setenv("LICITAPRO_LIMITE_PETICIONES", valor)
+        assert limites.activo_por_entorno() is True, valor

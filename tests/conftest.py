@@ -39,6 +39,21 @@ os.environ.setdefault("LICITAPRO_SECRET_KEY",
                       "clave_solo_para_pruebas_no_usar_en_produccion")
 os.environ.setdefault("LICITAPRO_ENTORNO", "dev")
 
+# El limite de peticiones por IP, apagado durante las pruebas.
+#
+#   La suite habla con la app por httpx.ASGITransport, que no abre un socket:
+#   no hay cabecera de Cloudflare y `scope["client"]` no identifica a nadie, asi
+#   que las 22 llamadas a POST /entrar caen todas en la MISMA clave. A partir de
+#   la undecima llega el 429, la prueba se queda sin sesion y las siguientes
+#   acaban en /entrar. Se veia como `assert 303 == 200` y
+#   `'/propuestas/3' in '/entrar'` en pruebas que no tienen nada que ver con el
+#   login, que es la peor forma de encontrarse un fallo.
+#
+#   Subir el limite hasta que la suite quepa seria dejar que el arnes decida un
+#   numero que le toca a lo que necesita una persona que se equivoca de
+#   contrasena. El middleware se prueba aparte y a fondo en tests/test_limites.py.
+os.environ.setdefault("LICITAPRO_LIMITE_PETICIONES", "off")
+
 # ─── Blindaje: la suite no puede tocar la base de produccion ─────────────────
 #
 # ESTO NO ES PRECAUCION TEORICA: PASABA

@@ -38,8 +38,32 @@ POR QUE MIDDLEWARE ASGI Y NO BaseHTTPMiddleware
   informes ni con la cabecera CSP con nonce que app.py calcula por peticion.
 """
 
+import os
 import time
 from collections import defaultdict, deque
+
+
+def activo_por_entorno() -> bool:
+    """Si el limite debe aplicarse. `LICITAPRO_LIMITE_PETICIONES=off` lo apaga.
+
+    EXISTE POR LA SUITE DE PRUEBAS, Y LO QUE DESTAPO MERECE LEERSE
+
+      Las pruebas hablan con la aplicacion por `httpx.ASGITransport`, que no
+      abre un socket: no hay cabecera de Cloudflare y `scope["client"]` no
+      identifica a nadie. Resultado: las 22 llamadas a POST /entrar de la suite
+      caen todas en la MISMA clave y, a partir de la undecima, reciben 429. La
+      prueba se queda sin sesion y las siguientes acaban en /entrar, que es como
+      se veia el fallo: `assert 303 == 200`, `'/propuestas/3' in '/entrar'`.
+
+      Se podria haber subido el limite de login hasta que la suite cupiera, pero
+      entonces ese numero lo decidiria el arnes de pruebas y no lo que necesita
+      una persona que se equivoca de contrasena. El limite se queda como esta y
+      las pruebas lo apagan.
+
+      No pierde cobertura: tests/test_limites.py ejercita el middleware
+      directamente, con IPs distintas y contando las respuestas.
+    """
+    return os.getenv("LICITAPRO_LIMITE_PETICIONES", "on").strip().lower() != "off"
 
 
 def ip_del_cliente(scope) -> str:
@@ -118,11 +142,16 @@ EXENTAS = ("/webhooks", "/static", "/salud")
 class LimitePeticiones:
     """Middleware ASGI que cuenta peticiones por (IP, regla) en ventana deslizante."""
 
-    def __init__(self, app, reglas=REGLAS, prefijos=PREFIJOS, exentas=EXENTAS):
+    def __init__(self, app, reglas=REGLAS, prefijos=PREFIJOS, exentas=EXENTAS,
+                 activo=None):
         self.app = app
         self.reglas = reglas
         self.prefijos = tuple(prefijos)
         self.exentas = tuple(exentas)
+        # Se resuelve al construir y no en cada peticion: asi el estado queda
+        # fijado al arrancar y no cambia a media vida por un `os.environ` que
+        # alguien toque desde otro sitio.
+        self.activo = activo_por_entorno() if activo is None else activo
         # (ip, indice de regla) -> deque de instantes
         self._marcas = defaultdict(deque)
         self._ultima_purga = time.monotonic()
@@ -151,7 +180,7 @@ class LimitePeticiones:
             del self._marcas[clave]
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
+        if not self.activo or scope["type"] != "http":
             return await self.app(scope, receive, send)
 
         ruta = scope.get("path", "")
