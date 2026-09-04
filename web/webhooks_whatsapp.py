@@ -68,17 +68,17 @@ async def recibir(request: Request):
 
     try:
         cuerpo = await request.json()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return JSONResponse({"ok": True, "nota": "cuerpo no es JSON"})
 
     for mensaje in mensajes_entrantes(cuerpo):
         numero, texto = mensaje["numero"], mensaje["texto"]
         try:
             await _procesar(numero, texto)
-        except Exception as e:
+        except Exception:
             # Un fallo con un mensaje no puede tumbar el resto del lote ni
             # provocar que Meta reintente todo el paquete.
-            log.error("Fallo procesando mensaje de %s: %s", numero, e, exc_info=True)
+            log.exception("Fallo procesando mensaje de %s", numero)
 
     return JSONResponse({"ok": True})
 

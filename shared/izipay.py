@@ -34,9 +34,10 @@ import hmac
 import logging
 import os
 import secrets
-from datetime import datetime
 
 import httpx
+
+from shared import fechas
 
 log = logging.getLogger("shared.izipay")
 
@@ -121,12 +122,12 @@ def _host() -> str:
 
 def nuevo_numero_orden(prefijo: str = "LP") -> str:
     """Numero de orden unico. Es la llave de idempotencia del cobro."""
-    return f"{prefijo}{datetime.now():%y%m%d%H%M%S}{secrets.token_hex(3).upper()}"
+    return f"{prefijo}{fechas.ahora():%y%m%d%H%M%S}{secrets.token_hex(3).upper()}"
 
 
 def _transaction_id() -> str:
     """Izipay pide un identificador numerico de transaccion por peticion."""
-    return f"{datetime.now():%H%M%S}{secrets.randbelow(10000):04d}"
+    return f"{fechas.ahora():%H%M%S}{secrets.randbelow(10000):04d}"
 
 
 async def generar_token_sesion(numero_orden: str, monto: float,
@@ -167,7 +168,7 @@ async def generar_token_sesion(numero_orden: str, monto: float,
             r = await cliente.post(_host() + RUTA_TOKEN, json=cuerpo, headers=cabeceras)
         datos = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
-        log.error("Izipay Token/Generate fallo: %s", e, exc_info=True)
+        log.exception("Izipay Token/Generate fallo")
         return {"ok": False, "modo": modo(), "token": None, "detalle": str(e)[:200]}
 
     # El envoltorio {code, message, response} si esta verificado.
@@ -211,7 +212,7 @@ async def cobrar_con_token(token_tarjeta: str, numero_orden: str, monto: float,
                                    headers=cabeceras)
         datos = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
-        log.error("Izipay cobro con token fallo: %s", e, exc_info=True)
+        log.exception("Izipay cobro con token fallo")
         return {"ok": False, "estado": "error", "transaction_id": None,
                 "detalle": str(e)[:200]}
 

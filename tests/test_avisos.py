@@ -21,10 +21,10 @@ POR QUE MERECE PRUEBA UN FALLO QUE AUN NO HA PASADO
   otras cinco averias. Se buscaria en el reparto, en la suscripcion y en los
   filtros antes de mirar un ampersand.
 """
-from datetime import datetime
 
 import pytest
 
+from shared import fechas
 from shared.notificaciones import _esc, _resumen_html, _resumen_texto
 
 
@@ -32,7 +32,7 @@ def _licitacion(**cambios) -> dict:
     base = {
         "id": "x1", "nomenclatura": "AS-SM-1-2026", "entidad": "Municipalidad",
         "objeto": "Servicio de internet", "monto_referencial": 1500.0,
-        "fecha_cierre": datetime(2026, 9, 2, 16, 0), "fuente": "gore_portals",
+        "fecha_cierre": fechas.fija(2026, 9, 2, 16, 0), "fuente": "gore_portals",
         "tipo": "cotizacion", "departamento": "Madre de Dios",
         "score_viabilidad": 43.0,
     }

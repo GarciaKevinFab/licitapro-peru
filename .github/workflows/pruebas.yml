@@ -108,15 +108,17 @@ jobs:
           #
           #   Paso el 2026-09-03: la 0.16.6 sumo DTZ (fechas sin zona horaria) y
           #   UP (modernizacion de sintaxis) a los defaults, y saltaron 450
-          #   avisos de golpe en scrapers y bots que llevaban meses igual. Con
-          #   la 0.15 el mismo codigo pasa limpio. No se vio antes porque el
-          #   paso de ruff nunca llegaba a ejecutarse: la auditoria de SQL
-          #   fallaba delante y cortaba el trabajo.
+          #   avisos de golpe en scrapers y bots que llevaban meses igual. No se
+          #   vio antes porque el paso de ruff nunca llegaba a ejecutarse: la
+          #   auditoria de SQL fallaba delante y cortaba el trabajo.
           #
-          #   Subir esta version es una tarea con su propio trabajo detras --
-          #   mirar lo que salga y arreglarlo --, no algo que deba ocurrir solo
-          #   porque alguien publique una release.
-          python -m pip install ruff==0.15.22
+          #   Aquellos 450 ya estan resueltos -- los 93 de fechas dieron pie a
+          #   shared/fechas.py --, asi que la version sube a la 0.16.6 y el
+          #   codigo pasa limpio con ella. Se deja fijada igualmente: la proxima
+          #   vez que ruff amplie sus defaults, actualizar sera una tarea que
+          #   alguien decide hacer, con su repaso detras, y no una sorpresa en
+          #   el PR de otro.
+          python -m pip install ruff==0.16.6
           ruff check .
 
       - name: Validar la configuracion de pytest

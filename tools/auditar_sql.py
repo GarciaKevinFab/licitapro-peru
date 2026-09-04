@@ -105,7 +105,7 @@ async def main():
         try:
             await conn.prepare(sql)
             ok += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             fallos.append((ref, sql, f"{type(e).__name__}: {e}"))
     await conn.close()
 

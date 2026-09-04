@@ -32,6 +32,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
+from shared import fechas
 from shared.db import connection
 from web.auth import usuario_actual
 
@@ -168,7 +169,7 @@ async def registrar(
             datos["direccion"] or None, menor, datos["apoderado"] or None,
             datos["bien_contratado"], datos["descripcion_bien"] or None, monto,
             datos["detalle"], datos["pedido"],
-            limite_respuesta(datetime.now()), usuario["id"] if usuario else None,
+            limite_respuesta(fechas.ahora()), usuario["id"] if usuario else None,
             request.client.host if request.client else None,
         )
 
@@ -198,7 +199,7 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
     # que pase aqui puede convertir un reclamo registrado en un error.
     try:
         from shared.email_sender import enviar_email
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Modulo de correo no disponible; %s queda registrado sin "
                   "copia enviada: %s", codigo, e)
         return
@@ -215,12 +216,11 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
         ("Plazo para responderte", limite.strftime("%d/%m/%Y")),
     ]
     texto, cuerpo = plantillas_correo.componer(
-        titulo="Registramos tu %s" % datos["tipo"],
-        preencabezado="Hoja %s · te respondemos antes del %s"
-                      % (codigo, limite.strftime("%d/%m/%Y")),
-        intro=["Recibimos tu %s y quedó registrada en nuestro Libro de "
+        titulo="Registramos tu {}".format(datos["tipo"]),
+        preencabezado="Hoja {} · te respondemos antes del {}".format(codigo, limite.strftime("%d/%m/%Y")),
+        intro=["Recibimos tu {} y quedó registrada en nuestro Libro de "
                "Reclamaciones. Guarda el número de hoja: es el que necesitas "
-               "si acudes a INDECOPI." % datos["tipo"]],
+               "si acudes a INDECOPI.".format(datos["tipo"])],
         filas=datos_hoja,
         cierre=["Te responderemos a esta misma dirección dentro del plazo."],
     )
@@ -228,7 +228,7 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
         await enviar_email(datos["email"],
                            f"Tu {datos['tipo']} {codigo} · LicitaPro",
                            cuerpo, texto)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo enviar la copia de %s a %s: %s", codigo,
                   datos["email"], e)
 
@@ -237,20 +237,20 @@ async def _enviar_copias(codigo: str, datos: dict, limite) -> None:
     if not interno:
         return
     texto_int, cuerpo_int = plantillas_correo.componer(
-        titulo="Nueva %s en el Libro" % datos["tipo"],
-        preencabezado="%s · %s" % (codigo, datos["nombre"]),
-        intro=["Entró una %s nueva por la web. El plazo para responder ya "
-               "corre." % datos["tipo"]],
+        titulo="Nueva {} en el Libro".format(datos["tipo"]),
+        preencabezado="{} · {}".format(codigo, datos["nombre"]),
+        intro=["Entró una {} nueva por la web. El plazo para responder ya "
+               "corre.".format(datos["tipo"])],
         filas=datos_hoja + [
-            ("Quién reclama", "%s (%s %s)" % (datos["nombre"],
+            ("Quién reclama", "{} ({} {})".format(datos["nombre"],
                                               datos["documento_tipo"],
                                               datos["documento_numero"])),
-            ("Contacto", "%s %s" % (datos["email"], datos["telefono"])),
+            ("Contacto", "{} {}".format(datos["email"], datos["telefono"])),
         ],
     )
     try:
         await enviar_email(interno,
                            f"[{codigo}] {datos['tipo']} nuevo en el Libro",
                            cuerpo_int, texto_int)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo avisar internamente de %s: %s", codigo, e)

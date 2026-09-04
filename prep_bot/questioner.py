@@ -27,7 +27,7 @@ CAMPOS_EMPRESA = [
 ]
 
 
-async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requisitos_bases: dict = None) -> list[dict]:
+async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requisitos_bases: dict | None = None) -> list[dict]:
     """Genera preguntas para lo que falta.
 
     1. Revisa KB para cada campo

@@ -23,6 +23,7 @@ import httpx
 import openpyxl
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.ocds")
@@ -106,7 +107,7 @@ def _parse_fecha(val) -> datetime | None:
     text = str(val).strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -158,7 +159,7 @@ async def _download_xlsx(client: httpx.AsyncClient, year: int) -> bytes | None:
             log.warning(f"OCDS: HEAD {url} returned {head.status_code}")
             return None
         remote_size = int(head.headers.get("content-length", 0))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.warning(f"OCDS: HEAD failed for {url}: {e}")
         remote_size = 0
 
@@ -181,7 +182,7 @@ async def _download_xlsx(client: httpx.AsyncClient, year: int) -> bytes | None:
             return None
         data = resp.content
         log.info(f"OCDS: Downloaded {len(data)} bytes for {year}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"OCDS: Download failed for {year}: {e}")
         return None
 
@@ -324,10 +325,10 @@ async def scrape_ocds(user_id: int = 0) -> list[dict]:
         async with httpx.AsyncClient(
             timeout=120, headers=HEADERS, follow_redirects=True
         ) as client:
-            current_year = date.today().year
+            current_year = fechas.hoy().year
             years = [current_year]
             # En enero/febrero tambien revisamos el anio anterior
-            if date.today().month <= 2:
+            if fechas.hoy().month <= 2:
                 years.append(current_year - 1)
 
             for year in years:
@@ -348,16 +349,16 @@ async def scrape_ocds(user_id: int = 0) -> list[dict]:
                             is_new = await upsert_licitacion(lic)
                             if is_new:
                                 nuevas.append(lic)
-                        except Exception as e:
+                        except Exception as e:  # noqa: BLE001
                             errores += 1
                             log.error(f"OCDS: upsert error: {e}")
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     error_detalle = str(e)[:200]
                     log.error(f"OCDS: Error processing year {year}: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         error_detalle = str(e)[:200]
         log.error(f"OCDS scraping failed: {e}")

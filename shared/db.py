@@ -83,17 +83,17 @@ async def get_pool() -> asyncpg.Pool:
             host = partes.hostname or host
             puerto = partes.port or puerto
 
-        opciones = dict(
-            min_size=2,
-            max_size=10,
+        opciones = {
+            "min_size": 2,
+            "max_size": 10,
             # La sesion trabaja en hora de Lima. Sin esto, NOW() devuelve la
             # zona del contenedor (UTC) mientras Python escribe timestamps
             # naive en hora local: cinco horas de desfase. Un token de Telegram
             # nacia pareciendo caducado, y una licitacion se daba por vencida
             # cinco horas antes de cerrar, justo en el caso "cierra hoy".
-            server_settings={"timezone": "America/Lima"},
-            init=_preparar_conexion,
-        )
+            "server_settings": {"timezone": "America/Lima"},
+            "init": _preparar_conexion,
+        }
 
         if puerto == PUERTO_POOLER_TRANSACCION:
             # Sin esto la app arranca y falla mas tarde, con trafico y de forma
@@ -294,7 +294,7 @@ async def update_config(user_id: int, **kwargs):
 
 
 # ─── Contratos ───────────────────────────────────────────
-async def get_contratos_activos(empresa_id: int = None):
+async def get_contratos_activos(empresa_id: int | None = None):
     async with connection() as conn:
         if empresa_id:
             return await conn.fetch(
@@ -334,7 +334,7 @@ async def log_scraping_start(fuente: str) -> int:
         )
 
 
-async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: int = 0, error_detalle: str = None):
+async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: int = 0, error_detalle: str | None = None):
     async with connection() as conn:
         await conn.execute(
             """UPDATE scraping_log SET fin=NOW(), registros_encontrados=$2,
@@ -871,7 +871,7 @@ async def borrar_cuenta(usuario_id: int) -> dict:
             try:
                 await borrar_imagen(fila["id"], tipo)
                 resumen["archivos"] += tipo in presentes
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Se registra y se sigue: un archivo que no se pudo borrar no
                 # puede dejar al usuario sin poder ejercer su derecho. Queda el
                 # rastro para limpiarlo a mano.

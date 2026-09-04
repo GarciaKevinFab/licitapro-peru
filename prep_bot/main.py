@@ -271,7 +271,7 @@ async def cmd_datos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"RNP: {emp['rnp_numero'] or '⚠️ Sin registrar'}\n\n"
                 f"Editar: /editar_empresa {emp['id']} [campo] [valor]",
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             await update.message.reply_text(
                 f"🏢 {emp['razon_social']} (RUC: {emp['ruc'] or '—'})\n"
                 f"Error: {str(e)[:100]}"
@@ -403,7 +403,12 @@ async def handle_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     file = await ctx.bot.get_file(photo.file_id)
 
     import tempfile
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    # Sin `with` a proposito: el fichero tiene que SOBREVIVIR a este bloque.
+    # Se cierra aqui mismo para soltar el descriptor, y despues Telegram escribe
+    # dentro por su nombre (`download_to_drive`). Con un gestor de contexto el
+    # fichero se borraria antes de que llegara la imagen, que es justo lo que
+    # `delete=False` esta evitando.
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)  # noqa: SIM115
     tmp.close()
     await file.download_to_drive(tmp.name)
 

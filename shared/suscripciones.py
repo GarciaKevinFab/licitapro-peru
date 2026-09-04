@@ -20,6 +20,7 @@ que alguien mande el formulario igual.
 import logging
 from datetime import datetime, timedelta
 
+from shared import fechas
 from shared.db import connection
 
 log = logging.getLogger("shared.suscripciones")
@@ -42,7 +43,7 @@ def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str
     pueda probar con fechas inventadas. Cambiarla aqui cambia las dos cosas, que
     es lo que se quiere: una sola definicion de "vencida" y de "suspendida".
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     if estado in ("prueba", "activa") and vence and vence < ahora:
         estado = "vencida"
     if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
@@ -70,7 +71,7 @@ async def estado_suscripcion(usuario_id: int) -> dict:
                 "dias_restantes": None, "en_gracia": False}
 
     d = dict(fila)
-    ahora = datetime.now()
+    ahora = fechas.ahora()
     vence = d.get("vence")
     dias = (vence - ahora).days if vence else None
 
@@ -229,7 +230,7 @@ async def registrar_intento_fallido(usuario_id: int) -> None:
 
 
 async def guardar_token_tarjeta(usuario_id: int, token: str,
-                                marca: str = None, ultimos: str = None) -> None:
+                                marca: str | None = None, ultimos: str | None = None) -> None:
     """Guarda el token cifrado. Nunca se guarda el numero de tarjeta."""
     from shared.seguridad import cifrar
     async with connection() as conn:

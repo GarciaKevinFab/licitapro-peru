@@ -29,6 +29,7 @@ from datetime import datetime
 
 import asyncpg
 
+from shared import fechas
 from shared.db import connection
 from shared.suscripciones import estado_efectivo_de
 
@@ -77,7 +78,7 @@ def resumir_cuentas(filas, ahora: datetime | None = None) -> dict:
     y esa regla vive en `estado_efectivo_de`. Repetirla en una consulta seria
     tener dos definiciones que un dia discrepan.
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     r = {"total": 0, "activas": 0, "prueba": 0, "pagando": 0}
     for f in filas:
         r["total"] += 1
@@ -101,7 +102,7 @@ def filtrar_cuentas(filas, q: str = "", plan: str = "", estado: str = "",
     estado compara contra el efectivo, con dos valores extra que no estan en
     la suscripcion: `sin_suscripcion` y `desactivada` (la cuenta, no el plan).
     """
-    ahora = ahora or datetime.now()
+    ahora = ahora or fechas.ahora()
     q = (q or "").strip().lower()
     salida = []
     for f in filas:
@@ -324,7 +325,7 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
     s = dict(susc) if susc else None
     if s:
         s["estado_efectivo"] = estado_efectivo_de(s["estado"], s["vence"])
-        s["dias_restantes"] = (s["vence"] - datetime.now()).days if s["vence"] else None
+        s["dias_restantes"] = (s["vence"] - fechas.ahora()).days if s["vence"] else None
     usd = modulo_ia.coste_usd(uso_ia["tokens_entrada"], uso_ia["tokens_salida"])
     return {
         "c": c, "susc": s, "pagos": pagos, "empresas": empresas,
@@ -392,7 +393,7 @@ async def borrar_cuenta_completa(usuario_id: int) -> dict:
             try:
                 await borrar_imagen(eid, tipo)
                 resumen["archivos"] += tipo in presentes
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.error("No se pudo borrar la imagen %s de la empresa %s: %s", tipo, eid, e)
 
     async with connection() as conn, conn.transaction():
@@ -458,5 +459,5 @@ async def anotar_acceso(usuario_id: int) -> None:
                 "UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = $1", usuario_id)
     except asyncpg.UndefinedColumnError:
         log.warning("usuarios.ultimo_acceso no existe: aplica la migracion 0014")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("No se pudo anotar el acceso de %s: %s", usuario_id, e)

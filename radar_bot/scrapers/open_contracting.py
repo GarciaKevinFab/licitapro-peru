@@ -24,7 +24,7 @@ class OpenContractingScraper(BaseScraper):
                     return []
             data = resp.json()
             return data.get("releases", data.get("results", []))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.log.warning(f"Open Contracting API error: {e}")
             return []
 

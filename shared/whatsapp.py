@@ -209,7 +209,7 @@ async def enviar_plantilla(numero_e164: str, plantilla: str,
             r = await cliente.post(
                 url, json=cuerpo,
                 headers={"Authorization": f"Bearer {token}"})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("WhatsApp: fallo de red al enviar a %s: %s", numero_e164, e)
         return False, f"red: {e}"
 
@@ -221,7 +221,7 @@ async def enviar_plantilla(numero_e164: str, plantilla: str,
     # saldo", y cada uno se arregla de forma distinta.
     try:
         detalle = str((r.json().get("error") or {}).get("message") or "")[:300]
-    except Exception:
+    except Exception:  # noqa: BLE001
         detalle = r.text[:300]
     log.error("WhatsApp rechazo el envio a %s (%s): %s",
               numero_e164, r.status_code, detalle)
@@ -248,7 +248,7 @@ async def enviar_texto(numero_e164: str, texto: str) -> tuple[bool, str]:
                 "type": "text",
                 "text": {"body": texto[:4000], "preview_url": False},
             }, headers={"Authorization": f"Bearer {os.getenv('WHATSAPP_TOKEN')}"})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return False, f"red: {e}"
     return (r.status_code == 200), (
         "enviado" if r.status_code == 200 else r.text[:300])

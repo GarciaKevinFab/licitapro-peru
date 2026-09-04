@@ -11,6 +11,7 @@ LO QUE SE PROTEGE
       recurrentes que el cliente descubre en su extracto, un mes despues.
 """
 
+from shared import fechas
 from tests.conftest import sin_base
 from web import suscripcion as vista
 
@@ -334,7 +335,6 @@ async def test_el_checkout_deja_la_cuenta_activa_y_el_pago_registrado(
     falta cualquiera de esas piezas, hay un cargo en la tarjeta del cliente sin
     su contrapartida aqui.
     """
-    from datetime import datetime
 
     from shared.db import connection
 
@@ -367,7 +367,7 @@ async def test_el_checkout_deja_la_cuenta_activa_y_el_pago_registrado(
             usuario["id"])
 
     assert (s["plan_codigo"], s["periodo"], s["estado"]) == ("pro", "mensual", "activa")
-    assert 29 <= (s["vence"] - datetime.now()).days <= 30
+    assert 29 <= (s["vence"] - fechas.ahora()).days <= 30
     assert s["culqi_customer_id"] == "cus_test_checkout1"
     assert s["culqi_card_id"] == "crd_test_checkout1"
     assert s["culqi_subscription_id"] == "sxn_test_nueva0"

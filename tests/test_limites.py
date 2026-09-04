@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from shared import fechas
 from web import limites
 
 # Rango reservado para documentacion (RFC 5737): nunca es de nadie.
@@ -218,9 +219,8 @@ def test_los_webhooks_siguen_exentos_en_la_configuracion_real():
 
 def _fila(estado, monto, orden="chr_live_1"):
     """Una fila de pagos_suscripcion como la devuelve la consulta."""
-    from datetime import datetime
     return {
-        "estado": estado, "monto": monto, "created_at": datetime(2026, 9, 3, 20, 44),
+        "estado": estado, "monto": monto, "created_at": fechas.fija(2026, 9, 3, 20, 44),
         "izipay_order_number": None, "culqi_charge_id": orden,
     }
 

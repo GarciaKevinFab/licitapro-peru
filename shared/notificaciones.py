@@ -40,11 +40,10 @@ QUIEN NO RECIBE NADA
 import html
 import logging
 import os
-from datetime import datetime
 
 import httpx
 
-from shared import whatsapp
+from shared import fechas, whatsapp
 from shared.db import connection, get_config_usuario, licitaciones_para_usuario
 from shared.suscripciones import estado_suscripcion
 
@@ -106,7 +105,7 @@ def _en_horario(config: dict | None) -> bool:
     fin = (config.get("horario_fin") or "").strip()
     if not inicio or not fin:
         return True
-    ahora = datetime.now().strftime("%H:%M")
+    ahora = fechas.ahora().strftime("%H:%M")
     if inicio <= fin:
         return inicio <= ahora <= fin
     # Franja que cruza la medianoche (22:00 a 07:00).
@@ -283,7 +282,7 @@ async def _por_telegram(chat_id: int, lics: list[dict]) -> bool:
         if r.status_code != 200:
             log.error("Telegram rechazo el aviso a %s: %s", chat_id, r.text[:200])
         return r.status_code == 200
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Telegram: fallo de red avisando a %s: %s", chat_id, e)
         return False
 
@@ -477,7 +476,7 @@ async def _por_telegram_texto(chat_id: int, texto: str) -> bool:
                 json={"chat_id": chat_id, "text": texto[:4000],
                       "parse_mode": "HTML", "disable_web_page_preview": True})
         return r.status_code == 200
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Telegram: fallo avisando a %s: %s", chat_id, e)
         return False
 

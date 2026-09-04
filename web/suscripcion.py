@@ -361,7 +361,7 @@ async def webhook(request: Request):
 
     try:
         datos = await request.json()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "motivo": "cuerpo no es json"}, status_code=400)
 
     numero_orden = (datos.get("orderNumber") or datos.get("order_number")

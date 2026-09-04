@@ -254,9 +254,8 @@ async def _enviar_correo_recuperacion(destinatario: str, enlace: str) -> bool:
     try:
         return await enviar_email(destinatario, "Restablecer tu contraseña",
                                   cuerpo, texto)
-    except Exception as e:
-        log.error("Fallo al enviar el correo de recuperacion: %s", e,
-                  exc_info=True)
+    except Exception:
+        log.exception("Fallo al enviar el correo de recuperacion")
         return False
 
 

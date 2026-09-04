@@ -27,11 +27,11 @@ TODO FILTRA POR usuario_id
 import csv
 import io
 import logging
-from datetime import date
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
+from shared import fechas
 from shared.db import connection
 from web.auth import usuario_actual
 
@@ -88,7 +88,7 @@ async def proximos_vencimientos(usuario_id: int,
             ORDER BY fecha
             """, usuario_id, dias)
 
-    hoy = date.today()
+    hoy = fechas.hoy()
     return [{**dict(f), "dias": (f["fecha"] - hoy).days} for f in filas]
 
 
@@ -201,7 +201,7 @@ async def exportar_licitaciones(request: Request):
     return _csv(filas,
                 ["ID", "Nomenclatura", "Entidad", "Objeto", "Tipo",
                  "Departamento", "Monto referencial", "Cierre", "Puntaje", "URL"],
-                f"licitaciones_{date.today():%Y-%m-%d}.csv")
+                f"licitaciones_{fechas.hoy():%Y-%m-%d}.csv")
 
 
 @router.get("/informes/cobros.csv")
@@ -236,4 +236,4 @@ async def exportar_cobros(request: Request):
                  "N.º factura", "Fecha factura", "Conformidad",
                  "Límite legal de pago", "Cobrado el", "Estado",
                  "Expediente SIAF"],
-                f"cobros_{date.today():%Y-%m-%d}.csv")
+                f"cobros_{fechas.hoy():%Y-%m-%d}.csv")

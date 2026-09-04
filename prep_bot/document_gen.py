@@ -1,12 +1,12 @@
 """Document Generator — Genera documentos DOCX/PDF para propuestas."""
 import logging
 import os
-from datetime import date
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
+from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection, get_empresa
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
@@ -38,7 +38,7 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p.add_run(f"{datos.get('legal.domicilio_legal', empresa.get('direccion', ''))}\n")
-    p.add_run(f"{date.today().strftime('%d de %B de %Y')}")
+    p.add_run(f"{fechas.hoy().strftime('%d de %B de %Y')}")
 
     doc.add_paragraph()  # Espacio
 
@@ -141,7 +141,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
         p.paragraph_format.space_after = Pt(6)
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{datos.get('legal.domicilio_legal', '')}, {date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{datos.get('legal.domicilio_legal', '')}, {fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
 
     # Firma del representante
@@ -251,7 +251,7 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     _set_cell_text(table.rows[3].cells[1], format_monto(precio), bold=True)
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
 
     firma_path = await obtener_firma(empresa_id, 'firma')

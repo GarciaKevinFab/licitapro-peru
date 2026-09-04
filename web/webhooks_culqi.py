@@ -130,7 +130,7 @@ async def recibir(request: Request):
     """Aviso de Culqi. Sin sesion: la autenticidad la da la API, no la cookie."""
     try:
         cuerpo = await request.json()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "motivo": "cuerpo no es json"},
                             status_code=400)
 

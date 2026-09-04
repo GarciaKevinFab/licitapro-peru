@@ -215,7 +215,7 @@ class LimitePeticiones:
                 "<p>Se han hecho muchas peticiones seguidas desde esta conexion. "
                 f"Vuelve a intentarlo en {espera} segundos.</p>"
                 "</body></html>"
-            ).encode("utf-8")
+            ).encode()
             await send({
                 "type": "http.response.start",
                 "status": 429,

@@ -1,3 +1,17 @@
+# ruff: noqa: UP031
+#
+# El `%` con diccionario se queda, y no es pereza.
+#
+#   `documento()` termina rellenando una plantilla de sesenta lineas de HTML de
+#   correo con huecos nombrados: `%(titulo)s`, `%(lienzo)s`, `%(panel)s`.
+#   Pasarla a f-string obliga a interpolar en el sitio -- mezclando el HTML con
+#   el codigo que lo rellena -- y a duplicar las llaves de cada `style="{...}"`.
+#   El `%` con diccionario es justo la herramienta para esto: separa la
+#   plantilla de los datos, que es lo que hace legible este fichero.
+#
+#   Va como directiva de MODULO y no en la linea del `%` porque ruff senala el
+#   inicio de la expresion multilinea, que cae dentro del propio HTML: un noqa
+#   ahi acabaria impreso en el correo que recibe el cliente.
 """
 Plantillas de correo de LicitaPro.
 ==================================
@@ -115,16 +129,15 @@ def _filas(filas, acento):
     for i, fila in enumerate(filas):
         etiqueta, valor = fila[0], fila[1]
         fuerte = len(fila) > 2 and fila[2]
-        borde = "" if i == 0 else "border-top:1px solid %s;" % LINEA
-        estilo_valor = ("font:700 21px/1.35 %s;color:%s;" % (TIPO, acento)
+        borde = "" if i == 0 else f"border-top:1px solid {LINEA};"
+        estilo_valor = (f"font:700 21px/1.35 {TIPO};color:{acento};"
                         if fuerte else
-                        "font:500 16px/1.45 %s;color:%s;" % (TIPO, TINTA))
+                        f"font:500 16px/1.45 {TIPO};color:{TINTA};")
         trozos.append(
-            '<tr><td style="%spadding:14px 0 12px;">'
-            '<div style="font:600 11px/1.2 %s;letter-spacing:.08em;'
-            'text-transform:uppercase;color:%s;padding-bottom:5px;">%s</div>'
-            '<div style="%s">%s</div></td></tr>'
-            % (borde, TIPO, TENUE, _e(etiqueta), estilo_valor, _t(valor)))
+            f'<tr><td style="{borde}padding:14px 0 12px;">'
+            f'<div style="font:600 11px/1.2 {TIPO};letter-spacing:.08em;'
+            f'text-transform:uppercase;color:{TENUE};padding-bottom:5px;">{_e(etiqueta)}</div>'
+            f'<div style="{estilo_valor}">{_t(valor)}</div></td></tr>')
     return ('<table role="presentation" width="100%" cellpadding="0" '
             'cellspacing="0" border="0" style="margin:26px 0 6px;">'
             + "".join(trozos) + "</table>")
@@ -140,32 +153,29 @@ def _boton(boton, acento):
         return ""
     return ('<table role="presentation" cellpadding="0" cellspacing="0" '
             'border="0" style="margin:30px 0 8px;"><tr>'
-            '<td bgcolor="%s" style="background:%s;border-radius:8px;">'
-            '<a href="%s" style="display:inline-block;padding:15px 32px;'
-            'font:700 15px/1 %s;color:%s;text-decoration:none;'
-            'border-radius:8px;">%s</a></td></tr></table>'
-            % (acento, acento, _e(boton["url"]), TIPO, TINTA_BOTON,
+            '<td bgcolor="{}" style="background:{};border-radius:8px;">'
+            '<a href="{}" style="display:inline-block;padding:15px 32px;'
+            'font:700 15px/1 {};color:{};text-decoration:none;'
+            'border-radius:8px;">{}</a></td></tr></table>'.format(acento, acento, _e(boton["url"]), TIPO, TINTA_BOTON,
                _e(boton["texto"])))
 
 
 def _parrafos(lineas, color=TEXTO, tam=15):
     return "".join(
-        '<p style="margin:0 0 14px;font:400 %dpx/1.65 %s;color:%s;">%s</p>'
-        % (tam, TIPO, color, _t(l)) for l in lineas)
+        f'<p style="margin:0 0 14px;font:400 {tam}px/1.65 {TIPO};color:{color};">'
+        f'{_t(l)}</p>' for l in lineas)
 
 
 def _lista(items, acento):
     if not items:
         return ""
     puntos = "".join(
-        '<li style="margin:0 0 8px;font:400 15px/1.6 %s;color:%s;">%s</li>'
-        % (TIPO, TEXTO, _t(i)) for i in items)
-    return ('<div style="margin:26px 0 0;border-top:1px solid %s;'
+        f'<li style="margin:0 0 8px;font:400 15px/1.6 {TIPO};color:{TEXTO};">{_t(i)}</li>' for i in items)
+    return (f'<div style="margin:26px 0 0;border-top:1px solid {LINEA};'
             'padding-top:20px;">'
-            '<p style="margin:0 0 12px;font:600 12px/1.3 %s;letter-spacing:.08em;'
-            'text-transform:uppercase;color:%s;">Próximos pasos</p>'
-            '<ul style="margin:0;padding-left:20px;">%s</ul></div>'
-            % (LINEA, TIPO, acento, puntos))
+            f'<p style="margin:0 0 12px;font:600 12px/1.3 {TIPO};letter-spacing:.08em;'
+            f'text-transform:uppercase;color:{acento};">Próximos pasos</p>'
+            f'<ul style="margin:0;padding-left:20px;">{puntos}</ul></div>')
 
 
 def documento(titulo, intro=(), filas=(), boton=None, aviso=None, pasos=(),
@@ -173,18 +183,16 @@ def documento(titulo, intro=(), filas=(), boton=None, aviso=None, pasos=(),
     oculto = ""
     if preencabezado:
         oculto = ('<div style="display:none;max-height:0;overflow:hidden;'
-                  'opacity:0;mso-hide:all;">%s%s</div>'
-                  % (_e(preencabezado), "&#8203;&nbsp;" * 60))
+                  'opacity:0;mso-hide:all;">{}{}</div>'.format(_e(preencabezado), "&#8203;&nbsp;" * 60))
 
     caja_aviso = ""
     if aviso:
-        caja_aviso = ('<table role="presentation" width="100%%" cellpadding="0" '
+        caja_aviso = ('<table role="presentation" width="100%" cellpadding="0" '
                       'cellspacing="0" border="0" style="margin:24px 0 0;"><tr>'
-                      '<td bgcolor="%s" style="background:%s;'
-                      'border-left:3px solid %s;padding:14px 16px;">'
-                      '<p style="margin:0;font:400 13px/1.6 %s;color:%s;">%s</p>'
-                      '</td></tr></table>'
-                      % (AVISO, AVISO, LINEA, TIPO, TENUE, _t(aviso)))
+                      f'<td bgcolor="{AVISO}" style="background:{AVISO};'
+                      f'border-left:3px solid {LINEA};padding:14px 16px;">'
+                      f'<p style="margin:0;font:400 13px/1.6 {TIPO};color:{TENUE};">{_t(aviso)}</p>'
+                      '</td></tr></table>')
 
     return """<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
@@ -243,6 +251,17 @@ def documento(titulo, intro=(), filas=(), boton=None, aviso=None, pasos=(),
   </table>
 </td></tr></table>
 </body></html>""" % {
+    # El `%` con diccionario se queda a proposito, y no es pereza.
+    #
+    # Esto es una PLANTILLA: sesenta lineas de HTML de correo con sus huecos
+    # nombrados. Pasarla a f-string obliga a interpolar en el sitio, o sea a
+    # mezclar el HTML con el codigo que lo rellena, y se pierde justo lo que
+    # hace legible este fichero -- que la plantilla se lee como HTML.
+    #
+    # Ademas el HTML lleva `width="100%%"` en varios sitios: con `%` esos
+    # escapes son necesarios y estan puestos; en f-string habria que quitarlos
+    # todos y duplicar las llaves de los `style="{...}"`. Mucho ruido a cambio
+    # de nada.
         "titulo": _e(titulo), "oculto": oculto, "lienzo": LIENZO,
         "panel": PANEL, "cabecera": CABECERA, "linea": LINEA, "logo": LOGO,
         "logo_ancho": LOGO_ANCHO, "marca": MARCA, "tipo": TIPO,
@@ -262,16 +281,16 @@ def version_texto(titulo, intro=(), filas=(), boton=None, aviso=None, pasos=(),
     if intro:
         p += [str(l) for l in intro] + [""]
     if filas:
-        p += ["%s: %s" % (f[0], f[1]) for f in filas] + [""]
+        p += [f"{f[0]}: {f[1]}" for f in filas] + [""]
     if boton:
-        p += ["%s:" % boton["texto"], boton["url"], ""]
+        p += ["{}:".format(boton["texto"]), boton["url"], ""]
     if pasos:
-        p += ["Próximos pasos:"] + ["  - %s" % s for s in pasos] + [""]
+        p += ["Próximos pasos:"] + [f"  - {s}" for s in pasos] + [""]
     if cierre:
         p += [str(l) for l in cierre] + [""]
     if aviso:
         p += [str(aviso), ""]
-    p += ["-" * 44, "%s Perú — %s" % (MARCA, SITIO),
+    p += ["-" * 44, f"{MARCA} Perú — {SITIO}",
           "Correo automático, no hace falta responder.",
           "Un producto de Star Insights IT by SISAC."]
     return "\n".join(p)

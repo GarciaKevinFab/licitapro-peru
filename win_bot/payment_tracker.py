@@ -2,6 +2,7 @@
 import logging
 from datetime import date
 
+from shared import fechas
 from shared.config import format_monto
 from shared.db import connection
 
@@ -9,9 +10,9 @@ log = logging.getLogger("win.payments")
 
 
 async def registrar_factura(contrato_id: int, monto: float, concepto: str,
-                             factura_numero: str = None,
-                             fecha_conformidad: date = None,
-                             expediente_siaf: str = None) -> int:
+                             factura_numero: str | None = None,
+                             fecha_conformidad: date | None = None,
+                             expediente_siaf: str | None = None) -> int:
     """Registra una factura emitida y calcula cuando vence el plazo legal.
 
     Antes ponia "factura + 30 dias corridos", un numero a ojo. La Ley 32069 fija
@@ -44,7 +45,7 @@ async def registrar_factura(contrato_id: int, monto: float, concepto: str,
                                   fecha_limite_pago, fecha_pago_esperada,
                                   expediente_siaf)
             VALUES ($1, $2, $3, $4, 'facturado', $5, $6, $7, $7, $8) RETURNING id""",
-            contrato_id, concepto, monto, date.today(), factura_numero,
+            contrato_id, concepto, monto, fechas.hoy(), factura_numero,
             fecha_conformidad, limite, expediente_siaf,
         )
 
@@ -79,7 +80,7 @@ async def registrar_conformidad(pago_id: int, fecha: date) -> dict:
     return {"fecha_limite": limite, "explicacion": explicacion}
 
 
-async def pagos_vencidos(empresa_id: int = None) -> list[dict]:
+async def pagos_vencidos(empresa_id: int | None = None) -> list[dict]:
     """Pagos cuyo plazo legal ya vencio, con los dias de mora.
 
     Es la consulta que da sentido a todo esto: no "cuando me pagan" sino "a
@@ -111,8 +112,8 @@ async def pagos_vencidos(empresa_id: int = None) -> list[dict]:
     return salida
 
 
-async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,
-                          pago_id: int = None) -> int:
+async def registrar_pago(contrato_id: int, monto: float, concepto: str | None = None,
+                          pago_id: int | None = None) -> int:
     """Registra un pago recibido."""
     async with connection() as conn:
         if pago_id:
@@ -120,7 +121,7 @@ async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,
             await conn.execute(
                 """UPDATE pagos SET estado='pagado', fecha_pago_real=$2
                 WHERE id=$1""",
-                pago_id, date.today(),
+                pago_id, fechas.hoy(),
             )
             return pago_id
         else:
@@ -128,12 +129,12 @@ async def registrar_pago(contrato_id: int, monto: float, concepto: str = None,
             new_id = await conn.fetchval(
                 """INSERT INTO pagos (contrato_id, concepto, monto, fecha_pago_real, estado)
                 VALUES ($1, $2, $3, $4, 'pagado') RETURNING id""",
-                contrato_id, concepto or "Pago recibido", monto, date.today(),
+                contrato_id, concepto or "Pago recibido", monto, fechas.hoy(),
             )
             return new_id
 
 
-async def obtener_resumen_pagos(empresa_id: int = None) -> dict:
+async def obtener_resumen_pagos(empresa_id: int | None = None) -> dict:
     """Resumen completo de pagos."""
     async with connection() as conn:
         where = "WHERE c.empresa_id=$1" if empresa_id else ""
@@ -182,7 +183,7 @@ async def obtener_resumen_pagos(empresa_id: int = None) -> dict:
 
     # Pagos vencidos (esperados pero no recibidos)
     vencidos = [p for p in pendientes
-                if p.get("fecha_pago_esperada") and p["fecha_pago_esperada"] < date.today()]
+                if p.get("fecha_pago_esperada") and p["fecha_pago_esperada"] < fechas.hoy()]
 
     return {
         "pendientes": [dict(p) for p in pendientes],

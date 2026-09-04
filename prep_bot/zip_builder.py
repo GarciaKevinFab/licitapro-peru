@@ -2,7 +2,6 @@
 import logging
 import os
 import zipfile
-from datetime import datetime
 
 from prep_bot.document_gen import (
     generar_carta_presentacion,
@@ -10,6 +9,7 @@ from prep_bot.document_gen import (
     generar_experiencia_postor,
     generar_propuesta_economica,
 )
+from shared import fechas
 from shared.config import format_monto
 from shared.db import connection, get_empresa
 
@@ -97,10 +97,10 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
             datos = await obtener_datos_empresa_completos(empresa_id)
             documentos_generados.extend(await generar_anexos_complementarios(
                 propuesta_id, empresa_id, licitacion, datos))
-        except Exception as e:
+        except Exception:
             # No tumba el expediente: los cinco documentos principales ya están
             # y valen por sí solos. Se registra para poder arreglarlo.
-            log.error("Los anexos complementarios fallaron: %s", e, exc_info=True)
+            log.exception("Los anexos complementarios fallaron")
 
         # Crear ZIP
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -123,7 +123,7 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         log.info(f"Expediente ZIP generado: {zip_path} ({len(documentos_generados)} documentos)")
         return zip_path
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Error generando expediente ZIP: {e}")
         return None
 
@@ -134,7 +134,7 @@ def _generar_indice(prop, empresa, documentos: list[tuple]) -> str:
         "=" * 60,
         "EXPEDIENTE DE PROPUESTA",
         "=" * 60,
-        f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        f"Fecha de generación: {fechas.ahora().strftime('%d/%m/%Y %H:%M')}",
         "",
         f"Licitación: {prop.get('nomenclatura') or prop['licitacion_id']}",
         f"Entidad: {prop['entidad']}",
@@ -190,7 +190,7 @@ async def listar_expedientes() -> list[dict]:
                 "nombre": f,
                 "path": path,
                 "size_mb": round(size_mb, 2),
-                "fecha": datetime.fromtimestamp(os.path.getmtime(path)),
+                "fecha": fechas.desde_marca(os.path.getmtime(path)),
             })
 
     return sorted(expedientes, key=lambda x: x["fecha"], reverse=True)

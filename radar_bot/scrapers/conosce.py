@@ -30,6 +30,7 @@ import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.conosce")
@@ -131,7 +132,7 @@ def _parse_fecha(val) -> datetime | None:
     text = str(val).strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -172,15 +173,20 @@ async def _resolve_tinyurl(client: httpx.AsyncClient, tinyurl: str) -> str | Non
         r = await client.head(tinyurl, follow_redirects=True)
         if r.status_code == 200:
             return str(r.url)
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        # Que HEAD no funcione es normal en acortadores: muchos solo responden
+        # a GET. Por eso hay un segundo intento debajo y esto no es un error.
+        log.debug("HEAD de %s no resolvio (%s); se prueba con GET", tinyurl, e)
     # Fallback: GET con follow
     try:
         r = await client.get(tinyurl, follow_redirects=False)
         if r.status_code in (301, 302, 303, 307):
             return r.headers.get("location")
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        # Aqui si se agotaron los caminos: se devuelve None y quien llama sigue
+        # con la siguiente URL. Queda escrito para que una fuente que deja de
+        # resolverse no parezca una fuente sin novedades.
+        log.debug("GET de %s tampoco resolvio (%s)", tinyurl, e)
     return None
 
 
@@ -194,7 +200,7 @@ async def _get_portal_links(client: httpx.AsyncClient, portal_url: str) -> dict[
         if resp.status_code != 200:
             log.warning(f"CONOSCE portal returned {resp.status_code}")
             return {}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"CONOSCE portal fetch failed: {e}")
         return {}
 
@@ -209,10 +215,13 @@ async def _get_portal_links(client: httpx.AsyncClient, portal_url: str) -> dict[
 
         if "tinyurl.com" not in href:
             continue
-        if "TODOS LOS PROCESOS" not in text.upper() and "DESCARGAR" not in text.upper():
-            # Solo nos interesan los links de "DESCARGAR TODOS LOS PROCESOS" o "DESCARGAR"
-            if "SIE" in text.upper() or "DIRECTA" in text.upper():
-                continue
+        # Solo interesan los enlaces de "DESCARGAR TODOS LOS PROCESOS" o
+        # "DESCARGAR". De los que no lo son, se descartan los de subasta
+        # inversa y contratacion directa, que llevan a otro tipo de fichero.
+        if ("TODOS LOS PROCESOS" not in text.upper()
+                and "DESCARGAR" not in text.upper()
+                and ("SIE" in text.upper() or "DIRECTA" in text.upper())):
+            continue
 
         # Extraer el anio del tinyurl (patron: conosceconvocatorias2025)
         year_match = re.search(r"(\d{4})", href)
@@ -246,8 +255,11 @@ async def _download_xlsx_cached(
         if head.status_code != 200:
             return None
         remote_size = int(head.headers.get("content-length", 0))
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        # Sin HEAD no se sabe el tamano remoto y se cae al cache: no es un
+        # fallo, es el camino alternativo. Pero se deja dicho, porque si esto
+        # empieza a fallar SIEMPRE el cache no se refresca nunca.
+        log.debug("HEAD de %s no respondio (%s); se usara el cache", url, e)
 
     # Check cache
     if cache_file.exists() and cache_size_file.exists():
@@ -267,7 +279,7 @@ async def _download_xlsx_cached(
             return None
         data = resp.content
         log.info(f"CONOSCE: Downloaded {len(data)} bytes")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"CONOSCE: Download failed: {e}")
         return None
 
@@ -455,7 +467,7 @@ async def scrape_conosce(user_id: int = 0) -> list[dict]:
     errores = 0
     error_detalle = None
 
-    current_year = date.today().year
+    current_year = fechas.hoy().year
 
     try:
         async with httpx.AsyncClient(
@@ -478,12 +490,12 @@ async def scrape_conosce(user_id: int = 0) -> list[dict]:
                             is_new = await upsert_licitacion(lic)
                             if is_new:
                                 nuevas.append(lic)
-                        except Exception as e:
+                        except Exception as e:  # noqa: BLE001
                             errores += 1
                             log.error(f"CONOSCE upsert error: {e}")
                 else:
                     log.warning(f"CONOSCE: No contratos data for {current_year}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errores += 1
                 log.error(f"CONOSCE contratos error: {e}")
 
@@ -503,16 +515,16 @@ async def scrape_conosce(user_id: int = 0) -> list[dict]:
                             is_new = await upsert_licitacion(lic)
                             if is_new:
                                 nuevas.append(lic)
-                        except Exception as e:
+                        except Exception as e:  # noqa: BLE001
                             errores += 1
                             log.error(f"CONOSCE PAC upsert error: {e}")
                 else:
                     log.warning(f"CONOSCE: No PAC data for {current_year}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errores += 1
                 log.error(f"CONOSCE PAC error: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         error_detalle = str(e)[:200]
         log.error(f"CONOSCE scraping failed: {e}")

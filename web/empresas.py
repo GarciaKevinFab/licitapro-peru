@@ -20,6 +20,7 @@ from fastapi.responses import (
     RedirectResponse,
 )
 
+from shared import fechas
 from shared.archivos import (
     TIPOS as TIPOS_IMAGEN,
 )
@@ -124,7 +125,7 @@ async def form_editar(request: Request, empresa_id: int,
         "imagenes": await rutas_de(empresa_id),
         "tipos_imagen": TIPOS_IMAGEN,
         "experiencia": experiencia, "equipo": equipo,
-        "vencimientos": vencimientos, "hoy": date.today(),
+        "vencimientos": vencimientos, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
     })
 
@@ -380,7 +381,7 @@ async def guardar(request: Request, empresa_id: int = Form(0), rubros: str = For
                     _fecha(formulario.get('rnp_vigencia') or ''),
                     lista_rubros, usuario["id"],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.warning("Alta de empresa fallida: %s", e)
                 return RedirectResponse(
                     "/empresas?error=No+se+pudo+crear.+Revisa+que+el+RUC+no+este+ya+registrado",
@@ -409,7 +410,10 @@ async def desactivar(request: Request, empresa_id: int):
 
 @router.post("/empresas/{empresa_id}/imagen")
 async def subir_imagen(request: Request, empresa_id: int,
-                       tipo: str = Form(...), archivo: UploadFile = File(...)):
+                       # `File(...)` en el default es como FastAPI declara una
+                       # subida, no el `def f(x=[])` que persigue B008: el
+                       # objeto es el descriptor que la ruta lee al montarse.
+                       tipo: str = Form(...), archivo: UploadFile = File(...)):  # noqa: B008
     """Sube el logo, la firma o el sello de una empresa.
 
     La imagen se valida y se reescribe en firma_manager: aqui solo se comprueba

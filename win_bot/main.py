@@ -1,7 +1,7 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
 import logging
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 load_dotenv()
 log = logging.getLogger("win_bot")
 
+from shared import fechas
 from shared.config import ADMIN_ID, format_fecha, format_monto
 from shared.db import (
     connection,
@@ -70,8 +71,8 @@ async def _renovar_suscripciones():
     try:
         from tools.renovar_suscripciones import main as renovar
         await renovar()
-    except Exception as e:
-        log.error("Fallo el cobro de renovaciones: %s", e, exc_info=True)
+    except Exception:
+        log.exception("Fallo el cobro de renovaciones")
 
 
 async def check_plazos_proximos(app):
@@ -82,7 +83,7 @@ async def check_plazos_proximos(app):
         if plazo["alerta_enviada"]:
             continue
         
-        dias_faltan = (plazo["fecha_limite"] - date.today()).days
+        dias_faltan = (plazo["fecha_limite"] - fechas.hoy()).days
         urgencia = "🔴" if dias_faltan <= 1 else "🟡" if dias_faltan <= 3 else "🟢"
         
         if ADMIN_ID:
@@ -155,7 +156,7 @@ async def cmd_plazos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     texto = "📅 <b>Próximos plazos (30 días)</b>\n\n"
     for p in plazos:
-        dias = (p["fecha_limite"] - date.today()).days
+        dias = (p["fecha_limite"] - fechas.hoy()).days
         emoji = "🔴" if dias <= 3 else "🟡" if dias <= 7 else "🟢"
         check = "✅" if p["completado"] else emoji
         texto += f"{check} {format_fecha(p['fecha_limite'])} ({dias}d) — {p['descripcion']}\n"
@@ -216,7 +217,7 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Propuesta no encontrada")
             return
         
-        hoy = date.today()
+        hoy = fechas.hoy()
         # Crear contrato
         contrato_id = await conn.fetchval(
             """INSERT INTO contratos 

@@ -60,9 +60,18 @@ class GOREPortalsScraper(BaseScraper):
                                     is_new = await upsert_licitacion(data)
                                     if is_new:
                                         nuevas.append(data)
-                            except Exception:
+                            except Exception as e:  # noqa: BLE001
+                                # Una fila con el HTML cambiado no puede tumbar
+                                # las demas del mismo portal.
                                 errores += 1
-                    except Exception:
+                                log.debug("%s: fila descartada (%s)", depto, e)
+                    except Exception as e:  # noqa: BLE001
+                        # Y un portal caido no puede tumbar a los otros. Se
+                        # registra: sin esto, una region que deja de responder
+                        # se lee en el parte igual que una region sin
+                        # convocatorias, que es justo como cinco fuentes
+                        # estuvieron invisibles durante 21 pasadas.
+                        log.debug("%s%s no respondio (%s)", base_url, path, e)
                         continue
 
         await log_scraping_end(log_id, encontradas, len(nuevas), errores)

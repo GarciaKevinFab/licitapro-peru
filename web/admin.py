@@ -29,13 +29,13 @@ POR QUE 404 Y NO 403
 """
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from shared import ia
+from shared import fechas, ia
 from shared.admin_cuentas import (
     FILTROS_ESTADO,
     borrar_cuenta_completa,
@@ -126,7 +126,7 @@ async def clientes(request: Request, q: str = "", plan: str = "", estado: str = 
         "cifras": {**resumir_cuentas(filas), "ingresos": await ingresos_del_mes()},
         "planes": await planes_activos(), "con_acceso": con_acceso,
         "q": q, "plan": plan, "estado": estado, "estados": FILTROS_ESTADO,
-        "hoy": date.today(), "aviso": aviso, "error": error,
+        "hoy": fechas.hoy(), "aviso": aviso, "error": error,
     })
 
 
@@ -172,7 +172,7 @@ async def detalle(request: Request, usuario_id: int, aviso: str = "", error: str
         raise HTTPException(status_code=404)
     return _plantillas(request).TemplateResponse("admin_cliente.html", {
         "request": request, "usuario": usuario, **d,
-        "planes": await planes_activos(), "hoy": date.today(),
+        "planes": await planes_activos(), "hoy": fechas.hoy(),
         "es_dueno": (d["c"]["email"] or "").lower() == (usuario["email"] or "").lower(),
         "aviso": aviso, "error": error,
     })
@@ -273,7 +273,7 @@ async def form_nueva(request: Request):
         "planes": await planes_activos(),
         "valores": {"email": "", "nombre": "", "plan": "pro", "estado": "prueba",
                     "periodo": "mensual",
-                    "vence": (date.today() + timedelta(days=DIAS_PRUEBA)).isoformat()},
+                    "vence": (fechas.hoy() + timedelta(days=DIAS_PRUEBA)).isoformat()},
         "password_sugerida": password_temporal(), "error": "",
     })
 

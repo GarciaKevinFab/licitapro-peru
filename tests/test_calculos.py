@@ -5,11 +5,12 @@ Devuelven una fecha plausible, una bandera de mas o un numero con un digito
 cambiado, y nadie se entera hasta que un cliente reclama fuera de plazo o un
 aviso llega al telefono de un desconocido. Por eso van cubiertas al detalle.
 """
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
 from radar_bot.scrapers.orchestrator import _fechas_cotizacion
+from shared import fechas
 from shared.banderas import NIVEL_ALTO, NIVEL_BAJO, NIVEL_MEDIO, _umbral, calcular
 from shared.config import match_keywords
 from shared.plazos_pago import (
@@ -235,14 +236,14 @@ def test_parametro_de_plantilla_sin_saltos_de_linea():
 
 @pytest.mark.parametrize("celda, cierre", [
     # El formato real del portal: pegado y con la hora solo en el FIN.
-    ("INI:28/08/2026FIN:31/08/2026 12:00", datetime(2026, 8, 31, 12, 0)),
-    ("INI:29/08/2026FIN:02/09/2026 16:00", datetime(2026, 9, 2, 16, 0)),
+    ("INI:28/08/2026FIN:31/08/2026 12:00", fechas.fija(2026, 8, 31, 12, 0)),
+    ("INI:29/08/2026FIN:02/09/2026 16:00", fechas.fija(2026, 9, 2, 16, 0)),
     # Con espacios alrededor de los dos puntos, que tambien se ha visto.
-    ("INI: 27/03/2026 FIN: 28/03/2026 15:00", datetime(2026, 3, 28, 15, 0)),
+    ("INI: 27/03/2026 FIN: 28/03/2026 15:00", fechas.fija(2026, 3, 28, 15, 0)),
     # Hora de un solo digito.
-    ("INI:28/08/2026FIN:31/08/2026 9:00", datetime(2026, 8, 31, 9, 0)),
+    ("INI:28/08/2026FIN:31/08/2026 9:00", fechas.fija(2026, 8, 31, 9, 0)),
     # Sin hora: se guarda la fecha a secas, como antes. No se inventa una.
-    ("INI:28/08/2026FIN:31/08/2026", datetime(2026, 8, 31, 0, 0)),
+    ("INI:28/08/2026FIN:31/08/2026", fechas.fija(2026, 8, 31, 0, 0)),
 ])
 def test_la_hora_de_cierre_no_se_pierde(celda, cierre):
     assert _fechas_cotizacion(celda)[1] == cierre
@@ -256,8 +257,8 @@ def test_la_fecha_de_inicio_no_se_come_la_hora_del_cierre():
     que cubre este archivo.
     """
     pub, cierre = _fechas_cotizacion("INI: 27/03/2026 FIN: 28/03/2026 15:00")
-    assert pub == datetime(2026, 3, 27, 0, 0)
-    assert cierre == datetime(2026, 3, 28, 15, 0)
+    assert pub == fechas.fija(2026, 3, 27, 0, 0)
+    assert cierre == fechas.fija(2026, 3, 28, 15, 0)
 
 
 @pytest.mark.parametrize("celda", ["", None, "sin fechas", "FIN:32/13/2026"])

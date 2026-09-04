@@ -44,6 +44,8 @@ LOS FERIADOS
 import logging
 from datetime import date, timedelta
 
+from shared import fechas
+
 log = logging.getLogger("shared.plazos_pago")
 
 # Ley 32069: 10 dias habiles desde la conformidad, prorrogables 5 con
@@ -164,7 +166,7 @@ def dias_de_mora(limite: date | None, hoy: date | None = None) -> int:
     """
     if not limite:
         return 0
-    hoy = hoy or date.today()
+    hoy = hoy or fechas.hoy()
     if hoy <= limite:
         return 0
     dias, actual = 0, limite
@@ -197,10 +199,10 @@ def enlace_consulta_mef() -> dict:
         "url": "https://apps2.mef.gob.pe/consulta-vfp-webapp/consultaExpediente.jspx",
         "necesitas": [
             "El año de ejecución del expediente.",
-            "El código de Unidad Ejecutora de la entidad (te lo da la propia "
-            "entidad; no es el RUC ni el código del SEACE).",
-            "El número de expediente SIAF, que figura en la orden de compra o "
-            "de servicio.",
+            ("El código de Unidad Ejecutora de la entidad (te lo da la propia "
+            "entidad; no es el RUC ni el código del SEACE)."),
+            ("El número de expediente SIAF, que figura en la orden de compra o "
+            "de servicio."),
         ],
         "nota": ("La consulta oficial del MEF pide un código de verificación, "
                  "así que hay que hacerla a mano. Aquí llevamos la cuenta del "

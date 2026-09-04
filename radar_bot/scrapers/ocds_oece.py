@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
 from shared.db import log_scraping_end, log_scraping_start, refrescar_licitacion
@@ -381,7 +382,7 @@ async def scrape_ocds_oece(
     solo un tope de seguridad: quien manda es la fecha.
     """
     log_id = await log_scraping_start("ocds_oece")
-    corte = datetime.now() - timedelta(days=dias_atras)
+    corte = fechas.ahora() - timedelta(days=dias_atras)
     # Los umbrales se leen UNA vez por pasada, no por licitacion: salen de un
     # percentil sobre toda la tabla y no cambian a mitad del recorrido.
     umbrales = await umbrales_por_tipo()
@@ -396,7 +397,7 @@ async def scrape_ocds_oece(
             for page in range(1, max_paginas + 1):
                 try:
                     data = await _pagina(cliente, page)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     errores += 1
                     detalle_error = f"pagina {page}: {str(e)[:150]}"
                     log.warning(f"Fallo la pagina {page}: {e}")
@@ -439,7 +440,7 @@ async def scrape_ocds_oece(
     except Exception as e:
         errores += 1
         detalle_error = str(e)[:200]
-        log.error(f"OCDS OECE fallo: {e}", exc_info=True)
+        log.exception("OCDS OECE fallo")
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle_error)
 

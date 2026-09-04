@@ -25,6 +25,7 @@ from prep_bot.document_gen import (
     generar_declaracion_jurada,
     generar_experiencia_postor,
 )
+from shared import fechas
 from shared.db import connection, get_empresa
 
 log = logging.getLogger("prep.autofill.annexes")
@@ -93,8 +94,8 @@ async def generar_anexos_complementarios(
             ruta = await tarea
             if ruta:
                 salida.append((nombre, ruta))
-        except Exception as e:
-            log.error("El anexo %s fallo: %s", nombre, e, exc_info=True)
+        except Exception:
+            log.exception("El anexo %s fallo", nombre)
 
     return salida
 
@@ -139,7 +140,7 @@ async def llenar_anexos(propuesta_id: int, empresa_id: int,
                     "nota": "Faltan datos",
                 })
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error(f"Error generando Anexo {anexo['num']}: {e}")
             detalle.append({
                 "anexo": f"Anexo {anexo['num']}: {anexo['nombre']}",
@@ -188,7 +189,6 @@ async def _generar_anexo(anexo: dict, propuesta_id: int, empresa_id: int,
 
 async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Declaración Jurada de plazo de entrega."""
-    from datetime import date
 
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -211,7 +211,7 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
     )
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")
@@ -260,7 +260,6 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
 
 async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Pacto de Integridad."""
-    from datetime import date
 
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -293,7 +292,7 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
         doc.add_paragraph(f"  - {c}")
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{date.today().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")

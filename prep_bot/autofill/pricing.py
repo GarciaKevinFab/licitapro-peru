@@ -124,8 +124,8 @@ async def _buscar_historico(licitacion: dict) -> list[float]:
             )
             return [r["precio"] for r in hist_rows if r["precio"]] + \
                    [r["monto_referencial"] for r in rows if r["monto_referencial"]]
-        except Exception as e:
-            log.error(f"historico_precios fallo: {e}", exc_info=True)
+        except Exception:
+            log.exception("historico_precios fallo")
             return [r["monto_referencial"] for r in rows if r["monto_referencial"]]
 
 

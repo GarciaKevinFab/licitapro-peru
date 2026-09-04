@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from shared import fechas
 from shared.config import DEPARTAMENTOS
 from shared.db import connection, licitaciones_para_usuario
 from shared.seguridad import clave_sesion
@@ -399,8 +400,7 @@ app.include_router(router_informes)
 def _dias(fecha) -> int | None:
     if not fecha:
         return None
-    from datetime import datetime
-    return (fecha - datetime.now()).days
+    return (fecha - fechas.ahora()).days
 
 
 async def _resumen(usuario_id: int) -> dict:
@@ -409,9 +409,9 @@ async def _resumen(usuario_id: int) -> dict:
     El pozo de licitaciones es compartido -- son datos publicos -- pero el
     numero que le importa a cada cuenta es cuantas le corresponden a ella.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     suyas = await licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False)
-    ahora = datetime.now()
+    ahora = fechas.ahora()
     vigentes = [l for l in suyas if l["fecha_cierre"] and l["fecha_cierre"] > ahora]
     urgentes = [l for l in vigentes if l["fecha_cierre"] < ahora + timedelta(days=3)]
     fila = {"total": len(suyas), "vigentes": len(vigentes), "urgentes": len(urgentes)}
@@ -536,8 +536,7 @@ _MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
 
 
 def _hoy_en_letras() -> str:
-    from datetime import date
-    h = date.today()
+    h = fechas.hoy()
     return f"{h.day} de {_MESES[h.month - 1]} de {h.year}"
 
 
@@ -771,7 +770,7 @@ async def salud():
     try:
         async with connection() as conn:
             await conn.fetchval("SELECT 1")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error("Salud: la base no responde: %s", e)
         # Sin base no hay servicio. 503 y no 500: es indisponibilidad
         # temporal, y es lo que un monitor entiende como "vuelve a mirar".
@@ -784,7 +783,7 @@ async def salud():
         from shared import vigilancia
         horas = await vigilancia.horas_sin_cosecha()
         detalle["oece_horas"] = round(horas, 1) if horas is not None else None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.warning("Salud: no se pudo medir la frescura de OECE: %s", e)
 
     return detalle

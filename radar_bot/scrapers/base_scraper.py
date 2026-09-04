@@ -6,6 +6,7 @@ from datetime import datetime
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 HEADERS = {
@@ -26,7 +27,7 @@ def parse_fecha(text: str) -> datetime | None:
     text = text.strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d-%m-%Y"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -97,11 +98,11 @@ class BaseScraper:
                         is_new = await upsert_licitacion(data)
                         if is_new:
                             nuevas.append(data)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         errores += 1
                         self.log.error(f"Error parsing item: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             errores += 1
             self.log.error(f"{self.FUENTE} scraping failed: {e}")
 

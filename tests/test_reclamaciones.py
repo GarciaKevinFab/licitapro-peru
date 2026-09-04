@@ -17,10 +17,10 @@ LAS TRES COSAS QUE SE FIJAN
      mismo; si el alta dependiera de el, hoy no se podria reclamar.
 """
 import re
-from datetime import datetime
 
 import pytest
 
+from shared import fechas
 from shared.suscripciones import ruta_libre
 from tests.conftest import sin_base
 from web.reclamaciones import DIAS_HABILES_RESPUESTA, _codigo, limite_respuesta
@@ -48,7 +48,7 @@ def test_el_plazo_salta_los_fines_de_semana():
     Contarlos naturales daria una fecha ANTERIOR a la legal y nos pondriamos en
     falta sin haberlo hecho.
     """
-    lunes = datetime(2026, 9, 7)          # lunes
+    lunes = fechas.fija(2026, 9, 7)          # lunes
     limite = limite_respuesta(lunes, 15)
     assert limite.weekday() < 5, "la fecha limite cae en fin de semana"
     assert (limite - lunes).days == 21    # 15 habiles = 21 naturales
@@ -57,7 +57,7 @@ def test_el_plazo_salta_los_fines_de_semana():
 @pytest.mark.parametrize("dia", range(7))
 def test_el_limite_nunca_cae_en_sabado_ni_domingo(dia):
     """Se empiece el dia que se empiece."""
-    desde = datetime(2026, 9, 7 + dia)
+    desde = fechas.fija(2026, 9, 7 + dia)
     assert limite_respuesta(desde).weekday() < 5
 
 

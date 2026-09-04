@@ -2,7 +2,6 @@
 import html
 import logging
 import os
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -18,6 +17,7 @@ load_dotenv()
 log = logging.getLogger("radar_bot")
 
 from radar_bot.scrapers.orchestrator import format_scraping_report, run_all_scrapers
+from shared import fechas
 from shared.config import (
     ADMIN_ID,
     DEPARTAMENTOS,
@@ -170,7 +170,7 @@ async def cmd_hoy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        f"📊 <b>Resumen del día</b> — {datetime.now().strftime('%d/%m/%Y')}\n"
+        f"📊 <b>Resumen del día</b> — {fechas.ahora().strftime('%d/%m/%Y')}\n"
         f"Se encontraron {len(lics)} licitaciones relevantes:",
         parse_mode="HTML",
     )
@@ -323,8 +323,8 @@ async def _vigilar_fuente(app: Application):
         if estado["avisar"] and ADMIN_ID:
             await app.bot.send_message(ADMIN_ID, vigilancia.mensaje(estado),
                                        parse_mode="HTML")
-    except Exception as e:
-        log.error("La vigilancia de fuentes fallo: %s", e, exc_info=True)
+    except Exception:
+        log.exception("La vigilancia de fuentes fallo")
 
 
 async def scheduled_scrape(app: Application):
@@ -347,7 +347,7 @@ async def scheduled_scrape(app: Application):
             try:
                 await app.bot.send_message(
                     ADMIN_ID, format_scraping_report(results), parse_mode="HTML")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.error(f"No se pudo enviar el parte al administrador: {e}")
 
         # Reparto real: a cada usuario lo suyo, por sus canales, sin repetir.
@@ -356,7 +356,7 @@ async def scheduled_scrape(app: Application):
             f"Scraping completado: {results['total_nuevas']} nuevas de "
             f"{len(results['por_fuente'])} fuentes | avisos: {parte}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Scheduled scrape failed: {e}")
 
     # LA VIGILANCIA VA FUERA DEL TRY DE ARRIBA, Y NO ES UN DETALLE DE ESTILO

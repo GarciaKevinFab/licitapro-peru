@@ -30,6 +30,7 @@ import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shared import fechas
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.datos_abiertos")
@@ -113,7 +114,7 @@ def _parse_fecha(val) -> datetime | None:
     for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d",
                 "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
         try:
-            return datetime.strptime(text, fmt)
+            return fechas.desde_texto(text, fmt)
         except ValueError:
             continue
     return None
@@ -161,7 +162,7 @@ async def _fetch_package_list(client: httpx.AsyncClient) -> list[str]:
         if not data.get("success"):
             return []
         return data["result"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"CKAN package_list failed: {e}")
         return []
 
@@ -180,7 +181,7 @@ async def _fetch_package_show(client: httpx.AsyncClient, name: str) -> dict | No
         if isinstance(result, list):
             return result[0] if result else None
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"CKAN package_show failed for {name}: {e}")
         return None
 
@@ -301,7 +302,7 @@ async def _scrape_html_search(
                     "url": full_url,
                 })
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error(f"HTML search failed for '{query}': {e}")
 
     return results
@@ -329,7 +330,7 @@ async def _download_and_parse_xlsx(
         if len(resp.content) > 50_000_000:
             log.warning(f"DATOS_ABIERTOS: Skipping large file ({len(resp.content)} bytes): {url}")
             return []
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"DATOS_ABIERTOS: Download failed: {e}")
         return []
 
@@ -361,9 +362,7 @@ async def _download_and_parse_xlsx(
                         header_map["descripcion"] = i
                     elif "objeto" in h:
                         header_map["objeto"] = i
-                    elif "monto" in h and "referencial" in h:
-                        header_map["monto"] = i
-                    elif "monto" in h and "monto" not in header_map:
+                    elif "monto" in h and "referencial" in h or "monto" in h and "monto" not in header_map:
                         header_map["monto"] = i
                     elif "departamento" in h and "ent" not in h:
                         header_map["depto"] = i
@@ -451,7 +450,7 @@ async def _download_and_parse_xlsx(
             })
 
         wb.close()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"DATOS_ABIERTOS: XLSX parse error for {url}: {e}")
 
     return results
@@ -551,11 +550,11 @@ async def scrape_datos_abiertos(user_id: int = 0) -> list[dict]:
                                 is_new = await upsert_licitacion(lic)
                                 if is_new:
                                     nuevas.append(lic)
-                            except Exception as e:
+                            except Exception as e:  # noqa: BLE001
                                 errores += 1
                                 log.error(f"DATOS_ABIERTOS upsert error: {e}")
 
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         errores += 1
                         log.error(f"DATOS_ABIERTOS resource error ({url}): {e}")
 
@@ -589,11 +588,11 @@ async def scrape_datos_abiertos(user_id: int = 0) -> list[dict]:
                 catalogo = len(search_results)
                 log.info(f"DATOS_ABIERTOS: {catalogo} fichas de catalogo "
                          f"(no se guardan: no son convocatorias)")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errores += 1
                 log.error(f"DATOS_ABIERTOS HTML search error: {e}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errores += 1
         error_detalle = str(e)[:200]
         log.error(f"DATOS_ABIERTOS scraping failed: {e}")

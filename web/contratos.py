@@ -18,6 +18,7 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from shared import fechas
 from shared.db import connection
 from shared.plazos_pago import (
     dias_de_mora,
@@ -115,7 +116,7 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
                    fecha_entrega_final, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'adjudicado') RETURNING id""",
             propuesta_id, prop["licitacion_id"], prop["empresa_id"], monto,
-            date.today(), plazo_dias, date.today() + timedelta(days=plazo_dias))
+            fechas.hoy(), plazo_dias, fechas.hoy() + timedelta(days=plazo_dias))
         await conn.execute(
             "UPDATE propuestas SET estado='ganada', updated_at=NOW() WHERE id=$1",
             propuesta_id)
@@ -123,8 +124,8 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
     try:
         from win_bot.timeline import crear_timeline_contrato
         await crear_timeline_contrato(contrato_id)
-    except Exception as e:
-        log.error("No se pudo crear el timeline de %s: %s", contrato_id, e, exc_info=True)
+    except Exception:
+        log.exception("No se pudo crear el timeline de %s", contrato_id)
 
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Buena+pro+registrada",
                             status_code=303)
@@ -164,7 +165,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
         ],
         "consulta_mef": enlace_consulta_mef(),
         "estados": ESTADOS,
-        "cobrado": cobrado, "pendiente": pendiente, "hoy": date.today(),
+        "cobrado": cobrado, "pendiente": pendiente, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
     })
 
@@ -278,7 +279,7 @@ async def registrar_cobro(request: Request, contrato_id: int,
                    fecha_limite_pago, fecha_pago_esperada, expediente_siaf, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10)""",
             contrato_id, concepto.strip(), monto, numero_factura.strip() or None,
-            date.today(), date.today() if ya_cobrado else None,
+            fechas.hoy(), fechas.hoy() if ya_cobrado else None,
             conformidad, limite, expediente_siaf.strip() or None,
             "pagado" if ya_cobrado else "facturado")
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Registrado", status_code=303)
@@ -346,8 +347,8 @@ async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
         ruta = await generar_factura(contrato_id, float(pago["monto"]),
                                      pago["concepto"] or "Servicio prestado",
                                      pago["numero_factura"])
-    except Exception as e:
-        log.error("Proforma del pago %s fallo: %s", pago_id, e, exc_info=True)
+    except Exception:
+        log.exception("Proforma del pago %s fallo", pago_id)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):
@@ -378,9 +379,8 @@ async def descargar_conformidad(request: Request, contrato_id: int,
     try:
         from win_bot.conformity_gen import generar_acta_conformidad
         ruta = await generar_acta_conformidad(contrato_id, observaciones.strip())
-    except Exception as e:
-        log.error("Acta de conformidad de %s fallo: %s", contrato_id, e,
-                  exc_info=True)
+    except Exception:
+        log.exception("Acta de conformidad de %s fallo", contrato_id)
         ruta = None
 
     if not ruta or not os.path.isfile(ruta):

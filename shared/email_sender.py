@@ -7,7 +7,7 @@ from email.utils import formatdate, make_msgid
 
 import aiosmtplib
 
-from shared import plantillas_correo
+from shared import fechas, plantillas_correo
 from shared.config import format_fecha, format_monto
 
 log = logging.getLogger("licitapro.email")
@@ -77,7 +77,7 @@ async def enviar_email(destinatario: str, asunto: str, html_body: str,
         )
         log.info(f"Email enviado a {destinatario}: {asunto}")
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         log.error(f"Error enviando email: {e}")
         return False
 
@@ -89,9 +89,9 @@ async def notificar_buena_pro(contrato: dict, licitacion: dict) -> bool:
     nomenclatura = licitacion.get("nomenclatura") or licitacion["id"]
     texto, html = plantillas_correo.componer(
         titulo="Ganaste la buena pro",
-        preencabezado="%s · %s" % (nomenclatura, monto),
-        intro=["La entidad adjudicó a tu favor. Desde aquí empiezan a correr "
-               "los plazos, y son cortos."],
+        preencabezado=f"{nomenclatura} · {monto}",
+        intro=[("La entidad adjudicó a tu favor. Desde aquí empiezan a correr "
+               "los plazos, y son cortos.")],
         filas=[
             ("Licitación", nomenclatura),
             ("Entidad", licitacion["entidad"]),
@@ -105,7 +105,7 @@ async def notificar_buena_pro(contrato: dict, licitacion: dict) -> bool:
                "Preparar los documentos de ejecución"],
     )
     return await enviar_email(EMAIL_DEST,
-                              "Buena pro ganada — %s" % nomenclatura,
+                              f"Buena pro ganada — {nomenclatura}",
                               html, texto)
 
 
@@ -115,8 +115,7 @@ async def notificar_plazo_proximo(plazo: dict, contrato: dict) -> bool:
     El color acompana al numero, nunca lo sustituye: el titulo dice cuantos
     dias quedan. Quien no distingue esos tonos lee exactamente lo mismo.
     """
-    from datetime import date
-    dias = (plazo["fecha_limite"] - date.today()).days
+    dias = (plazo["fecha_limite"] - fechas.hoy()).days
     if dias <= 1:
         acento = plantillas_correo.ROJO
     elif dias <= 3:
@@ -125,18 +124,18 @@ async def notificar_plazo_proximo(plazo: dict, contrato: dict) -> bool:
         acento = plantillas_correo.MENTA
 
     if dias < 0:
-        cuando = "Plazo vencido hace %d día(s)" % abs(dias)
+        cuando = f"Plazo vencido hace {abs(dias)} día(s)"
     elif dias == 0:
         cuando = "El plazo vence hoy"
     elif dias == 1:
         cuando = "El plazo vence mañana"
     else:
-        cuando = "El plazo vence en %d días" % dias
+        cuando = f"El plazo vence en {dias} días"
 
     texto, html = plantillas_correo.componer(
         titulo=cuando,
         acento=acento,
-        preencabezado="%s · %s" % (plazo["descripcion"],
+        preencabezado="{} · {}".format(plazo["descripcion"],
                                    format_fecha(plazo["fecha_limite"])),
         intro=[plazo["descripcion"]],
         filas=[
@@ -145,7 +144,7 @@ async def notificar_plazo_proximo(plazo: dict, contrato: dict) -> bool:
         ],
     )
     return await enviar_email(EMAIL_DEST,
-                              "%s — %s" % (cuando, plazo["descripcion"]),
+                              "{} — {}".format(cuando, plazo["descripcion"]),
                               html, texto)
 
 
@@ -154,7 +153,7 @@ async def notificar_pago_recibido(pago: dict, contrato: dict) -> bool:
     monto = format_monto(pago["monto"])
     texto, html = plantillas_correo.componer(
         titulo="Pago recibido",
-        preencabezado="%s · %s" % (monto,
+        preencabezado="{} · {}".format(monto,
                                    contrato.get("numero_contrato") or "—"),
         intro=["La entidad registró un pago a tu favor."],
         filas=[
@@ -164,5 +163,5 @@ async def notificar_pago_recibido(pago: dict, contrato: dict) -> bool:
             ("Factura", pago.get("factura_numero") or "—"),
         ],
     )
-    return await enviar_email(EMAIL_DEST, "Pago recibido — %s" % monto,
+    return await enviar_email(EMAIL_DEST, f"Pago recibido — {monto}",
                               html, texto)

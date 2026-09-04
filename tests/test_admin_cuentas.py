@@ -11,10 +11,11 @@ QUE PROTEGEN
   Las de logica pura corren siempre; las que necesitan base se saltan sin
   ella, como el resto de la suite (ver conftest.py).
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from shared import fechas
 from shared.admin_cuentas import (
     correo_valido,
     filtrar_cuentas,
@@ -25,7 +26,7 @@ from shared.seguridad import password_debil
 from shared.suscripciones import DIAS_GRACIA, estado_efectivo_de
 from tests.conftest import sin_base
 
-AHORA = datetime(2026, 9, 3, 12, 0)
+AHORA = fechas.fija(2026, 9, 3, 12, 0)
 
 
 # ─── Estado efectivo ─────────────────────────────────────
@@ -142,7 +143,7 @@ async def test_activar_manual_pisa_la_prueba_y_deja_el_pago(usuario):
     from shared.db import connection
     from shared.suscripciones import activar_manual, estado_suscripcion
 
-    vence = datetime.now().replace(microsecond=0) + timedelta(days=45)
+    vence = fechas.ahora().replace(microsecond=0) + timedelta(days=45)
     ok = await activar_manual(usuario["id"], "basico", "activa", "mensual", vence,
                               "Yape recibo 0042", 49.0, por="dueno@prueba.pe")
     assert ok is True
@@ -276,7 +277,7 @@ async def test_crear_y_editar_cuenta_respetan_el_correo_unico(usuario, marca):
     try:
         assert fila and error is None
         c = await cuenta(fila["id"])
-        assert "password_hash" not in c.keys()
+        assert "password_hash" not in c
         assert await editar_cuenta(fila["id"], "Alta", usuario["email"], True) == "Ya existe otra cuenta con ese correo."
         assert await editar_cuenta(fila["id"], "Alta", "no-es-correo", True) == "Ese correo no parece válido."
         assert await editar_cuenta(fila["id"], "Nuevo nombre", f"ALTA-{marca}@ejemplo.pe", False) is None
