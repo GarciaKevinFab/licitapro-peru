@@ -11,15 +11,16 @@ QUE PASABA ANTES: NO SE GENERABA NUNCA
   Ahora la crea la ruta que el usuario ya pulsaba ("Generar documentos"), en el
   mismo sitio donde `zip_builder` la busca.
 """
-import os
 import logging
+import os
+
 from docx import Document
-from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
 
 from shared import ia
-from shared.db import get_empresa
 from shared.config import ANTHROPIC_KEY, format_monto
+from shared.db import get_empresa
 
 log = logging.getLogger("prep.autofill.proposal")
 

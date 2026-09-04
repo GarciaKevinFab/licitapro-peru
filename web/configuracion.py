@@ -1,7 +1,6 @@
 """Configuracion de la cuenta: vinculo de Telegram, credenciales y filtros."""
 import logging
 import os
-
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
@@ -9,13 +8,20 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared.config import DEPARTAMENTOS
 from shared.db import (
-    borrar_credencial, borrar_cuenta, estado_credenciales, get_config_usuario,
-    guardar_credencial, quitar_whatsapp, set_token_telegram,
-    set_whatsapp_pendiente, update_config,
+    borrar_credencial,
+    borrar_cuenta,
+    estado_credenciales,
+    get_config_usuario,
+    guardar_credencial,
+    quitar_whatsapp,
+    set_token_telegram,
+    set_whatsapp_pendiente,
+    update_config,
 )
 from shared.seguridad import nuevo_token_telegram, verificar_password
-from shared.whatsapp import configurado as whatsapp_configurado, enviar_plantilla, normalizar_numero
 from shared.suscripciones import regiones_permitidas
+from shared.whatsapp import configurado as whatsapp_configurado
+from shared.whatsapp import enviar_plantilla, normalizar_numero
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.configuracion")

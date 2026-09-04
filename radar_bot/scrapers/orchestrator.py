@@ -16,17 +16,23 @@ Fuentes implementadas (verificadas):
 10. CONOSCE Contratos  -- XLSX contratos + PAC de conosce.osce.gob.pe (Pentaho BI)
 11. Datos Abiertos     -- datosabiertos.gob.pe CKAN API + XLSX resources
 """
-import re
-import html
-import logging
 import asyncio
 import hashlib
+import html
+import logging
+import re
 from datetime import datetime
+
 import httpx
 from bs4 import BeautifulSoup
+
 from shared.db import (
-    upsert_licitacion, refrescar_licitacion, log_scraping_start,
-    log_scraping_end, get_config, connection,
+    connection,
+    get_config,
+    log_scraping_end,
+    log_scraping_start,
+    refrescar_licitacion,
+    upsert_licitacion,
 )
 
 log = logging.getLogger("radar.orchestrator")

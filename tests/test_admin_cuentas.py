@@ -16,7 +16,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from shared.admin_cuentas import (
-    correo_valido, filtrar_cuentas, password_temporal, resumir_cuentas,
+    correo_valido,
+    filtrar_cuentas,
+    password_temporal,
+    resumir_cuentas,
 )
 from shared.seguridad import password_debil
 from shared.suscripciones import DIAS_GRACIA, estado_efectivo_de

@@ -1,8 +1,9 @@
 """Scorer — Calcula score de viabilidad 0-100 para cada licitación."""
 import json
 import logging
-from shared.db import connection
+
 from shared.config import dias_restantes
+from shared.db import connection
 
 log = logging.getLogger("radar.scorer")
 

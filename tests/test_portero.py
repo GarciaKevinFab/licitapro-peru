@@ -26,7 +26,6 @@ import pytest
 
 from shared.suscripciones import RUTAS_LIBRES, ruta_libre
 
-
 # ─── Lo que TIENE que estar abierto ──────────────────────
 
 @pytest.mark.parametrize("camino", [

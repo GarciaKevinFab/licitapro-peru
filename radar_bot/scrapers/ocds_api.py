@@ -12,18 +12,18 @@ Estrategia:
 4. Upsert nuevas licitaciones a la BD
 5. Cache local: guarda el archivo en disco y chequea Content-Length antes de re-descargar
 """
-import logging
 import hashlib
-import os
 import io
-from datetime import datetime, date
+import logging
+import os
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
 import openpyxl
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.ocds")
 

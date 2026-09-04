@@ -107,7 +107,7 @@ if _URL_PRUEBAS and _URL_PRODUCCION and _URL_PRUEBAS.strip() == _URL_PRODUCCION.
 
 os.environ["DATABASE_URL"] = _URL_PRUEBAS
 
-from shared.db import _es_gestionado  # noqa: E402  (dispara el load_dotenv)
+from shared.db import _es_gestionado
 
 
 def _destino_de_las_pruebas() -> tuple[str, int]:
@@ -208,6 +208,7 @@ async def cliente():
     veria el 200 del destino y pasaria por buena una redireccion equivocada.
     """
     import httpx
+
     from web.app import app
     transporte = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transporte, base_url="http://pruebas",

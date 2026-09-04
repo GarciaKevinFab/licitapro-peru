@@ -1,5 +1,6 @@
 """Validator — Valida que la propuesta esté completa antes de generar ZIP."""
 import logging
+
 from shared.db import connection, get_empresa, kb_get
 
 log = logging.getLogger("prep.validator")

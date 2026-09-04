@@ -36,7 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from web import limites  # noqa: E402
+from web import limites
 
 # Rango reservado para documentacion (RFC 5737): nunca es de nadie.
 IP_A = b"203.0.113.7"

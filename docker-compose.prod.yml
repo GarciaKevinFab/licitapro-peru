@@ -12,13 +12,24 @@
 # El Postgres local sigue estando en docker-compose.yml, que es el de
 # desarrollo. Alli si conviene: cada uno con su base, sin tocar la de nadie.
 
-services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - datos_redis:/data
+# AQUI HABIA UN REDIS Y NO LO USABA NADIE
+#
+#   Estuvo levantado desde el primer despliegue. Al revisarlo el 2026-09-03:
+#   cero claves, el unico cliente conectado era el redis-cli con el que se
+#   estaba mirando, y ningun servicio lo declaraba en `depends_on`. En el
+#   codigo, cero `import redis` y cero `REDIS_URL` -- la dependencia estaba en
+#   requirements.txt y nada la importaba.
+#
+#   Se quita el servicio y su volumen. Un contenedor que nadie usa no es solo
+#   3 MB de RAM en un VPS de dos nucleos con otros tres proyectos: es una pieza
+#   mas que parece parte del sistema, que alguien tendra que entender antes de
+#   tocar nada, y que hace creer que hay una cache donde no la hay.
+#
+#   Si algun dia hace falta -- por ejemplo para mover ahi el contador de
+#   web/limites.py cuando se levante mas de un worker de uvicorn --, se vuelve
+#   a anadir junto con el codigo que lo use, en el mismo cambio.
 
+services:
   migraciones:
     build: .
     command: alembic upgrade head
@@ -225,7 +236,7 @@ services:
       - web
 
 volumes:
-  datos_redis:
+  # `datos_redis` se fue con el servicio que lo montaba. Estaba vacio.
   datos_expedientes:
   caddy_datos:
   caddy_config:

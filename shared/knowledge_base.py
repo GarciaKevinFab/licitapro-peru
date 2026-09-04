@@ -4,7 +4,8 @@ El bot pregunta una vez, guarda la respuesta, y NUNCA vuelve a preguntar.
 Después de 10-15 licitaciones, el bot ya sabe TODO.
 """
 import logging
-from shared.db import kb_get, kb_set, connection
+
+from shared.db import connection, kb_get, kb_set
 
 log = logging.getLogger("licitapro.kb")
 

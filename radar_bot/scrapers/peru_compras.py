@@ -1,6 +1,8 @@
 """Scraper para Perú Compras — Catálogos Electrónicos y Acuerdos Marco."""
 import logging
+
 from bs4 import BeautifulSoup
+
 from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_fecha, parse_monto
 
 log = logging.getLogger("radar.peru_compras")

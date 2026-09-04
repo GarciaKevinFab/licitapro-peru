@@ -64,7 +64,8 @@ sys.path.insert(0, str(RAIZ))
 #
 #   Ejecutandolo a mano desde la carpeta del proyecto funciona igual, y por eso
 #   este fallo solo aparece cuando ya nadie mira.
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
+
 load_dotenv(RAIZ / ".env")
 
 REGISTRO = RAIZ / "data" / "traer_oece.log"
@@ -87,7 +88,7 @@ def _preparar_log() -> None:
 
 
 async def _principal() -> int:
-    from radar_bot.scrapers.ocds_oece import scrape_ocds_oece, _destino
+    from radar_bot.scrapers.ocds_oece import _destino, scrape_ocds_oece
 
     url, _ = _destino()
     if "workers.dev" in url:
@@ -118,7 +119,7 @@ async def _principal() -> int:
         from radar_bot.scrapers.orchestrator import _run_gore_portals
         gore = await _run_gore_portals(0)
         logging.info("GORE cotizaciones: guardadas %d nuevas.", len(gore))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logging.error("GORE cotizaciones fallo (OECE si entro): %s", exc)
 
     return 0
@@ -129,7 +130,7 @@ def main() -> int:
     logging.info("--- inicio %s ---", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     try:
         codigo = asyncio.run(_principal())
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Se registra y se devuelve fallo para que el Programador de tareas lo
         # marque en rojo. Terminar en 0 tras un error es como esta fuente
         # estuvo doce corridas caida sin que nadie se enterara.

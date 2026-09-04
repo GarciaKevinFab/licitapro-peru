@@ -1,28 +1,42 @@
 """Bot 1: LicitaRadar — Detecta, filtra y analiza licitaciones."""
-import os
 import html
 import logging
+import os
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, ContextTypes,
-)
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+)
 
 load_dotenv()
 log = logging.getLogger("radar_bot")
 
-from shared.notificaciones import repartir
-from shared.db import (
-    get_pool, marcar_notificada,
-    get_config, update_config, get_usuario_por_telegram, vincular_telegram, licitaciones_para_usuario,
-)
+from radar_bot.scrapers.orchestrator import format_scraping_report, run_all_scrapers
 from shared.config import (
-    format_monto, format_fecha, dias_restantes, prioridad_emoji,
-    DEPARTAMENTOS, TIPOS_PROCEDIMIENTO, ADMIN_ID,
+    ADMIN_ID,
+    DEPARTAMENTOS,
+    TIPOS_PROCEDIMIENTO,
+    dias_restantes,
+    format_fecha,
+    format_monto,
+    prioridad_emoji,
 )
-from radar_bot.scrapers.orchestrator import run_all_scrapers, format_scraping_report
+from shared.db import (
+    get_config,
+    get_pool,
+    get_usuario_por_telegram,
+    licitaciones_para_usuario,
+    marcar_notificada,
+    update_config,
+    vincular_telegram,
+)
+from shared.notificaciones import repartir
 
 
 # ─── Formatters ──────────────────────────────────────────

@@ -1,8 +1,10 @@
 """Scraper para Contratos Menores ≤8 UIT — prod6.seace.gob.pe."""
 import logging
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.contratos_menores")
 
@@ -89,7 +91,9 @@ async def scrape_contratos_menores(user_id: int = 0) -> list[dict]:
                     item_id = item.get("id", item.get("codigo", item.get("nroContratacion", "")))
                     
                     from radar_bot.scrapers.seace import (
-                        detectar_departamento, detectar_tipo_entidad, match_keywords
+                        detectar_departamento,
+                        detectar_tipo_entidad,
+                        match_keywords,
                     )
                     
                     depto = detectar_departamento(entidad, objeto)

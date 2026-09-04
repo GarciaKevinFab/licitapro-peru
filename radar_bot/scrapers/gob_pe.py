@@ -42,7 +42,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end
+from shared.db import log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.gob_pe")
 

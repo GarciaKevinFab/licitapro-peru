@@ -1,7 +1,9 @@
 python-telegram-bot==21.6
 asyncpg==0.31.0
 psycopg2-binary==2.9.9
-redis==5.2.1
+# redis: fuera. Estaba aqui y en el compose desde el primer despliegue, y nada
+# en el codigo lo importaba -- ni un `import redis`, ni una `REDIS_URL`. El
+# contenedor llevaba dias arriba con cero claves dentro.
 httpx==0.28.1
 beautifulsoup4==4.12.3
 lxml==5.3.0

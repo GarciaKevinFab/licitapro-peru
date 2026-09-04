@@ -31,17 +31,17 @@ Notas de la estructura OCDS, verificadas contra la API:
   - El texto viene en UTF-8 correcto, a diferencia del XLSX de CONOSCE, que
     llega con la acentuacion corrupta.
 """
-import logging
 import hashlib
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import log_scraping_start, log_scraping_end, refrescar_licitacion
 from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
+from shared.db import log_scraping_end, log_scraping_start, refrescar_licitacion
 
 log = logging.getLogger("radar.ocds_oece")
 

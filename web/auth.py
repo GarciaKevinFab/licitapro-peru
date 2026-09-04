@@ -10,13 +10,15 @@ import logging
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from shared.db import (
-    crear_usuario, get_usuario, get_usuario_por_email,
-)
-from shared.db import (
-    anotar_intento_fallido, intentos_recientes, limpiar_intentos,
-)
 from shared.admin_cuentas import anotar_acceso
+from shared.db import (
+    anotar_intento_fallido,
+    crear_usuario,
+    get_usuario,
+    get_usuario_por_email,
+    intentos_recientes,
+    limpiar_intentos,
+)
 from shared.seguridad import hashear_password, password_debil, verificar_password
 
 log = logging.getLogger("web.auth")
@@ -197,7 +199,9 @@ async def form_recuperar(request: Request):
 @router.post("/recuperar", response_class=HTMLResponse)
 async def pedir_recuperar(request: Request, email: str = Form(...)):
     from shared.db import (
-        crear_token_recuperacion, get_usuario_por_email, peticiones_recientes,
+        crear_token_recuperacion,
+        get_usuario_por_email,
+        peticiones_recientes,
     )
     from shared.seguridad import MAX_PETICIONES_POR_HORA, nuevo_token_recuperacion
 
@@ -233,8 +237,8 @@ async def pedir_recuperar(request: Request, email: str = Form(...)):
 
 
 async def _enviar_correo_recuperacion(destinatario: str, enlace: str) -> bool:
-    from shared.email_sender import enviar_email
     from shared import plantillas_correo
+    from shared.email_sender import enviar_email
     texto, cuerpo = plantillas_correo.componer(
         titulo="Restablece tu contraseña",
         preencabezado="Enlace para elegir una contraseña nueva. "
@@ -277,7 +281,8 @@ async def form_nueva_password(request: Request, token: str):
 async def cambiar_password(request: Request, token: str,
                            password: str = Form(...)):
     from shared.db import (
-        consumir_token_y_cambiar_password, usuario_por_token_recuperacion,
+        consumir_token_y_cambiar_password,
+        usuario_por_token_recuperacion,
     )
     from shared.seguridad import hash_token
 

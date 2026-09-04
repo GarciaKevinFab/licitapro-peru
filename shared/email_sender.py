@@ -1,13 +1,14 @@
 """Email sender — Envío de notificaciones por SMTP (Gmail / SendGrid)."""
-import os
 import logging
-from email.mime.text import MIMEText
+import os
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
+
 import aiosmtplib
 
-from shared.config import format_monto, format_fecha
 from shared import plantillas_correo
+from shared.config import format_fecha, format_monto
 
 log = logging.getLogger("licitapro.email")
 

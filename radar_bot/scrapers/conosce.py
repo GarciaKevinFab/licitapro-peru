@@ -17,12 +17,12 @@ Nota: El scraper ocds_api.py ya descarga convocatorias. Este scraper
 se enfoca en los CONTRATOS (adjudicados) y el PAC (planeado) como
 fuentes complementarias.
 """
-import logging
 import hashlib
-import os
 import io
+import logging
+import os
 import re
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -30,7 +30,7 @@ import openpyxl
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.conosce")
 

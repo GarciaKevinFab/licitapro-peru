@@ -121,8 +121,7 @@ def normalizar_numero(crudo: str) -> str | None:
         return None
 
     # 00 51 9XX... o 0 9XX...: el prefijo de salida internacional o nacional.
-    if digitos.startswith("00"):
-        digitos = digitos[2:]
+    digitos = digitos.removeprefix("00")
     if digitos.startswith(PREFIJO_PERU) and len(digitos) == LARGO_MOVIL_PERU + 2:
         movil = digitos[2:]
     elif len(digitos) == LARGO_MOVIL_PERU:
@@ -270,8 +269,7 @@ def verificar_firma(cuerpo_crudo: bytes, firma_recibida: str) -> bool:
         return False
     # Meta lo manda como "sha256=<hex>".
     recibida = firma_recibida.strip()
-    if recibida.startswith("sha256="):
-        recibida = recibida[7:]
+    recibida = recibida.removeprefix("sha256=")
     esperada = hmac.new(secreto.encode(), cuerpo_crudo, hashlib.sha256).hexdigest()
     # compare_digest evita filtrar por tiempo cuanto coincide la firma.
     return hmac.compare_digest(esperada, recibida.lower())
