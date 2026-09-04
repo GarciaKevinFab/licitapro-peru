@@ -27,6 +27,57 @@ async def _planes():
             "SELECT * FROM planes WHERE activo=TRUE ORDER BY orden")
 
 
+# QUIEN EMITE NO SE ESCRIBE AQUI
+#
+#   La razon social, el RUC y el contacto salen de `identidad()`, que es
+#   web.comprar._comercio leyendo del entorno y que la plantilla ya tiene como
+#   global (ver web/app.py). Escribirlos en este modulo habria duplicado unos
+#   datos que tienen que coincidir letra por letra con el contrato de comercio
+#   de la pasarela, y habria roto la regla que _comercio() defiende: lo que
+#   falta NO se pinta, porque un dato de relleno es peor que un hueco.
+#
+#   Este ticket NO es una boleta. Es el resumen del cobro que ya se hizo, para
+#   que el cliente tenga a mano el numero de orden y el importe. El comprobante
+#   electronico de SUNAT se emite aparte.
+
+
+def _comprobante(historial):
+    """El ultimo cobro que de verdad se cobro, ya desglosado. None si no hay.
+
+    `historial` llega ordenado por fecha descendente, asi que el primero que
+    este en 'pagado' es el mas reciente. Los pendientes y los fallidos se
+    saltan a proposito: un comprobante de algo que no se cobro es justo lo que
+    hace que alguien crea que ya pago.
+
+    El desglose sale de web/comprar.py y no se recalcula aqui para que el
+    checkout y el comprobante den exactamente las mismas tres cifras. Si cada
+    pantalla lo hiciera por su cuenta, un cambio en el redondeo las dejaria
+    discrepando en un centimo justo donde el cliente compara con su tarjeta.
+    """
+    # El import va aqui dentro y no arriba porque comprar.py ya importa este
+    # modulo (_con_error, iniciar_cobro): a nivel de fichero seria circular.
+    #
+    # Se llama _desglose, CON guion bajo. Escribirlo sin el reventaba esta
+    # funcion con ImportError, y como se la llama en cada carga de
+    # /suscripcion, la pagina entera devolvia 500 a cualquiera que fuera a ver
+    # su plan. Local no lo cazo -- las pruebas que llegan aqui necesitan base de
+    # datos y se saltaban --; lo cazo el CI.
+    from web.comprar import _desglose
+
+    for h in historial or []:
+        if h["estado"] != "pagado":
+            continue
+        partes = _desglose(h["monto"])
+        return {
+            "orden": h["izipay_order_number"] or h["culqi_charge_id"] or "—",
+            "fecha": h["created_at"],
+            "base": partes["base"],
+            "igv": partes["igv"],
+            "total": partes["total"],
+        }
+    return None
+
+
 @router.get("/suscripcion", response_class=HTMLResponse)
 async def ver(request: Request, aviso: str = "", error: str = ""):
     usuario = await usuario_actual(request)
@@ -59,6 +110,11 @@ async def ver(request: Request, aviso: str = "", error: str = ""):
         "culqi_activo": culqi.cobro_recurrente(),
         "culqi_sxn": (culqi_datos or {}).get("culqi_subscription_id"),
         "aviso": aviso, "error": error,
+        # El comprobante del ultimo cobro. `None` si todavia no hay ninguno
+        # pagado -- una cuenta en prueba, por ejemplo --, y entonces la
+        # plantilla no pinta nada. Quien emite lo pone `identidad()`, que ya es
+        # global de Jinja y no hace falta pasar aqui.
+        "comprobante": _comprobante(historial),
     })
 
 
