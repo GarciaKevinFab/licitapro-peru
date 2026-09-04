@@ -31,7 +31,10 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from shared.db import activar_whatsapp, baja_whatsapp
 from shared.notificaciones import CANAL_WHATSAPP, sembrar_historico
 from shared.whatsapp import (
-    enviar_texto, es_baja, mensajes_entrantes, verificar_firma,
+    enviar_texto,
+    es_baja,
+    mensajes_entrantes,
+    verificar_firma,
     verificar_suscripcion,
 )
 

@@ -1,6 +1,7 @@
 """Timeline — Calcula y gestiona plazos de contratos."""
 import logging
 from datetime import date, timedelta
+
 from shared.db import connection
 
 log = logging.getLogger("win.timeline")

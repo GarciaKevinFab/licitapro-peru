@@ -15,7 +15,6 @@ import pytest
 from tests.conftest import sin_base
 from web import webhooks_culqi as wh
 
-
 # ─── Formas documentadas de Culqi ────────────────────────
 
 CARGO_OK = {

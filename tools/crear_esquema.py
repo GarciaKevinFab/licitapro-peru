@@ -46,7 +46,7 @@ sys.path.insert(0, str(RAIZ))
 
 RUTA_ESQUEMA = RAIZ / "shared" / "schema.sql"
 
-from shared.db import _es_gestionado  # noqa: E402
+from shared.db import _es_gestionado
 
 
 def _conectar():

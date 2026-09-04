@@ -14,10 +14,12 @@ import sys
 
 sys.path.insert(0, os.getcwd())
 
-from shared import izipay                                     # noqa: E402
-from shared.seguridad import descifrar                        # noqa: E402
-from shared.suscripciones import (                            # noqa: E402
-    confirmar_pago, registrar_intento, registrar_intento_fallido,
+from shared import izipay
+from shared.seguridad import descifrar
+from shared.suscripciones import (
+    confirmar_pago,
+    registrar_intento,
+    registrar_intento_fallido,
     renovaciones_pendientes,
 )
 

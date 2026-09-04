@@ -17,14 +17,15 @@ QUE APORTA ESTE MODULO Y QUE NO
   `llenar_anexos` se conserva para el dia que haga falta el inventario completo
   con su estado; hoy el expediente se arma con la funcion de abajo.
 """
-import os
 import logging
-from shared.db import connection, get_empresa
+import os
+
 from prep_bot.document_gen import (
     generar_carta_presentacion,
     generar_declaracion_jurada,
     generar_experiencia_postor,
 )
+from shared.db import connection, get_empresa
 
 log = logging.getLogger("prep.autofill.annexes")
 
@@ -187,10 +188,11 @@ async def _generar_anexo(anexo: dict, propuesta_id: int, empresa_id: int,
 
 async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Declaración Jurada de plazo de entrega."""
-    from docx import Document
-    from docx.shared import Pt
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     from datetime import date
+
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
 
     doc = Document()
     doc.styles["Normal"].font.name = "Arial"
@@ -223,8 +225,8 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
 async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, output_dir) -> str:
     """Genera Carta de Compromiso del Personal Clave."""
     from docx import Document
-    from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
 
     async with connection() as conn:
         equipo = await conn.fetch(
@@ -258,10 +260,11 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
 
 async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Pacto de Integridad."""
-    from docx import Document
-    from docx.shared import Pt
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     from datetime import date
+
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
 
     doc = Document()
     doc.styles["Normal"].font.name = "Arial"

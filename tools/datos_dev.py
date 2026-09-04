@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.getcwd())
 
-from shared.db import connection  # noqa: E402
+from shared.db import connection
 
 CUENTAS = [
     {
@@ -65,7 +65,7 @@ async def sembrar():
 
 async def verificar_aislamiento():
     """Comprueba que ninguna cuenta ve datos de otra."""
-    from shared.db import empresas_de, empresa_es_de, get_config_usuario
+    from shared.db import empresa_es_de, empresas_de, get_config_usuario
 
     async with connection() as conn:
         ids = [r["id"] for r in await conn.fetch(

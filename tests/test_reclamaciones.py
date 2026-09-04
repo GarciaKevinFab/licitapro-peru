@@ -25,7 +25,6 @@ from shared.suscripciones import ruta_libre
 from tests.conftest import sin_base
 from web.reclamaciones import DIAS_HABILES_RESPUESTA, _codigo, limite_respuesta
 
-
 # ─── El portero no puede cortar el Libro ─────────────────
 
 def test_reclamar_no_exige_estar_al_dia_de_pago():

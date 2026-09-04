@@ -11,16 +11,15 @@ No se guarda usuario_id en propuestas a proposito, para que no puedan discrepar.
 """
 import logging
 import os
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from urllib.parse import quote_plus
-
 from shared import ia
 from shared.banderas import describir
-from shared.pdf_firmable import generar_pdf
 from shared.db import connection, empresa_es_de, empresas_de, responder_pregunta
+from shared.pdf_firmable import generar_pdf
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.propuestas")

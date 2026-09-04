@@ -3,9 +3,10 @@
 Permite subir imágenes de firma del representante legal, sello de empresa
 y logo. Se usan automáticamente al generar documentos DOCX.
 """
-import os
 import logging
+import os
 import shutil
+
 from shared.db import connection
 
 log = logging.getLogger("licitapro.firma")

@@ -45,8 +45,8 @@ import unicodedata
 
 sys.path.insert(0, os.getcwd())
 
-from shared import culqi                                      # noqa: E402
-from shared.db import connection                              # noqa: E402
+from shared import culqi
+from shared.db import connection
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")

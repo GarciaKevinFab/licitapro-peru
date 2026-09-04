@@ -32,7 +32,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    Image as ImagenPDF, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    Image as ImagenPDF,
+)
+from reportlab.platypus import (
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
 )
 
 from shared.archivos import rutas_de

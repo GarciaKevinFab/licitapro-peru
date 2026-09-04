@@ -43,7 +43,9 @@ from fastapi.responses import JSONResponse
 
 from shared import culqi
 from shared.suscripciones import (
-    aplicar_cargo_culqi, registrar_intento_fallido, suscripcion_por_culqi,
+    aplicar_cargo_culqi,
+    registrar_intento_fallido,
+    suscripcion_por_culqi,
 )
 
 log = logging.getLogger("web.webhooks_culqi")

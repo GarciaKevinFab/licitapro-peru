@@ -108,8 +108,9 @@ def tiene_firma_digital(datos: bytes) -> bool | None:
     improvisa. Sirve para avisar al usuario si sube el PDF sin firmar.
     """
     try:
-        from pypdf import PdfReader
         from io import BytesIO
+
+        from pypdf import PdfReader
         lector = PdfReader(BytesIO(datos))
         campos = lector.get_fields() or {}
         return any(c.get("/FT") == "/Sig" for c in campos.values())

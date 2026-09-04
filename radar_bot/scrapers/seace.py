@@ -14,14 +14,16 @@ NOTE: To properly scrape SEACE, one of these approaches would be needed:
 - Official SEACE data export/API (not currently available publicly)
 For now, the GORE cotizaciones portals and other sources fill the gap.
 """
-import re
-import logging
 import hashlib
-from datetime import datetime, date, timedelta
+import logging
+import re
+from datetime import date, datetime, timedelta
+
 import httpx
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 log = logging.getLogger("radar.seace")
 
@@ -161,6 +163,7 @@ def _parse_jsf_xml_table(xml_text: str) -> list[dict]:
     We extract and parse any actual data rows (not form/filter rows).
     """
     import warnings
+
     from bs4 import XMLParsedAsHTMLWarning
     warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 

@@ -1,10 +1,12 @@
 """Base scraper — Clase base para todos los scrapers."""
-import logging
 import hashlib
+import logging
 from datetime import datetime
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
-from shared.db import upsert_licitacion, log_scraping_start, log_scraping_end, get_config
+
+from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",

@@ -10,14 +10,19 @@ import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
-                               RedirectResponse, Response)
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from shared.db import connection, licitaciones_para_usuario
 from shared.config import DEPARTAMENTOS
+from shared.db import connection, licitaciones_para_usuario
 from shared.seguridad import clave_sesion
 from web import limites
 
@@ -295,18 +300,19 @@ app.add_middleware(
     https_only=os.getenv("LICITAPRO_ENTORNO", "dev") != "dev",
 )
 
-from web.auth import router as router_auth, usuario_actual  # noqa: E402
-from web.configuracion import router as router_config  # noqa: E402
-from web.empresas import router as router_empresas  # noqa: E402
-from web.propuestas import router as router_propuestas  # noqa: E402
-from web.contratos import router as router_contratos  # noqa: E402
-from web.suscripcion import router as router_suscripcion  # noqa: E402
-from web.comprar import router as router_comprar  # noqa: E402
-from web.reclamaciones import router as router_reclamaciones  # noqa: E402
+from web.admin import router as router_admin
+from web.auth import router as router_auth
+from web.auth import usuario_actual
+from web.comprar import router as router_comprar
+from web.configuracion import router as router_config
+from web.contratos import router as router_contratos
+from web.empresas import router as router_empresas
+from web.informes import router as router_informes
+from web.propuestas import router as router_propuestas
+from web.reclamaciones import router as router_reclamaciones
+from web.suscripcion import router as router_suscripcion
 from web.webhooks_culqi import router as router_culqi_webhook
 from web.webhooks_whatsapp import router as router_wa_webhook
-from web.admin import router as router_admin  # noqa: E402
-from web.informes import router as router_informes  # noqa: E402
 
 # Los scripts salen de aqui y no del HTML. Es lo que permite que la politica
 # de seguridad prohiba el script embebido, y sin eso la CSP no protege contra
@@ -352,7 +358,8 @@ templates.env.globals["estatico"] = estatico
 #   Va como FUNCION y no como valor ya resuelto para que se lea del entorno en
 #   cada render. Resuelto al arrancar, un cambio en el .env exigiria reiniciar
 #   para verse, y las pruebas que lo manipulan no podrian.
-from web.comprar import _comercio as _identidad_comercio  # noqa: E402
+from web.comprar import _comercio as _identidad_comercio
+
 templates.env.globals["identidad"] = _identidad_comercio
 
 # QUE SE PUEDE PROMETER SOBRE EL COBRO, ATADO A UN HECHO Y NO A UNA FRASE
@@ -371,7 +378,8 @@ templates.env.globals["identidad"] = _identidad_comercio
 #   Va como FUNCION y no como valor resuelto, por lo mismo que `identidad`: un
 #   cambio en el .env tiene que verse sin reiniciar, y las pruebas tienen que
 #   poder manipularlo.
-from shared.culqi import cobro_recurrente  # noqa: E402
+from shared.culqi import cobro_recurrente
+
 templates.env.globals["cobro_recurrente"] = cobro_recurrente
 
 app.include_router(router_auth)

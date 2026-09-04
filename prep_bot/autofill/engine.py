@@ -1,9 +1,11 @@
 """Motor de auto-fill — Llena anexos usando knowledge_base + datos empresa."""
-import os
 import logging
+import os
 from datetime import date
+
 from docx import Document
-from shared.db import kb_get, kb_set, get_empresa, connection
+
+from shared.db import connection, get_empresa, kb_get, kb_set
 
 log = logging.getLogger("prep.autofill")
 

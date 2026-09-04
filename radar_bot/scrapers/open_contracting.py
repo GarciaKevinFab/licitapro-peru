@@ -1,5 +1,6 @@
 """Scraper para Open Contracting Partnership — Datos internacionales."""
 import logging
+
 from radar_bot.scrapers.base_scraper import BaseScraper, generar_id, parse_fecha
 
 log = logging.getLogger("radar.open_contracting")
