@@ -22,14 +22,10 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: licitapro-redis
-    restart: unless-stopped
-    ports:
-      - "6380:6379"  # 6380 para no chocar
-    volumes:
-      - ./data/redis:/data
+  # Aqui habia un redis, y se va tambien del entorno de desarrollo: nada en el
+  # codigo lo importa -- ni un `import redis`, ni una `REDIS_URL` --, asi que
+  # levantarlo en la maquina de cada uno solo servia para dar a entender que
+  # hace falta. Ver el comentario largo en docker-compose.prod.yml.
 
   # Bots run via start.bat (not Docker) to avoid conflicts
   # Use: start.bat to launch API + RadarBot + PrepBot + WinBot
