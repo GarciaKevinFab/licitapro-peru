@@ -1,7 +1,7 @@
 """Configuracion de la cuenta: vinculo de Telegram, credenciales y filtros."""
 import logging
 import os
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +16,7 @@ from shared.db import (
     quitar_whatsapp,
     set_token_telegram,
     set_whatsapp_pendiente,
+    token_telegram_vigente,
     update_config,
 )
 from shared.seguridad import nuevo_token_telegram, verificar_password
@@ -49,7 +50,27 @@ async def ver_configuracion(request: Request, aviso: str = "", error: str = ""):
         return RedirectResponse("/entrar?siguiente=/configuracion", status_code=303)
 
     config = await get_config_usuario(usuario["id"])
+    bot = os.getenv("TELEGRAM_BOT_USERNAME", "LicitaRadar_SI_bot")
+    token = await token_telegram_vigente(usuario["id"])
+    # TRES CAMINOS AL BOT, Y NO UNA REDIRECCION A t.me
+    #
+    #   Antes el boton mandaba directo a t.me/<bot>?start=<token>. En el
+    #   escritorio esa pagina solo ofrece "START BOT", que intenta abrir la app
+    #   con tg://: sin Telegram Desktop instalado, o con Brave bloqueando el
+    #   protocolo, el boton no hace nada y el usuario se queda ahi. Ahora el
+    #   codigo se ensena aqui con la app, Telegram Web y el mensaje a mano.
+    vinculo = None
+    if token:
+        tg = f"tg://resolve?domain={bot}&start={token}"
+        vinculo = {
+            "token": token,
+            "comando": f"/start {token}",
+            "app": tg,
+            "movil": f"https://t.me/{bot}?start={token}",
+            "web": "https://web.telegram.org/k/#?tgaddr=" + quote(tg, safe=""),
+        }
     return _plantillas(request).TemplateResponse("configuracion.html", {
+        "vinculo": vinculo,
         "request": request,
         "usuario": usuario,
         "config": config,
@@ -68,7 +89,7 @@ async def ver_configuracion(request: Request, aviso: str = "", error: str = ""):
 
 @router.post("/configuracion/telegram/vincular")
 async def iniciar_vinculo(request: Request):
-    """Genera el token de un solo uso y manda al usuario al bot.
+    """Genera el token de un solo uso y vuelve a Configuracion, que lo ensena.
 
     No se le pide su ID numerico a proposito: si escribiera uno ajeno, sus
     alertas irian al chat de un desconocido y el sistema no podria detectarlo.
@@ -80,8 +101,7 @@ async def iniciar_vinculo(request: Request):
 
     token, expira = nuevo_token_telegram()
     await set_token_telegram(usuario["id"], token, expira)
-    bot = os.getenv("TELEGRAM_BOT_USERNAME", "LicitaRadar_SI_bot")
-    return RedirectResponse(f"https://t.me/{bot}?start={token}", status_code=303)
+    return RedirectResponse("/configuracion#telegram", status_code=303)
 
 
 @router.post("/configuracion/telegram/desvincular")

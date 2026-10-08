@@ -78,17 +78,35 @@ table.datos td{vertical-align:middle}
       </span>
     </p>
 
-    {% if not usuario.telegram_chat_id %}
+    {% if vinculo %}
+      {# El codigo vale 10 minutos y una sola vez. Se ofrecen los tres caminos
+         porque cualquiera de ellos puede fallar segun el equipo: el enlace tg://
+         necesita la app instalada, y t.me en el escritorio solo sabe usar tg://. #}
       <ol class="como">
-        <li>Pulsa <b>Conectar Telegram</b>: se abrirá el bot con un código de un solo uso.</li>
-        <li>Envía el mensaje que aparece ya escrito.</li>
+        <li>Ábrelo en Telegram:
+          <span class="btn-grupo">
+            <a class="btn" href="{{ vinculo.app }}">App de Telegram</a>
+            <a class="btn sec" href="{{ vinculo.web }}" target="_blank" rel="noopener">Telegram Web</a>
+            <a class="btn sec" href="{{ vinculo.movil }}" target="_blank" rel="noopener">Desde el celular</a>
+          </span>
+        </li>
+        <li>Pulsa <b>Iniciar</b> (o <b>START</b>) en el chat del bot.</li>
+        <li>¿No se abre? Busca <b>@{{ bot_usuario }}</b> en Telegram y envíale este mensaje tal cual:
+          <code>{{ vinculo.comando }}</code></li>
+      </ol>
+      <p class="sub">El código sirve una sola vez y caduca a los 10 minutos. Cuando el bot
+         te conteste "Conectado", recarga esta página.</p>
+    {% elif not usuario.telegram_chat_id %}
+      <ol class="como">
+        <li>Pulsa <b>Conectar Telegram</b>: te damos un código de un solo uso.</li>
+        <li>Ábrelo en la app, en Telegram Web o envíaselo al bot a mano.</li>
         <li>Listo. El código caduca a los 10 minutos.</li>
       </ol>
     {% endif %}
 
     <div class="btn-grupo">
       <form method="post" action="/configuracion/telegram/vincular">
-        <button type="submit" class="{% if usuario.telegram_chat_id %}sec{% endif %}">{% if usuario.telegram_chat_id %}Volver a conectar{% else %}Conectar Telegram{% endif %}</button>
+        <button type="submit" class="{% if usuario.telegram_chat_id or vinculo %}sec{% endif %}">{% if vinculo %}Generar otro código{% elif usuario.telegram_chat_id %}Volver a conectar{% else %}Conectar Telegram{% endif %}</button>
       </form>
       {% if usuario.telegram_chat_id %}
         <form method="post" action="/configuracion/telegram/desvincular">
