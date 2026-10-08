@@ -224,7 +224,11 @@ def _csp(nonce: str) -> str:
         # El beacon manda las medidas por fetch a este origen; sin esto carga
         # el script pero el envio se bloquea, que es la misma nada con mas pasos.
         "connect-src 'self' https://cloudflareinsights.com" + culqi_src["connect"],
-        "form-action 'self'",
+        # https://t.me, Y SOLO ESE ORIGEN: "Conectar Telegram" es un POST que
+        # responde 303 a t.me/<bot>?start=<token>. Chrome aplica form-action
+        # tambien a la redireccion, asi que con 'self' a secas el boton no
+        # hacia nada: el servidor contestaba bien y el navegador tiraba el salto.
+        "form-action 'self' https://t.me",
         # frame-src, no frame-ancestors: quien nos mete a NOSOTROS en un marco
         # sigue prohibido (frame-ancestors 'none'); lo que se abre es que
         # nosotros metamos el formulario de tarjeta de Culqi en uno.
