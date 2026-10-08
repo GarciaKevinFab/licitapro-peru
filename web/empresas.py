@@ -92,9 +92,15 @@ async def form_nueva(request: Request):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar?siguiente=/empresas/nueva", status_code=303)
+    return _vista_nueva(request, usuario)
+
+
+def _vista_nueva(request: Request, usuario, pre: dict | None = None,
+                 aviso: str = "", error: str = ""):
     return _plantillas(request).TemplateResponse("empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": None,
-        "departamentos": DEPARTAMENTOS,
+        "departamentos": DEPARTAMENTOS, "pre": pre,
+        "aviso": aviso, "error": error,
     })
 
 
@@ -106,7 +112,13 @@ async def form_editar(request: Request, empresa_id: int,
         return RedirectResponse("/entrar", status_code=303)
     if not await empresa_es_de(empresa_id, usuario["id"]):
         return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+    return await _vista_editar(request, usuario, empresa_id, aviso=aviso, error=error)
 
+
+async def _vista_editar(request: Request, usuario, empresa_id: int,
+                        pre: dict | None = None, aviso: str = "", error: str = ""):
+    """La pantalla de edicion. `pre` son valores leidos de un documento que
+    aun NO se han guardado: el formulario los ensena en lugar de los de la base."""
     async with connection() as conn:
         empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", empresa_id)
         # Las dos tablas que el producto leia sin que nadie pudiera rellenarlas.
@@ -124,13 +136,106 @@ async def form_editar(request: Request, empresa_id: int,
 
     return _plantillas(request).TemplateResponse("empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": empresa,
-        "departamentos": DEPARTAMENTOS,
+        "departamentos": DEPARTAMENTOS, "pre": pre,
         "imagenes": await rutas_de(empresa_id),
         "tipos_imagen": TIPOS_IMAGEN,
         "experiencia": experiencia, "equipo": equipo,
         "vencimientos": vencimientos, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
     })
+
+
+# ─── Rellenar desde la ficha RUC y la constancia del RNP ─
+#
+# El usuario sube los PDF que ya tiene y el formulario sale relleno. NO se
+# guarda nada aqui: se pinta la misma pantalla con los valores leidos y el
+# usuario los revisa y pulsa Guardar, igual que con el autocompletado por RUC.
+
+_CAMPOS_FICHA = ("ruc", "razon_social", "direccion", "departamento", "telefono",
+                 "email", "representante_legal", "dni_representante",
+                 "cargo_representante")
+_CAMPOS_RNP = ("rnp_numero", "rnp_categoria", "rnp_vigencia")
+MAX_PDF = 5 * 1024 * 1024
+
+
+async def _leer_subida(archivo: UploadFile | None) -> bytes | None:
+    if archivo is None or not archivo.filename:
+        return None
+    # Uno de mas para saber si se paso del tope sin leer un archivo entero de 1 GB.
+    return await archivo.read(MAX_PDF + 1)
+
+
+@router.post("/empresas/leer-documentos", response_class=HTMLResponse)
+async def leer_documentos(request: Request, empresa_id: int = Form(0),
+                          ficha: UploadFile | None = File(None),  # noqa: B008
+                          constancia: UploadFile | None = File(None)):  # noqa: B008
+    import asyncio
+
+    from shared.constancia_rnp import ConstanciaInvalida, leer_constancia_rnp
+    from shared.ficha_ruc import FichaInvalida, leer_ficha_ruc
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if empresa_id and not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+
+    actual: dict = {}
+    if empresa_id:
+        async with connection() as conn:
+            fila = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", empresa_id)
+        actual = dict(fila)
+
+    async def responder(pre=None, aviso="", error=""):
+        if empresa_id:
+            return await _vista_editar(request, usuario, empresa_id, pre=pre,
+                                       aviso=aviso, error=error)
+        return _vista_nueva(request, usuario, pre=pre, aviso=aviso, error=error)
+
+    bytes_ficha = await _leer_subida(ficha)
+    bytes_rnp = await _leer_subida(constancia)
+    if not bytes_ficha and not bytes_rnp:
+        return await responder(error="Elige al menos un PDF: la ficha RUC o la constancia del RNP.")
+
+    pre = dict(actual)
+    leidos, notas = [], []
+    try:
+        if bytes_ficha:
+            datos = leer_ficha_ruc(bytes_ficha)
+            if actual.get("ruc") and datos["ruc"] != actual["ruc"]:
+                return await responder(error=(
+                    f"La ficha es del RUC {datos['ruc']} y esta empresa es "
+                    f"{actual['ruc']}. No se usó."))
+            for c in _CAMPOS_FICHA:
+                if datos.get(c):
+                    pre[c] = datos[c]
+            # Los rubros de la ficha son las actividades CIIU de SUNAT: sirven
+            # para empezar, pero si la empresa ya tiene los suyos no se pisan.
+            if datos.get("rubros") and not actual.get("rubros"):
+                pre["rubros"] = datos["rubros"]
+            leidos.append("la ficha RUC")
+            if datos.get("estado") or datos.get("condicion"):
+                notas.append(f"SUNAT: {datos.get('estado') or '?'} · {datos.get('condicion') or '?'}.")
+        if bytes_rnp:
+            # El OCR tarda un par de segundos: fuera del bucle de eventos.
+            rnp = await asyncio.to_thread(leer_constancia_rnp, bytes_rnp)
+            ruc_doc = pre.get("ruc")
+            if rnp.get("ruc") and ruc_doc and rnp["ruc"] != ruc_doc:
+                return await responder(pre=pre if bytes_ficha else None, error=(
+                    f"La constancia del RNP es del RUC {rnp['ruc']} y la empresa es "
+                    f"{ruc_doc}. No se usó."))
+            for c in _CAMPOS_RNP:
+                pre[c] = rnp.get(c)
+            leidos.append("la constancia del RNP")
+            if rnp.get("indeterminada"):
+                notas.append("El RNP es de vigencia indeterminada: no vence, así que "
+                             "la fecha de vencimiento queda vacía.")
+    except (FichaInvalida, ConstanciaInvalida) as e:
+        return await responder(error=str(e))
+
+    aviso = (f"Leímos {' y '.join(leidos)}. Revisa los datos y pulsa Guardar: "
+             f"todavía no se ha guardado nada. " + " ".join(notas)).strip()
+    return await responder(pre=pre, aviso=aviso)
 
 
 # ─── Experiencia del postor y equipo tecnico ─────────────
