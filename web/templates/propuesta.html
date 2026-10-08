@@ -1,53 +1,14 @@
 {% extends "_base.html" %}
 {% block titulo %}Propuesta · LicitaPro{% endblock %}
+{% set og_titulo = 'Propuesta · ' ~ (p.objeto or 'Sin licitación asociada')[:80] ~ ' · LicitaPro Perú' %}
 {% block estilos %}
-.dos-firmas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));
-  gap:16px;margin-top:16px}
-.via{border:1px solid var(--line);border-radius:var(--r);padding:17px 18px;
-  display:flex;flex-direction:column;gap:9px}
-.via h3{font-family:Sora,sans-serif;font-size:.95rem;font-weight:600;margin:0}
-.via p{font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
-.via .btn{align-self:flex-start;margin-top:auto}
-
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
-
-main{max-width:900px}
-.cabecera h1{font-family:Sora,sans-serif;font-size:1.3rem;font-weight:600;margin:6px 0 0;
-  letter-spacing:-.02em;line-height:1.3}
-.metas{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px;font-size:13.5px}
-.metas div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:2px}
-.metas div b{font-family:"JetBrains Mono",monospace;font-weight:600}
-.pregunta{border:1px solid var(--line);border-radius:var(--r);padding:15px 17px;margin-bottom:12px;
-  background:var(--bg)}
-.pregunta.lista{opacity:.65}
-.pregunta p.q{margin:0 0 4px;font-weight:500}
-.pregunta p.ctx{margin:0 0 11px;font-size:12.5px;color:var(--ink-3)}
-.pregunta form{display:flex;gap:9px;align-items:flex-start}
-.pregunta form input{flex:1}
-.resp{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ok);margin:0}
-.rango{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline}
-.rango div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:3px}
-.rango div b{font-family:"JetBrains Mono",monospace;font-size:15px;font-weight:600;
-  font-variant-numeric:tabular-nums}
-.rango .destacado b{font-size:22px;letter-spacing:-.02em}
-.lista-falta{margin:7px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
-.lista-falta li{font-size:13px;line-height:1.45}
+.cab-pag h1.ficha{font-size:clamp(19px,2.2vw,23px);line-height:1.32;letter-spacing:-.012em;
+  font-variation-settings:"opsz" 48,"SOFT" 20;max-width:62ch}
+.cab-pag .rotulo{display:block;margin-bottom:8px}
+.cab-pag .miga span{color:var(--ink-4)}
+@media (max-width:640px){.cab-pag h1.ficha{font-size:17px;line-height:1.35}}
+.datos-ficha dd b{font-weight:inherit}
+.datos-ficha dd .sin{color:var(--ink-3);font-weight:400}
 
 /* ---------- LO QUE FALTA ----------
    Esta tarjeta es una lista de tareas, y a una lista de tareas le falta lo
@@ -55,137 +16,41 @@ main{max-width:900px}
    si son 3 de 4 o 3 de 30.
 
    La barra no es decoracion: es la diferencia entre "me quedan preguntas" y
-   "me queda una". */
+   "me queda una". El ancho viaja como clase .sfill.pNN (tramos de 5 %): la
+   CSP prohibe style= y un nonce no sirve para atributos. */
 .avance{margin:0 0 18px}
-.avance .pista{
-  height:4px;background:var(--panel-2);border-radius:99px;overflow:hidden;
-}
-.avance .hecho{
-  display:block;height:100%;border-radius:99px;background:var(--ac);
-  transition:width .9s var(--ease-out);
-}
-.avance .txt{
-  display:flex;justify-content:space-between;gap:12px;
-  margin-top:7px;font-size:12px;color:var(--ink-3);
-}
+.avance .txt{display:flex;justify-content:space-between;gap:12px;margin-top:7px;font-size:12px;color:var(--ink-3)}
 .avance .txt b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.avance.completo .hecho{background:var(--ok)}
+.avance.completo .progreso > span{background:var(--ok)}
 
-/* ANCHOS COMO CLASES, NO COMO style=
-   La CSP de este proyecto prohibe el estilo en linea sin nonce, y un nonce no
-   sirve para atributos style= -- solo para elementos <style>. Asi que el ancho
-   de la barra viaja como clase, igual que .w-300 y las demas de _base.html.
-   Son 101 reglas de una linea; el archivo pesa un kilobyte mas y la politica
-   de seguridad sigue cerrada, que es el intercambio correcto. */
-.w-pct-0{width:0%}
-.w-pct-1{width:1%}
-.w-pct-2{width:2%}
-.w-pct-3{width:3%}
-.w-pct-4{width:4%}
-.w-pct-5{width:5%}
-.w-pct-6{width:6%}
-.w-pct-7{width:7%}
-.w-pct-8{width:8%}
-.w-pct-9{width:9%}
-.w-pct-10{width:10%}
-.w-pct-11{width:11%}
-.w-pct-12{width:12%}
-.w-pct-13{width:13%}
-.w-pct-14{width:14%}
-.w-pct-15{width:15%}
-.w-pct-16{width:16%}
-.w-pct-17{width:17%}
-.w-pct-18{width:18%}
-.w-pct-19{width:19%}
-.w-pct-20{width:20%}
-.w-pct-21{width:21%}
-.w-pct-22{width:22%}
-.w-pct-23{width:23%}
-.w-pct-24{width:24%}
-.w-pct-25{width:25%}
-.w-pct-26{width:26%}
-.w-pct-27{width:27%}
-.w-pct-28{width:28%}
-.w-pct-29{width:29%}
-.w-pct-30{width:30%}
-.w-pct-31{width:31%}
-.w-pct-32{width:32%}
-.w-pct-33{width:33%}
-.w-pct-34{width:34%}
-.w-pct-35{width:35%}
-.w-pct-36{width:36%}
-.w-pct-37{width:37%}
-.w-pct-38{width:38%}
-.w-pct-39{width:39%}
-.w-pct-40{width:40%}
-.w-pct-41{width:41%}
-.w-pct-42{width:42%}
-.w-pct-43{width:43%}
-.w-pct-44{width:44%}
-.w-pct-45{width:45%}
-.w-pct-46{width:46%}
-.w-pct-47{width:47%}
-.w-pct-48{width:48%}
-.w-pct-49{width:49%}
-.w-pct-50{width:50%}
-.w-pct-51{width:51%}
-.w-pct-52{width:52%}
-.w-pct-53{width:53%}
-.w-pct-54{width:54%}
-.w-pct-55{width:55%}
-.w-pct-56{width:56%}
-.w-pct-57{width:57%}
-.w-pct-58{width:58%}
-.w-pct-59{width:59%}
-.w-pct-60{width:60%}
-.w-pct-61{width:61%}
-.w-pct-62{width:62%}
-.w-pct-63{width:63%}
-.w-pct-64{width:64%}
-.w-pct-65{width:65%}
-.w-pct-66{width:66%}
-.w-pct-67{width:67%}
-.w-pct-68{width:68%}
-.w-pct-69{width:69%}
-.w-pct-70{width:70%}
-.w-pct-71{width:71%}
-.w-pct-72{width:72%}
-.w-pct-73{width:73%}
-.w-pct-74{width:74%}
-.w-pct-75{width:75%}
-.w-pct-76{width:76%}
-.w-pct-77{width:77%}
-.w-pct-78{width:78%}
-.w-pct-79{width:79%}
-.w-pct-80{width:80%}
-.w-pct-81{width:81%}
-.w-pct-82{width:82%}
-.w-pct-83{width:83%}
-.w-pct-84{width:84%}
-.w-pct-85{width:85%}
-.w-pct-86{width:86%}
-.w-pct-87{width:87%}
-.w-pct-88{width:88%}
-.w-pct-89{width:89%}
-.w-pct-90{width:90%}
-.w-pct-91{width:91%}
-.w-pct-92{width:92%}
-.w-pct-93{width:93%}
-.w-pct-94{width:94%}
-.w-pct-95{width:95%}
-.w-pct-96{width:96%}
-.w-pct-97{width:97%}
-.w-pct-98{width:98%}
-.w-pct-99{width:99%}
-.w-pct-100{width:100%}
+.pregunta{border:1px solid var(--line-soft);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;background:var(--panel-2)}
+.pregunta.lista{opacity:.65;background:transparent}
+.pregunta p.q{margin:0 0 4px;font-weight:500;color:var(--ink)}
+.pregunta p.ctx{margin:0 0 11px;font-size:12.5px;color:var(--ink-3)}
+.pregunta form{display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap}
+.pregunta form input{flex:1 1 220px}
+.pregunta .resp{display:flex;align-items:center;gap:7px;font-family:var(--f-mono);font-size:12.5px;color:var(--ok);margin:0}
+.pregunta .resp svg{width:14px;height:14px;flex:none}
+
+.rango{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline}
+.rango div span{display:block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.rango div b{font-family:var(--f-mono);font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rango .destacado b{font-family:var(--f-display);font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.lista-falta{margin:7px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.lista-falta li{font-size:13px;line-height:1.45}
+
+.dos-firmas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:14px;margin-top:4px}
+.via{border:1px solid var(--line-soft);border-radius:var(--r);padding:16px 18px;background:var(--panel-2);display:flex;flex-direction:column;gap:9px}
+.via h3{font-family:var(--f-ui);font-size:14.5px;font-weight:600;margin:0}
+.via p{font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
+.via .ayuda{margin:0}
+.via .btn{align-self:flex-start;margin-top:auto}
 
 /* Las preguntas entran escalonadas, y las ya respondidas se apagan con
    transicion en vez de aparecer apagadas de golpe. */
 @keyframes preguntaEntra{from{opacity:0;transform:translate3d(0,8px,0)}to{opacity:1;transform:none}}
-.pregunta{
-  animation:preguntaEntra .4s var(--ease-out) backwards;
-  transition:opacity .3s ease, border-color .3s ease, transform .3s var(--ease-out);
-}
+.pregunta{animation:preguntaEntra .4s var(--ease-out) backwards;
+  transition:opacity .3s ease,border-color .3s ease,transform .3s var(--ease-out)}
 .pregunta:nth-of-type(1){animation-delay:.04s}
 .pregunta:nth-of-type(2){animation-delay:.08s}
 .pregunta:nth-of-type(3){animation-delay:.12s}
@@ -199,36 +64,87 @@ main{max-width:900px}
 @media (prefers-reduced-motion:reduce){
   .pregunta{animation:none;transition:none}
   .pregunta:not(.lista):hover{transform:none}
-  .avance .hecho{transition:none}
 }
 {% endblock %}
 {% block cuerpo %}
 {% with activo='propuestas' %}{% include "_nav.html" %}{% endwith %}
-<main>
+<main class="estrecho">
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
-  <div class="tarjeta cabecera">
-    <span class="ent">{{ p.entidad or '—' }}</span>
-    <h1>{{ p.objeto or 'Propuesta sin licitación asociada' }}</h1>
-    <div class="metas">
-      <div><span>Empresa</span><b>{{ p.razon_social }}</b></div>
-      <div><span>Estado</span><b>{{ p.estado }}</b></div>
-      <div><span>Cierre</span><b>{{ p.fecha_cierre.strftime('%d/%m/%Y') if p.fecha_cierre else '—' }}</b></div>
-      <div><span>Referencial</span><b>{% if p.monto_referencial %}S/ {{ '{:,.0f}'.format(p.monto_referencial) }}{% else %}—{% endif %}</b></div>
-      <div><span>Tu oferta</span><b>{% if p.precio_ofertado %}S/ {{ '{:,.0f}'.format(p.precio_ofertado) }}{% else %}sin fijar{% endif %}</b></div>
+  <div class="cab-pag">
+    <div>
+      <p class="miga"><a href="/propuestas">Propuestas</a><span>›</span><span>{{ p.razon_social }}</span></p>
+      <span class="rotulo">{{ p.entidad or '—' }}</span>
+      <h1 class="ficha">{{ p.objeto or 'Propuesta sin licitación asociada' }}</h1>
+    </div>
+    {# Las bases del proceso, a mano: antes iban en una tarjeta al final que
+       salia vacia cuando no habia enlaces. #}
+    <div class="cab-acc">
+      {% if p.bases_urls %}{% for u in p.bases_urls %}
+        <a class="btn sec" href="{{ u }}" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
+          Bases (PDF {{ loop.index }})
+        </a>
+      {% endfor %}{% endif %}
+      {% if p.licitacion_id %}<a class="btn fantasma" href="/licitacion/{{ p.licitacion_id }}">Ver licitación</a>{% endif %}
     </div>
   </div>
 
+  {# El JS anima `.metas b` cuando el texto es un entero; aqui todos llevan
+     "S/" o letras y se quedan quietos, pero la clase se conserva por
+     contrato. #}
   <div class="tarjeta">
-    <h2>Lo que falta {% if pendientes %}<span class="pill pend">{{ pendientes | length }}</span>{% endif %}</h2>
+    <dl class="datos-ficha metas">
+      <div><dt>Empresa</dt><dd><b>{{ p.razon_social }}</b></dd></div>
+      <div><dt>Estado</dt><dd><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></dd></div>
+      <div><dt>Cierre</dt><dd class="num"><b>{{ p.fecha_cierre.strftime('%d/%m/%Y') if p.fecha_cierre else '—' }}</b></dd></div>
+      <div><dt>Referencial</dt><dd class="num"><b>{% if p.monto_referencial %}S/ {{ '{:,.0f}'.format(p.monto_referencial) }}{% else %}—{% endif %}</b></dd></div>
+      <div><dt>Tu oferta</dt><dd class="num"><b>{% if p.precio_ofertado %}S/ {{ '{:,.0f}'.format(p.precio_ofertado) }}{% else %}<span class="sin">sin fijar</span>{% endif %}</b></dd></div>
+    </dl>
+  </div>
+
+  {# El camino entero, de un vistazo. Cada paso enlaza con su tarjeta de mas
+     abajo; el actual es el primero que no esta hecho. #}
+  {% set paso_preguntas = not pendientes %}
+  {% set paso_precio = p.precio_ofertado %}
+  {% set paso_docs = p.propuesta_tecnica_path or p.propuesta_economica_path %}
+  {% set paso_zip = p.expediente_zip_path %}
+  {% set ns = namespace(actual=false) %}
+  <div class="tarjeta">
+    <h2>Avance</h2>
+    <ul class="pasos">
+      {% for hecho, titulo, detalle, ancla, accion in [
+          (paso_preguntas, 'Responder lo que falta', 'Lo que contestas queda guardado para las siguientes propuestas.', '#preguntas', 'Responder'),
+          (paso_precio, 'Fijar el precio', 'Con el histórico de adjudicaciones parecidas como referencia.', '#precio', 'Fijar precio'),
+          (paso_docs, 'Generar los documentos', 'Anexos y declaraciones con los datos de la empresa.', '#expediente', 'Generar'),
+          (paso_zip, 'Armar el expediente', 'El ZIP listo para subir a SEACE.', '#expediente', 'Armar ZIP'),
+      ] %}
+        {% set es_actual = (not hecho) and (not ns.actual) %}
+        {% if es_actual %}{% set ns.actual = true %}{% endif %}
+        <li class="{% if hecho %}listo{% elif es_actual %}actual{% endif %}">
+          <span class="marcador" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></span>
+          <div><b>{{ titulo }}</b><p>{{ detalle }}</p></div>
+          {% if not hecho %}<a class="btn chico {% if es_actual %}sec{% else %}fantasma{% endif %}" href="{{ ancla }}">{{ accion }}</a>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="tarjeta" id="preguntas">
+    <div class="cab-tarjeta">
+      <h2>Lo que falta</h2>
+      {% if pendientes %}<span class="pill pend">{{ pendientes | length }} pendiente{{ 's' if pendientes|length != 1 }}</span>{% endif %}
+    </div>
     {# La barra sale solo cuando hay preguntas: con cero, una barra al 100%
        felicitaria por no haber hecho nada. #}
     {% if preguntas %}
       {% set total = preguntas | length %}
       {% set hechas = total - (pendientes | length) %}
       <div class="avance{% if hechas == total %} completo{% endif %}">
-        <span class="pista"><span class="hecho w-pct-{{ (hechas * 100 // total) }}"></span></span>
+        <div class="progreso" role="progressbar" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ hechas }}" aria-label="Preguntas respondidas">
+          <span class="sfill p{{ ((hechas * 100 / total) / 5)|round|int * 5 }}"></span>
+        </div>
         <span class="txt">
           <span><b>{{ hechas }}</b> de <b>{{ total }}</b> respondidas</span>
           <span>{% if hechas == total %}Listo para generar documentos{% else %}Faltan {{ total - hechas }}{% endif %}</span>
@@ -236,7 +152,7 @@ main{max-width:900px}
       </div>
     {% endif %}
     {% if not preguntas %}
-      <p class="sub">No hay preguntas pendientes. Puedes generar los documentos.</p>
+      <p class="sub mb-0">No hay preguntas pendientes. Puedes generar los documentos.</p>
     {% elif not pendientes %}
       <p class="sub">Respondiste todo. Lo que contestas queda guardado y no se te vuelve
          a preguntar en las siguientes propuestas.</p>
@@ -248,19 +164,20 @@ main{max-width:900px}
         <p class="q">{{ q.pregunta }}</p>
         {% if q.contexto %}<p class="ctx">{{ q.contexto }}</p>{% endif %}
         {% if q.respondida %}
-          <p class="resp">✓ {{ q.respuesta }}</p>
+          <p class="resp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg><span class="visualmente-oculto">Respondida:</span> {{ q.respuesta }}</p>
         {% else %}
           <form method="post" action="/propuestas/{{ p.id }}/responder">
             <input type="hidden" name="pregunta_id" value="{{ q.id }}">
-            <input type="text" name="respuesta" required placeholder="Tu respuesta">
-            <button type="submit">Guardar</button>
+            <label class="visualmente-oculto" for="resp-{{ q.id }}">Tu respuesta</label>
+            <input type="text" id="resp-{{ q.id }}" name="respuesta" required placeholder="Tu respuesta">
+            <button type="submit" class="sec">Guardar</button>
           </form>
         {% endif %}
       </div>
     {% endfor %}
   </div>
 
-  <div class="tarjeta">
+  <div class="tarjeta" id="precio">
     <h2>Precio</h2>
     {% if precio %}
       <div class="rango">
@@ -272,9 +189,9 @@ main{max-width:900px}
          rango sobre cinco muestras y otro sobre ochenta se leen igual si no
          se dice. #}
       {% if precio.nota %}
-        <p class="sub">{{ precio.nota }}</p>
+        <p class="sub mt-12">{{ precio.nota }}</p>
       {% else %}
-        <p class="sub">La mitad central de {{ precio.muestras }} licitación(es)
+        <p class="sub mt-12">La mitad central de {{ precio.muestras }} licitación(es)
            parecida(s). Los extremos de esa muestra van de
            S/ {{ '{:,.0f}'.format(precio.extremo_min) }} a
            S/ {{ '{:,.0f}'.format(precio.extremo_max) }}: el emparejamiento es
@@ -284,14 +201,16 @@ main{max-width:900px}
     {% else %}
       <p class="sub">Sin monto referencial ni histórico comparable, no hay nada que estimar.</p>
     {% endif %}
-    <form method="post" action="/propuestas/{{ p.id }}/precio" class="acciones mt-14">
-      <input class="w-190" type="number" name="precio" step="0.01" min="0"
-             value="{{ p.precio_ofertado or '' }}" placeholder="S/ 0.00" required>
-      <button type="submit">Guardar precio</button>
+    <form method="post" action="/propuestas/{{ p.id }}/precio" class="fila">
+      <label class="campo w-190" for="precio-input"><span>Tu oferta (S/)</span>
+        <input id="precio-input" type="number" name="precio" step="0.01" min="0" inputmode="decimal"
+               value="{{ p.precio_ofertado or '' }}" placeholder="0.00" required>
+      </label>
+      <button type="submit" class="sec">Guardar precio</button>
     </form>
   </div>
 
-  <div class="tarjeta">
+  <div class="tarjeta" id="expediente">
     <h2>Expediente</h2>
 
     {% if validacion %}
@@ -299,10 +218,12 @@ main{max-width:900px}
         {# Bloquean. Sin estos campos la entidad devuelve la oferta en mesa de
            partes, y enterarse allí es enterarse cuando ya venció el plazo. #}
         <div class="mensaje mal">
-          <strong>Falta esto para poder armar el expediente:</strong>
-          <ul class="lista-falta">
-            {% for f in validacion.faltantes %}<li>{{ f.desc }}</li>{% endfor %}
-          </ul>
+          <div>
+            <strong>Falta esto para poder armar el expediente:</strong>
+            <ul class="lista-falta">
+              {% for f in validacion.faltantes %}<li>{{ f.desc }}</li>{% endfor %}
+            </ul>
+          </div>
         </div>
       {% else %}
         <p class="sub">Los {{ validacion.requeridos_total }} datos obligatorios están completos.</p>
@@ -312,29 +233,36 @@ main{max-width:900px}
         {# No bloquean: se puede presentar sin equipo técnico registrado, solo
            se puntúa peor. Avisar sin impedir. #}
         <div class="mensaje aviso">
-          <strong>Se puede presentar así, pero conviene revisar:</strong>
-          <ul class="lista-falta">
-            {% for w in validacion.warnings %}<li>{{ w }}</li>{% endfor %}
-          </ul>
+          <div>
+            <strong>Se puede presentar así, pero conviene revisar:</strong>
+            <ul class="lista-falta">
+              {% for w in validacion.warnings %}<li>{{ w }}</li>{% endfor %}
+            </ul>
+          </div>
         </div>
       {% endif %}
     {% endif %}
 
     <p class="sub">Genera los anexos y declaraciones con los datos de la empresa, y arma
        el ZIP para subir a SEACE.</p>
-    <div class="acciones">
+    {# Una sola accion principal: descargar si el ZIP ya existe; si no,
+       armarlo. Generar documentos es el paso previo y va en secundario. #}
+    <div class="btn-grupo">
       <form method="post" action="/propuestas/{{ p.id }}/generar">
         <button type="submit" class="sec">Generar documentos</button></form>
       <form method="post" action="/propuestas/{{ p.id }}/expediente">
-        <button type="submit" class="sec"
+        <button type="submit" class="{% if p.expediente_zip_path %}sec{% endif %}"
                 {% if validacion and validacion.faltantes %}disabled{% endif %}>Armar expediente ZIP</button></form>
       {% if p.expediente_zip_path %}
-        <a class="btn" href="/propuestas/{{ p.id }}/descargar">Descargar ZIP</a>
+        <a class="btn" href="/propuestas/{{ p.id }}/descargar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Descargar ZIP
+        </a>
       {% endif %}
     </div>
   </div>
 
-  <div class="tarjeta">
+  <div class="tarjeta" id="firma">
     <h2>Declaración jurada para firmar</h2>
     <p class="sub">La Declaración Jurada de Datos del Postor, en PDF y con los
        datos de tu empresa ya puestos.</p>
@@ -349,7 +277,7 @@ main{max-width:900px}
            chip de tu DNI y no sale nunca; nosotros solo preparamos el documento.
            Cualquier servicio que te ofrezca firmar con tu DNIe "en la nube" o te
            está pidiendo el PIN, o no está usando el DNIe de verdad.</p>
-        <a class="btn" href="/propuestas/{{ p.id }}/declaracion-jurada?modo=dnie">
+        <a class="btn sec" href="/propuestas/{{ p.id }}/declaracion-jurada?modo=dnie">
           Descargar para firmar con DNIe</a>
       </div>
       <div class="via">
@@ -366,14 +294,6 @@ main{max-width:900px}
     <p class="ayuda mt-14">¿Todavía no cargaste tu firma o tu
        sello? Se suben en
        <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
-  </div>
-
-  <div class="tarjeta">
-    <h2>Bases del proceso</h2>
-    {% if p.bases_urls %}
-      <p class="ayuda mt-14">Bases:
-        {% for u in p.bases_urls %}<a href="{{ u }}" target="_blank" rel="noopener">PDF {{ loop.index }}</a> {% endfor %}</p>
-    {% endif %}
   </div>
 </main>
 {% endblock %}

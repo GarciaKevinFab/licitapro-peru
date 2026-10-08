@@ -1,16 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LicitaPro">
-  <!-- OPCION B: anillo continuo con un solo hueco -->
-  <rect width="64" height="64" rx="14" fill="#0A0D12"/>
-  <g fill="#2B7C6A">
-    <circle cx="22.0" cy="11.0" r="1.8"/>
-    <circle cx="50.5" cy="11.8" r="1.9"/>
-    <circle cx="10.5" cy="27.0" r="2.0"/>
-    <circle cx="16.0" cy="46.5" r="1.9"/>
-    <circle cx="32.8" cy="53.5" r="1.9"/>
-    <circle cx="51.0" cy="50.8" r="1.7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Misma geometria que marca.svg (el icono de la cabecera y del pie),
+       sobre un cuadrado redondeado del grafito de la app. Antes el favicon
+       era otra "opcion" del logotipo y no coincidia con la marca visible. -->
+  <rect width="64" height="64" rx="14" fill="#0E1217"/>
+  <g fill="#3FE0B5" opacity=".42">
+    <circle cx="14.5" cy="15.5" r="2.2"/><circle cx="50.5" cy="17" r="1.9"/><circle cx="15.5" cy="48.5" r="2"/>
   </g>
-  <circle cx="40.2" cy="31.4" r="5.0" fill="#34E0B4"/>
-  <circle cx="40.2" cy="31.4" r="12.0" fill="none" stroke="#34E0B4"
-          stroke-width="2.7" stroke-linecap="round"
-          stroke-dasharray="63 12" transform="rotate(-108 40.2 31.4)"/>
+  <circle cx="32" cy="32" r="6.4" fill="#3FE0B5"/>
+  <circle cx="32" cy="32" r="15.2" fill="none" stroke="#3FE0B5" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
 </svg>

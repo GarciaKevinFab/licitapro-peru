@@ -55,6 +55,21 @@ UMBRAL_CORRIDAS = 12
 #   muere a las 8, se sabe antes del almuerzo.
 UMBRAL_SILENCIO_HORAS = 6
 
+# Horas desde la convocatoria MAS RECIENTE que entro, a partir de las cuales
+# la fuente esta rezagada aunque el puente lea con normalidad.
+#
+#   Es la tercera averia, y las otras dos no la ven. El 2026-10-07 el puente
+#   leia 800 releases cada 4 horas (no estaba mudo) y en cada pasada alguno
+#   cambiaba de estado (la racha no crecia), pero la licitacion mas nueva de
+#   la base tenia cinco dias: OECE habia dejado de publicar en su API y nadie
+#   se entero. `/salud` decia "0.9 horas".
+#
+#   Tres dias y no uno porque la API publica con retraso de uno a tres dias
+#   en condiciones normales (comprobado con las fechas de publicacion frente a
+#   las de entrada en la base). Avisar antes seria avisar cada fin de semana
+#   largo, y un aviso que salta solo deja de leerse.
+UMBRAL_REZAGO_HORAS = 72
+
 # Hora de Lima a la que se repite el aviso mientras siga el silencio.
 #
 #   El recordatorio NO va por modulo de horas transcurridas, como si va el de
@@ -139,6 +154,28 @@ async def horas_sin_cosecha(fuente: str = FUENTE_PRINCIPAL) -> float | None:
     return float(horas) if horas is not None else None
 
 
+async def horas_de_rezago(fuente: str = FUENTE_PRINCIPAL) -> float | None:
+    """Horas desde la fecha de publicacion mas reciente que tiene la fuente.
+
+    Mide la frescura del DATO, no de la cosecha: `horas_sin_cosecha` dice
+    cuando fue la ultima vez que el puente leyo algo; esto dice de cuando es
+    lo mas nuevo que leyo. Pueden separarse dias, y cuando lo hacen la averia
+    esta en OECE y no en el puente.
+
+    `fecha_publicacion` se guarda como hora de pared de Lima sin zona, y NOW()
+    de esta base va en UTC: se compara contra `NOW() AT TIME ZONE
+    'America/Lima'`, el mismo giro que usa `licitaciones_para_usuario`. None
+    si la fuente no tiene ninguna fila.
+    """
+    async with connection() as conn:
+        horas = await conn.fetchval(
+            """SELECT EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE 'America/Lima')
+                                          - MAX(fecha_publicacion))) / 3600.0
+                 FROM licitaciones
+                WHERE fuente = $1""", fuente)
+    return float(horas) if horas is not None else None
+
+
 async def _hora_de_lima() -> int:
     """La hora en Lima, convertida explicitamente.
 
@@ -187,11 +224,16 @@ async def revisar(fuente: str = FUENTE_PRINCIPAL) -> dict:
     """
     racha = await racha_sin_novedades(fuente)
     horas = await horas_sin_cosecha(fuente)
+    rezago = await horas_de_rezago(fuente)
 
     # Sin ninguna cosecha en la tabla no se puede medir silencio: seria un aviso
     # permanente en una base recien creada. Se trata como "aun no hay dato".
     muda = horas is not None and horas >= UMBRAL_SILENCIO_HORAS
     seca = racha >= UMBRAL_CORRIDAS
+    # REZAGADA: el puente lee, pero lo que lee es viejo. Va detras de las otras
+    # dos porque las dos la explican: sin cosecha o sin novedades, que el dato
+    # mas nuevo envejezca es consecuencia, no diagnostico.
+    rezagada = rezago is not None and rezago >= UMBRAL_REZAGO_HORAS
 
     if muda:
         # Se avisa al cruzar el umbral y despues una vez al dia a la misma
@@ -206,12 +248,20 @@ async def revisar(fuente: str = FUENTE_PRINCIPAL) -> dict:
         avisar = (racha == UMBRAL_CORRIDAS
                   or (racha - UMBRAL_CORRIDAS) % 24 == 0)
         motivo = "sequia"
+    elif rezagada:
+        # Misma regla que el silencio: al cruzar, y despues una vez al dia.
+        # La ventana del cruce es de 4 horas porque el rezago solo baja cuando
+        # el puente trae algo nuevo, y el puente pasa cada 4.
+        cruce = UMBRAL_REZAGO_HORAS <= rezago < UMBRAL_REZAGO_HORAS + 4
+        avisar = cruce or (await _hora_de_lima()) == HORA_RECORDATORIO
+        motivo = "rezago"
     else:
         avisar = False
         motivo = None
 
     return {"fuente": fuente, "racha": racha, "seca": seca,
             "horas_silencio": horas, "muda": muda,
+            "horas_rezago": rezago, "rezagada": rezagada,
             "motivo": motivo, "avisar": avisar}
 
 
@@ -232,6 +282,23 @@ def mensaje(estado: dict) -> str:
             f"3. Las ultimas lineas de <code>data/traer_oece.log</code>.\n\n"
             f"Mientras siga asi, el panel de todos los clientes se queda con "
             f"lo viejo."
+        )
+
+    if estado.get("motivo") == "rezago":
+        dias = (estado["horas_rezago"] or 0) / 24
+        return (
+            f"⏳ <b>La convocatoria mas reciente de {estado['fuente']} tiene "
+            f"{dias:.1f} dias.</b>\n\n"
+            f"El puente esta leyendo con normalidad, pero lo que OECE publica "
+            f"en su API no avanza: no es la PC, es la fuente.\n\n"
+            f"Comprobar desde una conexion peruana:\n"
+            f"<code>contratacionesabiertas.oece.gob.pe/api/v1/releases?page=1</code>\n"
+            f"y mirar el campo <code>date</code> del primer release. Si tambien "
+            f"es viejo, es OECE y no hay nada que arreglar aqui; si es de hoy, "
+            f"el puente esta leyendo paginas equivocadas y hay que revisar "
+            f"<code>data/traer_oece.log</code>.\n\n"
+            f"Mientras tanto gob.pe y los portales de cotizaciones siguen "
+            f"entrando; lo que falta son las licitaciones grandes."
         )
 
     return (

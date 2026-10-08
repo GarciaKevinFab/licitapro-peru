@@ -3,63 +3,96 @@
 {% set titulo_pagina = 'Empresas' %}
 {% set sub_pagina = 'Con estos datos se llenan los anexos y las declaraciones juradas. Cuanto más completos estén, menos te preguntará el sistema después.' %}
 {% block estilos %}
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
-
+/* Los rubros son una lista corta de pastillas y no un texto recortado a 60
+   caracteres: se leen de un vistazo y no cortan una palabra por la mitad. */
+.rubros{display:flex;flex-wrap:wrap;gap:4px;max-width:260px}
+/* Las dos acciones de la fila van juntas y alineadas a la derecha; en movil,
+   con la tabla apilada, ocupan el ancho y se separan del resto. */
+td.acciones{text-align:right;white-space:nowrap}
+td.acciones .btn-grupo{justify-content:flex-end;flex-wrap:nowrap}
+/* En movil la primera celda es flex (rotulo + valor): el nombre y su
+   representante van en un bloque para que no se repartan a los lados. */
+td .dos-lineas{display:flex;flex-direction:column}
+@media (max-width:640px){
+  table.apilada td.acciones{justify-content:flex-end;padding-top:10px}
+  table.apilada td.acciones::before{content:none}
+}
 {% endblock %}
 {% block nav %}{% with activo='empresas' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
-  {% if empresas %}<div class="cab-acc"><a class="btn" href="/empresas/nueva">Agregar empresa</a></div>{% endif %}
+  {% if empresas %}<div class="cab-acc"><a class="btn" href="/empresas/nueva">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Agregar empresa</a></div>{% endif %}
 {% endblock %}
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
-  <div class="tarjeta">
-    {% if not empresas %}
-      <div class="vacio">
-        <p><strong>Todavía no has cargado ninguna empresa.</strong></p>
-        <p>Necesitas al menos una para poder postular a una licitación.</p>
-        <a class="btn" href="/empresas/nueva">Agregar la primera</a>
-      </div>
-    {% else %}
+
+  {% if not empresas %}
+    <div class="vacio">
+      <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6M9 10h.01M15 10h.01M9 14h.01M15 14h.01"/></svg>
+      <b>Todavía no has cargado ninguna empresa.</b>
+      <p>Necesitas al menos una para poder postular a una licitación. Con el RUC
+         se rellenan solos la razón social, la dirección y la región.</p>
+      <a class="btn" href="/empresas/nueva">Agregar la primera</a>
+    </div>
+  {% else %}
+    <div class="tarjeta sin-relleno">
       <div class="tabla-caja">
-      <table class="datos">
+      {# Apilada en movil: cada celda lleva su rotulo en data-eti. #}
+      <table class="datos apilada">
         <thead><tr><th>Empresa</th><th>RUC</th><th>Región</th><th>Rubros</th>
-          <th class="num">Propuestas</th><th></th></tr></thead>
+          <th>RNP</th><th class="num">Propuestas</th><th></th></tr></thead>
         <tbody>
         {% for e in empresas %}
           <tr>
-            <td><b>{{ e.razon_social }}</b>
-              {% if e.representante_legal %}<span class="ent">{{ e.representante_legal }}</span>{% endif %}</td>
-            <td class="num">{{ e.ruc or '—' }}</td>
-            <td>{{ e.departamento or '—' }}</td>
-            <td>{{ (e.rubros | join(', '))[:60] if e.rubros else '—' }}</td>
-            <td class="num">{{ uso.get(e.id, 0) }}</td>
+            <td data-eti="Empresa"><span class="dos-lineas"><span class="obj">{{ e.razon_social }}</span>
+              {% if e.representante_legal %}<span class="ent">{{ e.representante_legal }}</span>{% endif %}</span></td>
+            <td data-eti="RUC" class="codigo">{% if e.ruc %}{{ e.ruc }}{% else %}<span class="nd">—</span>{% endif %}</td>
+            <td data-eti="Región">{{ e.departamento or '—' }}</td>
+            <td data-eti="Rubros">
+              {% if e.rubros %}
+                <span class="rubros">
+                  {% for r in e.rubros[:3] %}<span class="pill neutro">{{ r }}</span>{% endfor %}
+                  {% if e.rubros | length > 3 %}<span class="pill neutro" title="{{ e.rubros[3:] | join(', ') }}">+{{ e.rubros | length - 3 }}</span>{% endif %}
+                </span>
+              {% else %}<span class="nd">—</span>{% endif %}
+            </td>
+            <td data-eti="RNP">
+              {# El estado (vigente / vencido) necesita la fecha de hoy. La ruta
+                 del listado aun no la pasa: mientras tanto se ensena la fecha
+                 en neutro, y en cuanto `hoy` llegue en el contexto el color se
+                 enciende solo. Ver docs/diseno/PENDIENTE-cuenta.md. #}
+              {% if e.rnp_vigencia %}
+                {% if hoy is defined and hoy %}
+                  {% set dias = (e.rnp_vigencia - hoy).days %}
+                  {% if dias < 0 %}<span class="pill urg">vencido</span>
+                  {% elif dias <= 30 %}<span class="pill pend">vence en {{ dias }} d</span>
+                  {% else %}<span class="pill ok">vigente</span>{% endif %}
+                {% else %}
+                  <span class="pill neutro">vence {{ e.rnp_vigencia.strftime('%d/%m/%Y') }}</span>
+                {% endif %}
+              {% else %}
+                <span class="nd">sin fecha</span>
+              {% endif %}
+            </td>
+            <td data-eti="Propuestas" class="num">{{ uso.get(e.id, 0) }}</td>
             <td class="acciones">
-              <a class="btn sec" href="/empresas/{{ e.id }}/editar">Editar</a>
-              <form method="post" action="/empresas/{{ e.id }}/desactivar"
-                    data-confirmar="¿Desactivar esta empresa? Sus propuestas y contratos se conservan.">
-                <button type="submit" class="peligro">Desactivar</button>
-              </form>
+              <div class="btn-grupo">
+                <a class="btn sec chico" href="/empresas/{{ e.id }}/editar">Editar</a>
+                <form method="post" action="/empresas/{{ e.id }}/desactivar"
+                      data-confirmar="¿Desactivar esta empresa? Sus propuestas y contratos se conservan.">
+                  <button type="submit" class="peligro chico">Desactivar</button>
+                </form>
+              </div>
             </td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
-    {% endif %}
-  </div>
+    </div>
+    <p class="ayuda">Desactivar una empresa la saca de los formularios, pero no
+       borra nada: sus propuestas y contratos siguen en tu cuenta.</p>
+  {% endif %}
 {% endblock %}

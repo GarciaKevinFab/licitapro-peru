@@ -1,181 +1,234 @@
 {% extends "_base.html" %}
 {% block titulo %}Contrato · LicitaPro{% endblock %}
 {% block estilos %}
-.pill.mora{background:var(--urg-soft);color:var(--urg)}
-.nota-plazo{border-left:2px solid var(--ac);padding:2px 0 2px 16px;margin-top:18px;
-  display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:var(--ink-2)}
+/* ============================================================================
+   FICHA DE CONTRATO
 
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
+   Tres bloques, en el orden en que pasan las cosas: lo adjudicado (cabecera),
+   los plazos que hay que cumplir (linea de tiempo) y lo que falta por cobrar
+   (cobros). Una columna de 1040px: la tabla de cobros tiene seis columnas y
+   partir la pagina en dos la dejaba deslizandose incluso en escritorio.
+   ========================================================================== */
+main.ficha{max-width:1040px}
 
-main{max-width:900px}
-.cabecera h1{font-family:Sora,sans-serif;font-size:1.3rem;font-weight:600;margin:6px 0 0;
-  letter-spacing:-.02em;line-height:1.3}
-.metas{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px;font-size:13.5px}
-.metas div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:2px}
-.metas div b{font-family:"JetBrains Mono",monospace;font-weight:600;font-variant-numeric:tabular-nums}
-tr.hecho td{opacity:.5}
-tr.vencido td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
+/* Lo que falta por cobrar es la unica cifra que pide atencion: ambar, como
+   en la tabla de contratos (td.cobrar.hay). */
+.datos-ficha dd.hay{color:var(--warn)}
+/* La hoja comun pinta todos los span directos de label.campo como rotulo;
+   la ayuda bajo el campo vuelve a texto normal (anotado en PENDIENTE). */
+label.campo > span.ayuda{font-family:var(--f-ui);font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:400}
 
-/* ---------- EL ESTADO GANA AL PASAR POR ENCIMA ----------
-   _base.html pinta un filo de acento en el primer td al pasar el raton, y esa
-   regla es mas especifica que `tr.vencido td:first-child`. Resultado: la marca
-   roja de un plazo vencido se volvia verde justo al senalarla -- la senal
-   desaparecia en el momento de mirarla.
+/* Linea de tiempo: cada hito lleva su chip de estado y su boton a la
+   derecha; en movil se apilan. */
+.timeline li .hito{display:flex;justify-content:space-between;gap:10px 16px;align-items:flex-start;flex-wrap:wrap}
+.timeline li .hito > div{min-width:0;flex:1 1 220px}
+.timeline li .hito form{flex:none}
+.timeline li.hecho b{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--line-fuerte)}
+.timeline li.vence .cuando{color:var(--urg)}
+.timeline li.pronto .cuando{color:var(--warn)}
+.timeline li:last-child{padding-bottom:4px}
 
-   Estas dos reglas devuelven la prioridad al ESTADO, que es informacion, por
-   encima del hover, que es solo orientacion. */
-table.datos tbody tr.vencido:hover td:first-child{box-shadow:inset 3px 0 0 var(--urg)}
-table.datos tbody tr.hecho:hover td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
-/* Lo hecho tambien se marca, en verde y apagado: sin filo, una fila completada
-   y una normal se distinguian solo por la opacidad, que se pierde de un
-   vistazo en una tabla larga. */
-table.datos tbody tr.hecho td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
-tr.hecho td{transition:opacity .25s ease}
-tr.hecho:hover td{opacity:.8}
+/* La nota del plazo legal: una regla, no una alerta. Filo de acento y
+   lista con lo que pide el MEF. */
+.nota-plazo{border-left:2px solid var(--ac);padding:4px 0 4px 16px;margin-top:20px;
+  font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.nota-plazo p{margin:0 0 8px}
+.nota-plazo p:last-child{margin-bottom:0}
+.nota-plazo b{color:var(--ink)}
+.nota-plazo ul{margin:6px 0 0;padding-left:18px;color:var(--ink-3);font-size:13px}
+.nota-plazo li{margin:2px 0}
+
+/* El estado de un cobro ocupa dos lineas (chip + explicacion) y la tabla
+   no debe estirarlas en una sola. */
+table.datos td.plazo-legal{min-width:220px}
+/* Monto, factura y fecha no se parten: son datos que se leen de un golpe. */
+table.datos td.monto,table.datos td.codigo,table.datos td.fecha{white-space:nowrap}
+table.datos td.plazo-legal .ayuda{margin-top:5px}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}
-<main>
+<main class="ficha">
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
-  <div class="tarjeta cabecera">
-    <span class="ent">{{ c.entidad or '—' }}</span>
-    <h1>{{ c.objeto or 'Contrato' }}</h1>
-    <div class="metas">
-      <div><span>Empresa</span><b>{{ c.razon_social }}</b></div>
-      <div><span>Adjudicado</span><b>{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}—{% endif %}</b></div>
-      <div><span>Cobrado</span><b>S/ {{ '{:,.0f}'.format(cobrado) }}</b></div>
-      <div><span>Por cobrar</span><b>S/ {{ '{:,.0f}'.format(pendiente) }}</b></div>
-      <div><span>Entrega</span><b>{{ c.fecha_entrega_final.strftime('%d/%m/%Y') if c.fecha_entrega_final else '—' }}</b></div>
+  {# ---------- cabecera: que se gano y en que estado esta ---------- #}
+  <div class="cab-pag">
+    <div>
+      <div class="miga"><a href="/contratos">Contratos</a><span aria-hidden="true">/</span><span>{{ c.entidad or 'Sin entidad' }}</span></div>
+      <h1>{{ c.objeto or 'Contrato' }}</h1>
+      <p class="cab-sub">{{ c.razon_social }}{% if c.numero_contrato %} · <span class="codigo">{{ c.numero_contrato }}</span>{% endif %}</p>
     </div>
-    <form method="post" action="/contratos/{{ c.id }}/estado" class="acciones mt-16">
-      <select class="w-180" name="estado">
-        {% for e in estados %}<option value="{{ e }}" {% if c.estado == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
-      </select>
-      <button type="submit" class="sec">Cambiar estado</button>
-    </form>
+    <div class="cab-acc">
+      <form method="post" action="/contratos/{{ c.id }}/estado" class="fila">
+        <label class="campo visualmente-oculto" for="estado-contrato">Estado del contrato</label>
+        <select id="estado-contrato" class="w-190" name="estado">
+          {% for e in estados %}<option value="{{ e }}" {% if c.estado == e %}selected{% endif %}>{{ e | replace('_', ' ') }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="sec">Cambiar estado</button>
+      </form>
+    </div>
   </div>
 
   <div class="tarjeta">
-    <h2>Plazos</h2>
-    <p class="sub">Los vencidos sin completar salen marcados en rojo a la izquierda.</p>
-    {% if plazos %}
-      <div class="tabla-caja">
-      <table class="datos">
-        <thead><tr><th class="num">Fecha</th><th>Hito</th><th>Tipo</th><th></th></tr></thead>
-        <tbody>
-        {% for pl in plazos %}
-          <tr class="{% if pl.completado %}hecho{% elif pl.fecha_limite and pl.fecha_limite < hoy %}vencido{% endif %}">
-            <td class="num">{{ pl.fecha_limite.strftime('%d/%m/%Y') if pl.fecha_limite else '—' }}</td>
-            <td>{{ pl.descripcion }}</td>
-            <td><span class="pill neutro">{{ pl.tipo }}</span></td>
-            <td><form method="post" action="/plazos/{{ pl.id }}/completar">
-              <button type="submit" class="sec">{% if pl.completado %}Reabrir{% else %}Completar{% endif %}</button></form></td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+    <dl class="datos-ficha">
+      <div><dt>Monto adjudicado</dt>
+        <dd class="num grande">{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Cobrado</dt><dd class="num">S/ {{ '{:,.0f}'.format(cobrado) }}</dd></div>
+      <div><dt>Por cobrar</dt><dd class="num{% if pendiente %} hay{% endif %}">S/ {{ '{:,.0f}'.format(pendiente) }}</dd></div>
+      <div><dt>Adjudicación</dt><dd class="num">{{ c.fecha_adjudicacion.strftime('%d/%m/%Y') if c.fecha_adjudicacion else '—' }}</dd></div>
+      <div><dt>Entrega final</dt><dd class="num">{{ c.fecha_entrega_final.strftime('%d/%m/%Y') if c.fecha_entrega_final else '—' }}{% if c.plazo_ejecucion_dias %} <span class="tenue">({{ c.plazo_ejecucion_dias }} días)</span>{% endif %}</dd></div>
+      <div><dt>Estado</dt>
+        <dd><span class="pill {% if c.estado == 'pagado' %}ok{% elif c.estado == 'cancelado' %}neutro{% elif c.estado == 'adjudicado' %}info{% else %}pend{% endif %}">{{ c.estado | replace('_', ' ') }}</span></dd></div>
+    </dl>
+  </div>
+
+  {# ---------- plazos: la linea de tiempo del contrato ---------- #}
+  <div class="tarjeta">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Plazos</h2>
+        <p class="sub">Los vencidos sin completar salen en rojo; los que vencen esta
+           semana, en ámbar. Completa cada hito cuando ocurra.</p>
       </div>
+    </div>
+    {% if plazos %}
+      <ul class="timeline">
+        {% for pl in plazos %}
+          {% set dias = (pl.fecha_limite - hoy).days if pl.fecha_limite else none %}
+          <li class="{% if pl.completado %}hecho{% elif dias is not none and dias < 0 %}vence{% elif dias is not none and dias <= 7 %}pronto{% endif %}">
+            <div class="hito">
+              <div>
+                <span class="cuando">{{ pl.fecha_limite.strftime('%d/%m/%Y') if pl.fecha_limite else 'Sin fecha' }} · {{ pl.tipo }}</span>
+                <b>{{ pl.descripcion }}</b>
+                {% if pl.completado %}
+                  <span class="chip ok">hecho{% if pl.fecha_completado %} el {{ pl.fecha_completado.strftime('%d/%m/%y') }}{% endif %}</span>
+                {% elif dias is not none and dias < 0 %}
+                  <span class="chip urg">vencido hace {{ -dias }} día{% if dias != -1 %}s{% endif %}</span>
+                {% elif dias is not none and dias == 0 %}
+                  <span class="chip pronto">vence hoy</span>
+                {% elif dias is not none and dias <= 7 %}
+                  <span class="chip pronto">en {{ dias }} día{% if dias != 1 %}s{% endif %}</span>
+                {% endif %}
+              </div>
+              <form method="post" action="/plazos/{{ pl.id }}/completar">
+                <button type="submit" class="{% if pl.completado %}fantasma{% else %}sec{% endif %} chico">{% if pl.completado %}Reabrir{% else %}Completar{% endif %}</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
     {% else %}
-      <p class="ayuda">Sin plazos registrados.</p>
+      <p class="ayuda">Sin plazos registrados. Agrega el primero abajo.</p>
     {% endif %}
-    <form method="post" action="/contratos/{{ c.id }}/plazo" class="acciones mt-16">
-      <input class="w-300" type="text" name="descripcion" placeholder="Descripción del hito" required>
-      <input class="w-170" type="date" name="fecha_limite" required>
-      <input class="w-120" type="text" name="tipo" value="hito">
-      <button type="submit" class="sec">Agregar plazo</button>
+    <form method="post" action="/contratos/{{ c.id }}/plazo" class="pie-tarjeta">
+      <div class="rejilla w-total">
+        <label class="campo"><span>Nuevo hito</span>
+          <input type="text" name="descripcion" placeholder="Entrega del primer informe" required></label>
+        <label class="campo"><span>Fecha límite</span>
+          <input type="date" name="fecha_limite" required></label>
+        <label class="campo"><span>Tipo</span>
+          <input type="text" name="tipo" value="hito"></label>
+      </div>
+      <div class="fila derecha w-total">
+        <button type="submit" class="sec">Agregar plazo</button>
+      </div>
     </form>
   </div>
 
+  {# ---------- cobros: lo facturado, lo cobrado y el plazo legal ---------- #}
   <div class="tarjeta">
-    <h2>Cobros</h2>
-    <p class="sub">Registro interno de lo facturado y lo cobrado. No emite comprobantes:
-       la factura electrónica la sigue emitiendo tu contador. La «proforma» es un
-       documento de acompañamiento y lo dice en su portada; no sustituye a la
-       factura ante SUNAT.</p>
-    <p class="sub">
-      <a href="/contratos/{{ c.id }}/conformidad">Descargar acta de conformidad</a>
-      — el plazo legal de pago corre en días hábiles desde la conformidad, no
-      desde la factura, así que tenerla firmada es lo que te deja reclamar con
-      una fecha concreta.
-    </p>
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Cobros</h2>
+        <p class="sub">Registro interno de lo facturado y lo cobrado. No emite comprobantes:
+           la factura electrónica la sigue emitiendo tu contador. La «proforma» es un
+           documento de acompañamiento y lo dice en su portada; no sustituye a la
+           factura ante SUNAT.</p>
+      </div>
+      <a class="btn sec" href="/contratos/{{ c.id }}/conformidad">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Acta de conformidad
+      </a>
+    </div>
+    <p class="ayuda mb-16">El plazo legal de pago corre en días hábiles desde la
+       conformidad, no desde la factura: tener el acta firmada es lo que te deja
+       reclamar con una fecha concreta.</p>
     {% if pagos %}
       <div class="tabla-caja">
-      <table class="datos">
-        <thead><tr><th>Concepto</th><th class="num">Factura</th><th class="num">Monto</th>
-          <th>Plazo legal</th><th>Estado</th><th></th></tr></thead>
+      <table class="datos apilada">
+        <thead><tr><th>Concepto</th><th>Factura</th><th class="num">Monto</th>
+          <th class="num">Conformidad</th><th>Plazo legal</th><th>Estado</th><th><span class="visualmente-oculto">Acciones</span></th></tr></thead>
         <tbody>
         {% for pg in pagos %}
           <tr>
-            <td>{{ pg.concepto }}</td>
-            <td class="num">{{ pg.numero_factura or '—' }}</td>
-            <td class="num">S/ {{ '{:,.2f}'.format(pg.monto or 0) }}</td>
-            <td>
-              {% if pg.estado == 'pagado' %}<span class="ayuda">cobrado</span>
+            <td data-eti="Concepto"><span><span class="desc">{{ pg.concepto }}</span>{% if pg.expediente_siaf %}<span class="ent">SIAF {{ pg.expediente_siaf }}</span>{% endif %}</span></td>
+            <td class="codigo" data-eti="Factura">{{ pg.numero_factura or '—' }}</td>
+            <td class="num monto" data-eti="Monto">S/ {{ '{:,.2f}'.format(pg.monto or 0) }}</td>
+            <td class="num fecha" data-eti="Conformidad">{{ pg.fecha_conformidad.strftime('%d/%m/%Y') if pg.fecha_conformidad else '—' }}</td>
+            <td class="plazo-legal" data-eti="Plazo legal"><span>
+              {% if pg.estado == 'pagado' %}
+                <span class="tenue">cobrado{% if pg.fecha_pago_real %} el {{ pg.fecha_pago_real.strftime('%d/%m/%Y') }}{% endif %}</span>
               {% elif not pg.fecha_limite_pago %}
-                <span class="ayuda">sin conformidad: el plazo no corre aún</span>
+                <span class="tenue">sin conformidad: el plazo no corre aún</span>
               {% elif pg.dias_mora == 0 %}
-                vence el {{ pg.fecha_limite_pago.strftime('%d/%m/%Y') }}
+                vence el <span class="fecha">{{ pg.fecha_limite_pago.strftime('%d/%m/%Y') }}</span>
               {% elif pg.en_prorroga %}
-                <span class="pill pend">{{ pg.dias_mora }} día(s) pasado</span>
+                <span class="pill pend">{{ pg.dias_mora }} día{% if pg.dias_mora != 1 %}s{% endif %} pasado{% if pg.dias_mora != 1 %}s{% endif %}</span>
                 <div class="ayuda">Aún puede ampararse en la prórroga de 5 días.</div>
               {% else %}
-                <span class="pill mora">{{ pg.dias_mora }} días hábiles de mora</span>
+                <span class="pill urg">{{ pg.dias_mora }} días hábiles de mora</span>
                 <div class="ayuda">Venció el {{ pg.fecha_limite_pago.strftime('%d/%m/%Y') }}. Ya puedes reclamar.</div>
               {% endif %}
-            </td>
-            <td><span class="pill {% if pg.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ pg.estado }}</span></td>
-            <td class="acciones">
-              <a class="btn sec" href="/contratos/{{ c.id }}/pagos/{{ pg.id }}/proforma">Proforma</a>
+            </span></td>
+            <td data-eti="Estado"><span class="pill {% if pg.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ pg.estado }}</span></td>
+            <td class="acciones" data-eti=""><span class="btn-grupo">
+              <a class="btn sec chico" href="/contratos/{{ c.id }}/pagos/{{ pg.id }}/proforma">Proforma</a>
               {% if pg.estado != 'pagado' %}
                 <form method="post" action="/pagos/{{ pg.id }}/cobrado">
-                  <button type="submit" class="sec">Marcar cobrado</button></form>
-              {% else %}<span class="ayuda">{{ pg.fecha_pago_real.strftime('%d/%m/%y') if pg.fecha_pago_real else '' }}</span>{% endif %}</td>
+                  <button type="submit" class="chico">Marcar cobrado</button></form>
+              {% endif %}
+            </span></td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
     {% else %}
-      <p class="ayuda">Sin movimientos registrados.</p>
+      <p class="ayuda">Sin movimientos registrados. Anota la primera factura abajo.</p>
     {% endif %}
-    <div class="nota-plazo">
+
+    <aside class="nota-plazo">
       <p><b>El plazo lo marca la conformidad, no la factura.</b> Por la Ley 32069
          la entidad tiene 10 días hábiles desde que da conformidad para pagarte,
          ampliables 5 si lo justifica. Anota esa fecha y llevamos la cuenta —
          contando feriados peruanos.</p>
-      <p class="ayuda">Para ver en qué fase va tu expediente en el MEF hay que
-         entrar a
+      <p>Para ver en qué fase va tu expediente en el MEF hay que entrar a
          <a href="{{ consulta_mef.url }}" target="_blank" rel="noopener">su consulta oficial</a>,
          que pide un código de verificación y por eso no podemos hacerla por ti.
-         Necesitarás: {{ consulta_mef.necesitas | join(' ') }}</p>
-    </div>
+         Necesitarás:</p>
+      <ul>
+        {% for n in consulta_mef.necesitas %}<li>{{ n }}</li>{% endfor %}
+      </ul>
+    </aside>
 
-    <form method="post" action="/contratos/{{ c.id }}/pago" class="acciones mt-16">
-      <input class="w-250" type="text" name="concepto" placeholder="Concepto" required>
-      <input class="w-150" type="number" name="monto" step="0.01" min="0" placeholder="Monto" required>
-      <input class="w-150" type="text" name="numero_factura" placeholder="N.º factura">
-      <input class="w-170" type="date" name="fecha_conformidad" title="Fecha de conformidad">
-      <input class="w-160" type="text" name="expediente_siaf" placeholder="Expediente SIAF">
-      <label class="fila-check">
-        <input class="w-auto" type="checkbox" name="cobrado" value="1"> ya cobrado</label>
-      <button type="submit" class="sec">Registrar</button>
+    <form method="post" action="/contratos/{{ c.id }}/pago" class="pie-tarjeta">
+      <div class="rejilla w-total">
+        <label class="campo"><span>Concepto</span>
+          <input type="text" name="concepto" placeholder="Primer entregable" required></label>
+        <label class="campo"><span>Monto (S/)</span>
+          <input type="number" name="monto" step="0.01" min="0" placeholder="0.00" required></label>
+        <label class="campo"><span>N.º de factura</span>
+          <input type="text" name="numero_factura" placeholder="F001-00000123"></label>
+        <label class="campo"><span>Fecha de conformidad</span>
+          <input type="date" name="fecha_conformidad">
+          <span class="ayuda">Desde aquí corre el plazo legal.</span></label>
+        <label class="campo"><span>Expediente SIAF</span>
+          <input type="text" name="expediente_siaf" placeholder="Figura en la orden de compra"></label>
+      </div>
+      <div class="fila entre w-total">
+        <label class="check"><input type="checkbox" name="cobrado" value="1"> Ya está cobrado</label>
+        <button type="submit">Registrar</button>
+      </div>
     </form>
   </div>
 </main>

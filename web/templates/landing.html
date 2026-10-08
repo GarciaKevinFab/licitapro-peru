@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>LicitaPro Perú — Del aviso de la licitación hasta que te pagan</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Otros te avisan de la licitación y ahí te dejan. Nosotros vigilamos el SEACE, te avisamos al correo, preparamos el expediente y perseguimos el pago de la entidad hasta que cobras.">
+<meta name="description" content="Vigilamos el SEACE y los contratos menores del OECE en las 25 regiones, te avisamos por correo, Telegram y WhatsApp, preparamos el expediente y seguimos el pago de la entidad hasta que cobras.">
 <link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
 {# ---------- TARJETA AL COMPARTIR (Open Graph) ----------
    En Peru el enlace se comparte por WhatsApp, y sin estas etiquetas WhatsApp
@@ -28,546 +28,286 @@
 <meta property="og:image:alt" content="LicitaPro Perú: encontrar la licitación es la parte fácil; nosotros llegamos hasta el cobro.">
 <meta name="twitter:card" content="summary_large_image">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Sora:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,200;9..40,300;9..40,400;9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap">
+{# La portada usa LA MISMA hoja que la aplicacion (tokens, fuentes
+   autoalojadas, botones, planes). Antes traia cuatro familias de Google Fonts
+   y una paleta propia: quien entraba desde aqui al panel cambiaba de producto
+   sin cambiar de dominio. Ver docs/diseno/SISTEMA.md. #}
+<link rel="preload" href="{{ estatico('fonts/Fraunces-normal-300-900-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ estatico('fonts/IBMPlexSans-normal-400-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ estatico('licitapro.css') }}">
 
 <style nonce="{{ request.state.csp_nonce }}">
 /* ============================================================================
-   LICITAPRO — PORTADA
+   LICITAPRO — PORTADA (solo lo exclusivo de la portada)
 
-   QUE ESTABA MAL, Y POR QUE PARECIA AMATEUR
-
-     No eran los colores ni la tipografia: era que todo pesaba lo mismo.
-     Titulares de 2rem al lado de parrafos de 1rem, secciones separadas por
-     60px, y ningun momento en que la pagina se callara. Esa densidad es
-     CORRECTA dentro del panel, donde se trabaja. En la portada, donde se
-     decide, es ruido.
-
-   LOS TRES CAMBIOS QUE HACEN EL TRABAJO
-
-     1. Contraste tipografico real: el titular mide ocho veces el cuerpo, no dos.
-     2. Ritmo vertical generoso y constante, derivado de UNA sola variable.
-     3. Cuerpo ligero a tamano grande (300 a 19px) en vez de normal a 15px.
-        Es lo que da el aire caro, y no cuesta nada.
+   Aqui no hay colores ni fuentes: todo sale de los tokens de licitapro.css.
+   Lo que si es propio de esta pagina es el RITMO (secciones anchas, titular
+   ocho veces el cuerpo, cuerpo mas grande que en el panel) y cuatro piezas
+   que no existen dentro de la app: el hero con mascaras por linea, el canvas
+   del territorio, el anillo del puntaje y la comparativa de planes.
    ========================================================================== */
-
-:root{
-  --bg:#06080B; --bg-2:#0B0F14; --panel:#0E141A;
-  --line:#1A242C; --hair:#141C23;
-  --txt:#F2F6F8; --txt-2:#9FB0BA; --txt-3:#7B8C95;
-  --mint:#34E0B4; --mint-2:#1D9B7C; --mint-glow:rgba(52,224,180,.14);
-  --amber:#FFB259; --red:#FF6B60;
-
-  /* RITMO: todo el espaciado sale de aqui. Una variable fluida significa que
-     el ritmo no se rompe entre movil y escritorio: se escala entero. */
-  --paso:clamp(20px, 2.5vw, 36px);
-  --seccion:clamp(112px, 15vh, 210px);
-  --maxw:1140px;
-  --gutter:clamp(22px, 5vw, 56px);
-
-  /* Una curva para lo que entra y otra para lo que responde al dedo. Mezclar
-     easings por capricho es lo que hace que una interfaz se sienta
-     descoordinada sin que sepas senalar por que. */
-  --ease:cubic-bezier(.22,1,.36,1);
-  --suave:cubic-bezier(.4,0,.2,1);
+body.portada{
+  --paso:clamp(20px,2.5vw,36px);
+  --seccion:clamp(88px,12vh,170px);
+  --lp-maxw:1140px;
+  --lp-gutter:clamp(20px,5vw,56px);
+  --lp-ease:cubic-bezier(.22,1,.36,1);
+  font-size:clamp(16px,1.05vw,18px);line-height:1.6;overflow-x:hidden;
 }
-
-*{box-sizing:border-box}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{
-  margin:0;background:var(--bg);color:var(--txt);
-  font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  font-size:clamp(16.5px,1.05vw,19px);line-height:1.62;font-weight:300;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  overflow-x:hidden;
-}
-
-/* Escala tipografica: cada nivel claramente distinto del siguiente. Si dos se
-   parecen, sobra uno. La jerarquia la construye el contraste, no los pasos. */
-/* DOS FAMILIAS, Y CADA UNA DONDE RINDE
-
-     Los titulares grandes pasan a Barlow Condensed 900, que es la voz de la
-     casa (la misma de FletePro). Al ser condensada entra un 40% mas de texto
-     por linea: el titular de portada bajo de cuatro lineas a tres, y con eso
-     los botones volvieron a caber sin hacer scroll -- que era el problema real,
-     no el tamano de la letra.
-
-     Sora se queda en los h3, de 1.15 a 1.4rem. Una condensada a ese cuerpo no
-     se lee mejor, se lee apretada: la ventaja de meter mas letra por linea solo
-     existe cuando la linea es enorme. */
-h1,h2,h3{margin:0;text-wrap:balance}
-h1,h2{
-  font-family:"Barlow Condensed",ui-sans-serif,system-ui,sans-serif;
-  font-weight:900;letter-spacing:-.012em;line-height:.9;
-}
-h1{font-size:clamp(3rem,7vw,6.2rem);letter-spacing:-.022em}
-h2{font-size:clamp(2.3rem,5vw,4.1rem);letter-spacing:-.018em}
-h3{font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-weight:600;
-  font-size:clamp(1.15rem,1.7vw,1.4rem);letter-spacing:-.02em;line-height:1.2}
-.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
-a{color:inherit;text-decoration:none}
-:focus-visible{outline:2px solid var(--mint);outline-offset:4px;border-radius:6px}
-img,svg{display:block;max-width:100%}
-
-.wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--gutter);width:100%}
+html{scroll-behavior:smooth}
+.portada a:not(.btn){color:inherit;text-decoration:none}
+.portada a.btn{text-decoration:none}
+.portada p{margin:0}
+.wrap{max-width:var(--lp-maxw);margin:0 auto;padding-inline:var(--lp-gutter);width:100%}
 .pad{padding-block:var(--seccion)}
+.sep{border:0;border-top:1px solid var(--line-soft);margin:0}
 
-.tag{
-  display:inline-flex;align-items:center;gap:10px;
-  font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--mint);
-  margin-bottom:calc(var(--paso) * .9);
-}
-.tag::before{content:"";width:26px;height:1px;background:var(--mint);opacity:.55}
-.shead{margin-bottom:calc(var(--paso) * 2.4)}
-.shead p{color:var(--txt-2);max-width:52ch;font-size:clamp(1.02rem,1.35vw,1.22rem);margin:calc(var(--paso) * .85) 0 0}
+/* Escala editorial: Fraunces para h1/h2, Plex para h3. */
+.portada h1,.portada h2{font-family:var(--f-display);font-weight:600;letter-spacing:-.028em;line-height:.98;
+  font-variation-settings:"opsz" 144,"SOFT" 30}
+.portada h1{font-size:clamp(2.7rem,6.4vw,5.6rem)}
+.portada h2{font-size:clamp(2rem,4.2vw,3.4rem)}
+.portada h3{font-size:clamp(1.1rem,1.5vw,1.3rem);font-weight:600;letter-spacing:-.015em;line-height:1.25}
+.tag{display:inline-flex;align-items:center;gap:10px;color:var(--ac);margin-bottom:calc(var(--paso) * .9)}
+.tag::before{content:"";width:26px;height:1px;background:var(--ac);opacity:.6}
+.shead{margin-bottom:calc(var(--paso) * 2)}
+.shead p{color:var(--ink-2);max-width:54ch;font-size:clamp(1rem,1.3vw,1.18rem);margin-top:calc(var(--paso) * .8)}
 
-/* ATMOSFERA: un halo que tine la parte alta, y un grano finisimo. El grano es
-   lo que impide que los negros grandes se vean planos de PowerPoint. Van en
-   pseudo-elementos del body para no ensuciar el marcado. */
-body::before{
-  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:
-    radial-gradient(60% 44% at 68% -6%, var(--mint-glow), transparent 62%),
-    radial-gradient(46% 34% at 8% 12%, rgba(52,224,180,.055), transparent 68%);
-}
-body::after{
-  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.032;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-}
 /* ---------- TERRITORIO 3D ----------
-   Nube de puntos del Peru proyectada en perspectiva, girando con el scroll.
-   Va en un canvas fijo detras de todo: por debajo del contenido y por encima
-   del halo. Es lo que hace que esta portada no se parezca a ninguna otra, asi
-   que ocupa el fondo entero y no una cajita.
-
-   La opacidad la gobierna el JS segun el avance del scroll: se desvanece antes
-   de llegar a los pasos, donde ya estorbaria a la lectura. */
-#territorio{
-  position:fixed;inset:0;width:100%;height:100%;
-  z-index:0;pointer-events:none;opacity:0;
-  transition:opacity .8s var(--suave);
-}
-/* La opacidad del canvas va por clase y en diez escalones, no escribiendo
-   style.opacity desde el script: asi el JS no toca nunca el atributo de estilo
-   y la CSP puede quedarse sin 'unsafe-inline'. La transicion de arriba funde
-   un escalon con el siguiente y el desvanecido se ve continuo. */
+   Nube de puntos del Peru en un canvas fijo detras de todo. La opacidad la
+   gobierna el JS por clase (op0..op10), nunca por style=: la CSP no admite
+   estilo en linea. Se desvanece antes de las etapas, donde estorbaria. */
+#territorio{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:0;transition:opacity .8s var(--ease)}
 #territorio.op1{opacity:.1} #territorio.op2{opacity:.2} #territorio.op3{opacity:.3}
 #territorio.op4{opacity:.4} #territorio.op5{opacity:.5} #territorio.op6{opacity:.6}
 #territorio.op7{opacity:.7} #territorio.op8{opacity:.8} #territorio.op9{opacity:.9}
 #territorio.op10{opacity:.95}
 .shell{position:relative;z-index:1}
 
-/* ---------- PROFUNDIDAD EN LAS TARJETAS ----------
-   Inclinacion real en 3D al pasar por encima: la tarjeta se levanta y gira
-   grado y medio. Es poco a proposito — pasado de ahi marea y deja de leerse
-   como un objeto solido para parecer un truco. */
-.alertwrap,.plans{perspective:1400px}
-.alerta,.plan{position:relative;transform-style:preserve-3d}
-.alerta:hover{transform:translateY(-5px) rotateX(1.6deg) rotateY(-1.2deg) scale(1.012)}
-.plan:hover{transform:translateY(-5px) rotateX(1.4deg) scale(1.01)}
-/* Brillo que aparece en el borde superior al levantarse: sugiere que hay una
-   luz arriba y que la tarjeta se ha acercado a ella. */
-.alerta::after,.plan::after{
-  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(160deg,rgba(255,255,255,.055),transparent 42%);
-  opacity:0;transition:opacity .45s var(--suave);
-}
-.alerta:hover::after,.plan:hover::after{opacity:1}
-
 /* ---------- NAVEGACION ---------- */
-#nav{
-  position:fixed;top:0;left:0;right:0;z-index:50;
-  display:flex;align-items:center;justify-content:space-between;gap:var(--paso);
-  padding:15px var(--gutter);border-bottom:1px solid transparent;
-  transition:background .45s var(--suave),border-color .45s var(--suave);
-}
-/* Al pegarse solo cambian fondo y borde: animar el padding relanza el diseno
-   de toda la barra en cada fotograma, y 3 px de diferencia no lo pagan. */
-#nav.stuck{
-  background:rgba(6,8,11,.72);
-  backdrop-filter:blur(22px) saturate(160%);
-  -webkit-backdrop-filter:blur(22px) saturate(160%);
-  border-bottom-color:var(--hair);
-}
-.brand{display:flex;align-items:center;gap:10px;font-family:Sora,sans-serif;font-weight:600;font-size:15.5px;letter-spacing:-.025em}
-.brand .ico{width:22px;height:22px;color:var(--mint);flex:none}
-.brand .pe{color:var(--txt-3);font-weight:400}
-.navlinks{display:flex;align-items:center;gap:clamp(14px,2.4vw,32px);font-size:14.5px;color:var(--txt-2)}
-.navlinks a{transition:color .25s var(--suave)}
-.navlinks a:hover{color:var(--txt)}
-@media (max-width:780px){ .navlinks .opt{display:none} }
-
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:9px;
-  background:var(--mint);color:#04140F;
-  font-family:"DM Sans",sans-serif;font-weight:500;font-size:15px;
-  padding:13px 24px;border-radius:999px;border:1px solid transparent;
-  transition:transform .3s var(--ease),box-shadow .3s var(--ease),background .3s var(--suave);
-}
-/* Sobre fondo oscuro se ACLARA al pasar por encima: oscurecer se lee como
-   "desactivado", aclarar se lee como "se enciende". */
-/* La elevacion la dice el desplazamiento y una sombra neutra, no un halo de
-   color: el resplandor menta bajo cada boton era el "efecto" de serie. */
-.btn:hover{background:#4FF0C6;transform:translateY(-2px);box-shadow:0 10px 24px -12px rgba(0,0,0,.65)}
-/* Al pulsar encoge un 3 %: la respuesta que dice "te oi" antes de que
-   llegue la del servidor. */
-.btn:active{transform:translateY(0) scale(.97);transition-duration:.15s}
-.btn.ghost{background:transparent;color:var(--txt);border-color:var(--line)}
-.btn.ghost:hover{background:rgba(255,255,255,.045);border-color:var(--txt-3);box-shadow:none}
-.btn.grande{padding:16px 32px;font-size:16.5px}
-.btn .fl{transition:transform .35s var(--ease)}
+#nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:var(--paso);
+  padding:14px var(--lp-gutter);border-bottom:1px solid transparent;transition:background .4s var(--ease),border-color .4s var(--ease)}
+#nav.stuck{background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);border-bottom-color:var(--line-soft)}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--f-display);font-weight:600;font-size:18px;letter-spacing:-.02em;
+  font-variation-settings:"opsz" 48;color:var(--ink);min-height:44px}
+.brand .ico{width:21px;height:21px;color:var(--ac);flex:none;filter:drop-shadow(0 0 10px var(--ac-glow))}
+.brand .pe{color:var(--ink-3);font-weight:400;font-style:italic}
+.navlinks{display:flex;align-items:center;gap:clamp(10px,2vw,26px);font-size:14px;color:var(--ink-2)}
+.navlinks a.opt{display:inline-flex;align-items:center;min-height:44px;transition:color var(--dur) ease}
+.navlinks a.opt:hover{color:var(--ink)}
+@media (max-width:780px){.navlinks a.opt{display:none}}
+.btn .fl{transition:transform .3s var(--lp-ease)}
 .btn:hover .fl{transform:translateX(3px)}
 
-/* REVELADOS: un solo mecanismo para toda la pagina. Solo transform y opacity,
-   que el compositor resuelve sin recalcular el diseno — es la diferencia entre
-   60fps y un scroll que se arrastra en el movil de gama media desde el que se
-   va a abrir esto. */
-/* EL ESTADO OCULTO LO PONE EL SCRIPT, NO ESTA HOJA (igual que .rv-app en el
-   panel). landing.js anade .rv-pre solo a lo que queda por debajo del pliegue
-   y lo quita al entrar en pantalla. Si el script no corre, no hay clase, no
-   hay animacion y se ve todo: es el fallo correcto, y ya no hace falta un
-   <noscript> que deshaga lo que el CSS escondia. */
-.rv{transition:opacity .95s var(--ease),transform .95s var(--ease)}
-.rv.rv-pre{opacity:0;transform:translate3d(0,26px,0)}
+/* REVELADOS: la hoja no esconde nada. landing.js anade .rv-pre solo a lo que
+   queda bajo el pliegue y lo quita al entrar en pantalla; sin script, todo se
+   ve. Es el fallo correcto. */
+.rv{transition:opacity .9s var(--lp-ease),transform .9s var(--lp-ease)}
+.rv.rv-pre{opacity:0;transform:translate3d(0,24px,0)}
 .rv.in{opacity:1;transform:none}
-.d1{transition-delay:.06s} .d2{transition-delay:.14s} .d3{transition-delay:.22s}
-.d4{transition-delay:.30s} .d5{transition-delay:.38s} .d6{transition-delay:.46s}
+.d1{transition-delay:.06s} .d2{transition-delay:.14s} .d3{transition-delay:.22s} .d4{transition-delay:.30s}
 
 /* ---------- HERO ---------- */
-.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding-block:calc(var(--seccion) * .78) var(--seccion);position:relative}
-.kicker{font-family:"JetBrains Mono",monospace;font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--txt-3);display:flex;align-items:center;gap:13px;margin-bottom:calc(var(--paso) * 1.5)}
-.kicker::before{content:"";width:34px;height:1px;background:var(--mint);opacity:.6}
-/* Cada linea sube desde detras de su propia mascara. El overflow del
-   contenedor crea el efecto de asomarse, y sale mucho mas barato que animar un
-   clip-path. */
-.linea{display:block;overflow:hidden;padding-bottom:.06em}
-/* ANIMACION CSS, NO TRANSICION DISPARADA POR JS.
-   La primera version ponia una clase desde landing.js con requestAnimationFrame
-   y el titular arrancaba desplazado 105% dentro de su mascara. Pero rAF NO se
-   ejecuta en pestanas en segundo plano: quien abriera el enlace con ctrl+clic
-   -- o cualquiera cuyo JS fallara -- se encontraba el titular INVISIBLE, con el
-   texto ahi pero fuera de la mascara.
-   Hacer que el texto dependa de JS para verse es el error. Con una animacion
-   CSS y fill-mode forwards, el navegador la ejecuta al pintar y el titular
-   acaba visible pase lo que pase con el script. */
-.linea > span{display:block;transform:translate3d(0,105%,0);animation:subir 1.15s var(--ease) forwards}
+.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding-block:calc(var(--seccion) * .9) var(--seccion);position:relative}
+.kicker{display:flex;align-items:center;gap:13px;margin-bottom:calc(var(--paso) * 1.3)}
+.kicker::before{content:"";width:34px;height:1px;background:var(--ac);opacity:.6}
+/* Cada linea sube desde detras de su propia mascara. Animacion CSS con
+   fill-mode forwards, NO clase desde JS: rAF no corre en pestanas en segundo
+   plano y el titular se quedaba invisible al abrir con ctrl+clic. */
+.linea{display:block;overflow:hidden;padding-bottom:.08em}
+.linea > span{display:block;transform:translate3d(0,105%,0);animation:subir 1.1s var(--lp-ease) forwards}
 .linea:nth-child(2) > span{animation-delay:.09s}
 .linea:nth-child(3) > span{animation-delay:.18s}
 @keyframes subir{to{transform:none}}
-.apagado{color:var(--txt-3)}
-.bajada{max-width:48ch;margin:calc(var(--paso) * 1.5) 0 0;color:var(--txt-2);font-size:clamp(1.12rem,1.6vw,1.45rem);line-height:1.5}
-.acciones{display:flex;flex-wrap:wrap;gap:14px;margin-top:calc(var(--paso) * 1.7)}
-.letra-chica{margin-top:calc(var(--paso) * 1.15);font-size:13.5px;color:var(--txt-3);display:flex;align-items:center;gap:9px}
-.letra-chica .punto{width:5px;height:5px;border-radius:50%;background:var(--mint);flex:none}
-/* EL HERO EN EL TELEFONO
-   Medido a 390x844 antes de esto: el h1 a 3rem con tres bloques de linea
-   forzados daba cinco lineas, y con la bajada y los dos botones el hero
-   llegaba justo al borde. Por debajo de 640 px las tres frases fluyen como
-   texto normal (los bloques .linea pasan a inline y la mascara por linea se
-   sustituye por una sola entrada del titular), el cuerpo baja un punto y los
-   botones ocupan el ancho: todo entra en 844 con aire. */
+.apagado{color:var(--ink-3);font-style:italic;font-weight:400}
+.bajada{max-width:50ch;margin-top:calc(var(--paso) * 1.3);color:var(--ink-2);font-size:clamp(1.08rem,1.5vw,1.35rem);line-height:1.5}
+.acciones{display:flex;flex-wrap:wrap;gap:12px;margin-top:calc(var(--paso) * 1.5)}
+.letra-chica{margin-top:calc(var(--paso) * .9);font-size:13px;color:var(--ink-3);display:flex;align-items:center;gap:9px}
+/* Los hechos del hero: lo que de verdad cubre el producto, en mono y sin
+   adjetivos. Es la primera prueba de que esto no es una promesa generica. */
+.hechos{list-style:none;max-width:56rem;margin:calc(var(--paso) * 1.6) 0 0;padding:calc(var(--paso) * .7) 0 0;border-top:1px solid var(--line-soft);
+  display:flex;flex-wrap:wrap;gap:10px 28px;font-family:var(--f-mono);font-size:12.5px;color:var(--ink-3);letter-spacing:.01em}
+.hechos li{display:flex;align-items:center;gap:9px}
+.hechos b{color:var(--ink-2);font-weight:500}
 @media (max-width:640px){
-  .hero{padding-block:calc(var(--seccion) * .62) calc(var(--seccion) * .75);min-height:0}
-  h1{font-size:clamp(2.5rem,11.4vw,2.95rem);letter-spacing:-.018em;line-height:.93;
-    animation:subirH1 .9s var(--ease) backwards}
+  .hero{padding-block:calc(var(--seccion) * .8) calc(var(--seccion) * .7);min-height:0}
+  .portada h1{font-size:clamp(2.35rem,10.8vw,2.9rem);animation:subirH1 .9s var(--lp-ease) backwards}
   .linea{display:inline;overflow:visible;padding:0}
   .linea > span{display:inline;transform:none;animation:none}
-  .kicker{margin-bottom:calc(var(--paso) * 1.1)}
-  .bajada{font-size:1.05rem;margin-top:calc(var(--paso) * 1.15)}
-  .acciones{margin-top:calc(var(--paso) * 1.3);gap:10px}
+  .bajada{font-size:1.02rem}
   .acciones .btn{width:100%}
-  .btn.grande{padding:14px 26px;font-size:15.5px}
-  .letra-chica{margin-top:calc(var(--paso) * .9)}
+  .hechos{flex-direction:column;gap:8px}
   .scrollhint{display:none}
 }
 @keyframes subirH1{from{opacity:0;transform:translate3d(0,18px,0)}to{opacity:1;transform:none}}
-/* Indicador de scroll: una linea que se llena y se vacia. Sin flecha rebotando. */
-.scrollhint{position:absolute;bottom:34px;left:var(--gutter);width:1px;height:56px;background:var(--line);overflow:hidden}
-.scrollhint::after{content:"";position:absolute;inset:0;background:var(--mint);transform:translateY(-100%);animation:gotear 2.6s var(--suave) infinite}
+.scrollhint{position:absolute;bottom:34px;left:var(--lp-gutter);width:1px;height:56px;background:var(--line);overflow:hidden}
+.scrollhint::after{content:"";position:absolute;inset:0;background:var(--ac);transform:translateY(-100%);animation:gotear 2.6s var(--ease) infinite}
 @keyframes gotear{0%{transform:translateY(-100%)}55%{transform:translateY(0)}100%{transform:translateY(100%)}}
 
-/* ---------- CIFRAS FIJAS ----------
-   La seccion mide el triple que la ventana; dentro, un bloque pegajoso se
-   queda quieto mientras el scroll enciende cada cifra. Es el UNICO momento en
-   que el scroll controla algo, y por eso destaca: si todo se moviera, nada
-   destacaria.
+/* ---------- CIFRAS ----------
+   Seccion normal, ya no un escenario pegajoso de tres pantallas: con 300svh el
+   recorrido era casi todo scroll muerto. El valor final va escrito en el HTML
+   y el script lo pone a cero y lo cuenta cuando entra en pantalla: sin JS se
+   leen los numeros, no tres ceros. */
+.cifras{display:grid;gap:calc(var(--paso) * 1.6);grid-template-columns:1fr}
+@media (min-width:900px){.cifras{grid-template-columns:repeat(3,1fr);gap:calc(var(--paso) * 1.3)}}
+.cifra{padding-top:calc(var(--paso) * .8);border-top:1px solid var(--line-soft);transition:border-color .7s var(--lp-ease)}
+.cifra.viva{border-top-color:var(--line-fuerte)}
+.cifra.foco.viva{border-top-color:var(--ac)}
+.cifra .n{font-family:var(--f-display);font-weight:500;font-size:clamp(3rem,6vw,4.8rem);line-height:.95;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;color:var(--ink);font-variation-settings:"opsz" 144}
+.cifra.foco .n{color:var(--ac)}
+.cifra .lb{margin-top:calc(var(--paso) * .5);font-size:1rem;color:var(--ink-2);max-width:26ch}
+.cifra .sub{margin-top:8px;display:block}
 
-   min-height:100svh en el bloque pegajoso, nunca altura fija: con altura fija y
-   una ventana mas baja, lo de abajo queda inalcanzable para siempre. */
-.cifras-stage{position:relative;height:300svh}
-.cifras-pin{position:sticky;top:0;min-height:100svh;display:flex;align-items:center}
-/* En el telefono el escenario se queda en 170 alturas de pantalla: con 300, las
-   tres cifras ya estan encendidas a mitad de camino y el resto es un scroll
-   muerto de casi dos pantallas con la misma imagen clavada. Medido en un
-   viewport de 844 px: 2532 px de seccion para 700 px de contenido. */
-@media (max-width:640px){ .cifras-stage{height:170svh} }
-.cifras{display:grid;gap:calc(var(--paso) * 1.9);width:100%;grid-template-columns:1fr}
-@media (min-width:900px){ .cifras{grid-template-columns:repeat(3,1fr);gap:calc(var(--paso) * 1.4)} }
-.cifra{opacity:.2;transform:translate3d(0,14px,0);transition:opacity .7s var(--ease),transform .7s var(--ease);padding-top:calc(var(--paso) * .9);border-top:1px solid var(--hair)}
-.cifra.viva{opacity:1;transform:none;border-top-color:var(--line)}
-/* Color solido, NO degradado recortado a texto: si el navegador no compone esa
-   capa el titular desaparece entero, y un numero invisible es peor que uno sin
-   gracia. */
-.cifra .n{font-family:"Barlow Condensed",sans-serif;font-weight:900;letter-spacing:-.01em;font-size:clamp(3rem,6.4vw,5rem);line-height:.95;font-variant-numeric:tabular-nums;color:var(--txt)}
-.cifra.foco .n{color:var(--mint)}
-.cifra .lb{margin-top:calc(var(--paso) * .55);font-size:1.02rem;color:var(--txt-2);max-width:24ch}
-.cifra .sub{margin-top:8px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3)}
-
-/* ---------- PASOS ---------- */
-.pasos{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:24px;overflow:hidden}
-@media (min-width:880px){ .pasos{grid-template-columns:repeat(3,1fr)} }
-.paso{background:var(--bg-2);padding:calc(var(--paso) * 1.7) calc(var(--paso) * 1.4);transition:background .45s var(--suave);position:relative}
-.paso:hover{background:var(--panel)}
-.paso .num{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--mint);margin-bottom:calc(var(--paso) * 1.5);display:block}
-.paso h3{margin-bottom:calc(var(--paso) * .6)}
-.paso p{margin:0;color:var(--txt-2);font-size:.98rem}
-.paso::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--mint),transparent);transform:scaleX(0);transition:transform .6s var(--ease)}
-.paso:hover::before{transform:scaleX(1)}
+/* ---------- ETAPAS ----------
+   Se llaman .etapas y no .pasos porque ul.pasos ya es la lista de pasos del
+   panel en licitapro.css, y aqui es una rejilla de tres articulos. */
+.etapas{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:var(--r-card);overflow:hidden}
+@media (min-width:880px){.etapas{grid-template-columns:repeat(3,1fr)}}
+.etapa{background:var(--bg-2);padding:calc(var(--paso) * 1.5) calc(var(--paso) * 1.3);transition:background .4s var(--ease);position:relative}
+.etapa:hover{background:var(--panel)}
+.etapa .num{color:var(--ac);display:block;margin-bottom:calc(var(--paso) * 1.3)}
+.etapa h3{margin-bottom:calc(var(--paso) * .5)}
+.etapa p{color:var(--ink-2);font-size:.97rem}
+.etapa::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--ac),transparent);
+  transform:scaleX(0);transition:transform .6s var(--lp-ease)}
+.etapa:hover::before{transform:scaleX(1)}
 
 /* ---------- PUNTAJE ---------- */
-.scorebox{display:grid;gap:calc(var(--paso) * 2.2);align-items:center}
-@media (min-width:940px){ .scorebox{grid-template-columns:.85fr 1.15fr;gap:calc(var(--paso) * 3)} }
-.gauge{position:relative;width:min(270px,74vw);margin-inline:auto}
+.scorebox{display:grid;gap:calc(var(--paso) * 2);align-items:center}
+@media (min-width:940px){.scorebox{grid-template-columns:.85fr 1.15fr;gap:calc(var(--paso) * 3)}}
+.gauge{position:relative;width:min(260px,72vw);margin-inline:auto}
 .gauge svg{width:100%;height:auto;overflow:visible}
-.anillo{transition:stroke-dashoffset 1.9s var(--ease);filter:drop-shadow(0 0 14px rgba(52,224,180,.35))}
-/* 71 de 100: 527.8 * (1 - .71). El script solo anade la clase. */
-.anillo.lleno{stroke-dashoffset:153.06}
-.gauge .val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:Sora,sans-serif;font-weight:700;font-size:3.4rem;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
-.gauge .cap{position:absolute;left:0;right:0;bottom:15%;text-align:center;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.19em;text-transform:uppercase;color:var(--txt-3)}
-.obj{margin:calc(var(--paso) * 1.1) 0 0;text-align:center;color:var(--txt-2);font-size:.95rem}
-.bar-row{display:grid;grid-template-columns:minmax(96px,.85fr) 1fr auto;align-items:center;gap:clamp(12px,1.6vw,20px);padding-block:calc(var(--paso) * .55);border-bottom:1px solid var(--hair)}
-.bar-row .k{font-size:.93rem;color:var(--txt-2)}
-.bar-track{height:3px;background:var(--hair);border-radius:99px;overflow:hidden}
+.gauge .pista{stroke:var(--panel-3)}
+/* 71 de 100: 527.8 * (1 - .71). El estado FINAL es el de reposo; el script
+   anade .pre al cargar (anillo vacio) y lo quita al entrar en pantalla. */
+.anillo{stroke:var(--ac);stroke-dashoffset:153.06;transition:stroke-dashoffset 1.9s var(--lp-ease);filter:drop-shadow(0 0 14px var(--ac-glow))}
+.anillo.pre{stroke-dashoffset:527.8}
+.gauge .val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:600;
+  font-size:3.4rem;letter-spacing:-.04em;font-variant-numeric:tabular-nums;font-variation-settings:"opsz" 144}
+.gauge .cap{position:absolute;left:0;right:0;bottom:15%;text-align:center}
+.obj{margin-top:calc(var(--paso) * 1);text-align:center;color:var(--ink-2);font-size:.95rem}
+.bar-row{display:grid;grid-template-columns:minmax(96px,.85fr) 1fr auto;align-items:center;gap:clamp(12px,1.6vw,20px);
+  padding-block:calc(var(--paso) * .5);border-bottom:1px solid var(--line-soft)}
+.bar-row .k{font-size:.93rem;color:var(--ink-2)}
+.bar-track{height:3px;background:var(--panel-3);border-radius:99px;overflow:hidden}
 /* La barra se llena con transform (scaleX desde la izquierda), no animando
-   width: el compositor lo resuelve solo, sin recalcular el diseno. */
-.bar-fill{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,var(--mint-2),var(--mint));
-  transform:scaleX(0);transform-origin:left center;transition:transform 1.5s var(--ease)}
-/* El largo de cada barra es una clase (p5..p100, de cinco en cinco) que se
-   activa cuando el bloque recibe .lleno. Antes lo escribia el script en
-   style.width; en una barra de 3 px la diferencia entre 53 y 55 no existe. */
-.lleno .bar-fill.p5{transform:scaleX(.05)} .lleno .bar-fill.p10{transform:scaleX(.1)} .lleno .bar-fill.p15{transform:scaleX(.15)}
-.lleno .bar-fill.p20{transform:scaleX(.2)} .lleno .bar-fill.p25{transform:scaleX(.25)} .lleno .bar-fill.p30{transform:scaleX(.3)}
-.lleno .bar-fill.p35{transform:scaleX(.35)} .lleno .bar-fill.p40{transform:scaleX(.4)} .lleno .bar-fill.p45{transform:scaleX(.45)}
-.lleno .bar-fill.p50{transform:scaleX(.5)} .lleno .bar-fill.p55{transform:scaleX(.55)} .lleno .bar-fill.p60{transform:scaleX(.6)}
-.lleno .bar-fill.p65{transform:scaleX(.65)} .lleno .bar-fill.p70{transform:scaleX(.7)} .lleno .bar-fill.p75{transform:scaleX(.75)}
-.lleno .bar-fill.p80{transform:scaleX(.8)} .lleno .bar-fill.p85{transform:scaleX(.85)} .lleno .bar-fill.p90{transform:scaleX(.9)}
-.lleno .bar-fill.p95{transform:scaleX(.95)} .lleno .bar-fill.p100{transform:scaleX(1)}
-.bar-row .v{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--txt-3);min-width:52px;text-align:right}
-.scorenote{margin:calc(var(--paso) * 1.2) 0 0;color:var(--txt-3);font-size:.93rem;max-width:46ch}
+   width. El largo es una clase pNN de cinco en cinco; #bars.pre las deja a
+   cero hasta que el bloque entra en pantalla. */
+.bar-fill{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,var(--ac-2),var(--ac));
+  transform-origin:left center;transition:transform 1.4s var(--lp-ease)}
+.bar-fill.p35{transform:scaleX(.35)} .bar-fill.p40{transform:scaleX(.4)} .bar-fill.p55{transform:scaleX(.55)}
+.bar-fill.p70{transform:scaleX(.7)} .bar-fill.p100{transform:scaleX(1)}
+#bars.pre .bar-fill{transform:scaleX(0)}
+.bar-row .v{font-family:var(--f-mono);font-size:12.5px;color:var(--ink-3);min-width:52px;text-align:right}
+.scorenote{margin-top:calc(var(--paso) * 1.1);color:var(--ink-3);font-size:.93rem;max-width:46ch}
 
-/* ---------- ALERTAS ---------- */
-.alertwrap{display:grid;gap:calc(var(--paso) * .9)}
-@media (min-width:900px){ .alertwrap{grid-template-columns:repeat(3,1fr)} }
-.alerta{background:var(--panel);border:1px solid var(--hair);border-radius:20px;padding:calc(var(--paso) * 1.25);display:flex;flex-direction:column;gap:calc(var(--paso) * .6);transition:transform .45s var(--ease),border-color .45s var(--suave),box-shadow .45s var(--ease)}
-.alerta:hover{transform:translateY(-4px);border-color:var(--line);box-shadow:0 22px 48px -28px rgba(0,0,0,.9)}
+/* ---------- ALERTAS (asi llega tu aviso) ---------- */
+.alertas{display:grid;gap:calc(var(--paso) * .8)}
+@media (min-width:900px){.alertas{grid-template-columns:repeat(3,1fr)}}
+.alerta{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r-card);padding:calc(var(--paso) * 1.1);
+  display:flex;flex-direction:column;gap:calc(var(--paso) * .55);box-shadow:var(--sombra-1);
+  transition:transform .4s var(--lp-ease),border-color .4s var(--ease),box-shadow .4s var(--lp-ease)}
+.alerta:hover{transform:translateY(-4px);border-color:var(--line);box-shadow:var(--sombra-2)}
 .alerta .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.alerta .sc{font-family:Sora,sans-serif;font-weight:700;font-size:1.85rem;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
-.sc.mint{color:var(--mint)} .sc.amber{color:var(--amber)} .sc.red{color:var(--red)}
-.pill{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;padding:5px 10px;border-radius:99px;white-space:nowrap}
-.pill.hi{background:rgba(52,224,180,.11);color:var(--mint)}
-.pill.mid{background:rgba(255,178,89,.11);color:var(--amber)}
-.pill.urg{background:rgba(255,107,96,.11);color:var(--red)}
-.alerta .ent{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--txt-3);line-height:1.5}
-.alerta .desc{font-size:1rem;color:var(--txt);line-height:1.42;font-weight:400}
-.alerta .meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--txt-3);margin-top:auto;padding-top:calc(var(--paso) * .55);border-top:1px solid var(--hair)}
-.alerta .meta b{color:var(--txt-2);font-weight:500}
+.alerta .sc{font-family:var(--f-display);font-weight:600;font-size:2rem;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+.sc.ac{color:var(--ac)} .sc.warn{color:var(--warn)} .sc.urg{color:var(--urg)}
+.alerta .ent{line-height:1.5}
+.alerta .desc{font-size:1rem;color:var(--ink);line-height:1.42;font-weight:500}
+.alerta .meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink-3);margin-top:auto;padding-top:calc(var(--paso) * .5);border-top:1px solid var(--line-soft)}
+.alerta .meta b{color:var(--ink-2);font-weight:500}
 
-/* ---------- PLANES ---------- */
-/* Los planes van mas anchos que el resto de la pagina.
-   Medido antes: contenedor de 1140 px, cuatro tarjetas de 233 y 54 px de
-   padding cada una -el relleno se comia el 46% y dejaba 125 px utiles para el
-   texto-. Resultado: 17 de los 21 puntos partian en dos o tres lineas, y
-   "1 departamento" ocupaba dos. Con menos padding y mas ancho, el texto cabe. */
-.plans{display:grid;gap:calc(var(--paso) * .9);align-items:stretch;width:100%}
-/* Los planes se salen del ancho del texto, hacia los dos lados.
-   El contenedor general mide 1140 px y ahi cuatro tarjetas quedan a 233, de
-   los que el padding se llevaba casi la mitad. Con 160 px mas, cada tarjeta
-   pasa de 233 a ~273 y el texto deja de partirse en cada linea.
-   Solo cuando hay sitio: por debajo de 1460 px de ventana vuelve al ancho
-   normal, para no sacar las tarjetas de la pantalla. */
-@media (min-width:1460px){
-  .plans{width:calc(100% + 160px);margin-inline:-80px}
-}
-/* TRES COLUMNAS FIJAS CON CUATRO PLANES DEJAN UNO HUERFANO
+/* ---------- PLANES ----------
+   Las tarjetas son las .planes/.plan del sistema (las mismas de /precios).
+   Aqui solo el aire alrededor y la comparativa. */
+.nota-prueba{margin:calc(var(--paso) * 1.4) auto 0;text-align:center;max-width:60ch;color:var(--ink-3);font-size:.95rem}
+.nota-prueba b{color:var(--ink-2);font-weight:500}
+.comparativa{margin-top:calc(var(--paso) * 2.4)}
+.comparativa table.datos th,.comparativa table.datos td{text-align:center}
+.comparativa table.datos th:first-child,.comparativa table.datos td:first-child{text-align:left;min-width:220px;color:var(--ink-2)}
+.comparativa th.destacada{color:var(--ac)}
+.comparativa .si{color:var(--ac)} .comparativa .no{color:var(--ink-4)}
+.comparativa .fila-precio td{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink);border-top:1px solid var(--line);font-weight:500}
 
-   Estaba escrito `repeat(3,1fr)` cuando los planes eran tres. Al anadir el
-   plan Gratis en la base -- un INSERT, sin tocar esta plantilla -- el cuarto
-   se fue solo a una segunda fila. El numero de planes es un dato, asi que la
-   rejilla no puede llevarlo escrito a fuego: con `auto-fit` se recoloca sola
-   la proxima vez que cambie. */
-@media (min-width:820px){
-  .plans{grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
-}
-.plan{background:var(--bg-2);border:1px solid var(--hair);border-radius:26px;padding:calc(var(--paso) * .95) calc(var(--paso) * .85);display:flex;flex-direction:column;transition:transform .45s var(--ease),border-color .45s var(--suave)}
-.plan:hover{transform:translateY(-4px);border-color:var(--line)}
-/* El destacado no grita con otro color: se separa con borde de acento y halo.
-   Cambiarle el fondo lo sacaria del conjunto. */
-.plan.feat{border-color:var(--mint-2);background:var(--panel);box-shadow:0 0 0 1px rgba(52,224,180,.14),0 34px 70px -46px rgba(52,224,180,.5)}
-.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);display:block;min-height:2.4em;line-height:1.2}
-.plan.feat .nm{color:var(--mint)}
-.plan .pr{font-family:"Barlow Condensed",sans-serif;font-weight:900;letter-spacing:-.01em;font-size:clamp(2.5rem,3.8vw,3.2rem);line-height:1;margin:calc(var(--paso) * .8) 0 calc(var(--paso) * 1.2)}
-.plan .pr small{font-family:"DM Sans",sans-serif;font-size:.95rem;font-weight:300;color:var(--txt-3);letter-spacing:normal}
-.plan ul{list-style:none;margin:0 0 calc(var(--paso) * 1.4);padding:0;display:flex;flex-direction:column;gap:11px;flex:1}
-.plan li{position:relative;padding-left:23px;font-size:.94rem;line-height:1.45;color:var(--txt-2);text-wrap:pretty}
-.plan li::before{content:"";position:absolute;left:0;top:.55em;width:11px;height:6px;border-left:1.5px solid var(--mint);border-bottom:1.5px solid var(--mint);transform:rotate(-45deg)}
-.plan li.sin{color:var(--txt-3)}
-.plan li.sin::before{border:none;left:2px;top:.62em;width:9px;height:1.5px;background:var(--txt-3);transform:none}
-.nota-prueba{margin:calc(var(--paso) * 1.6) auto 0;text-align:center;max-width:60ch;color:var(--txt-3);font-size:.95rem}
-.nota-prueba b{color:var(--txt-2);font-weight:500}
+/* ---------- PREGUNTAS (details nativo: teclado y Ctrl+F gratis) ---------- */
+.faq details{border-top:1px solid var(--line-soft)}
+.faq details:last-of-type{border-bottom:1px solid var(--line-soft)}
+.faq summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:20px;justify-content:space-between;
+  padding:calc(var(--paso) * .85) 0;font-size:clamp(1rem,1.4vw,1.18rem);font-weight:500;color:var(--ink);transition:color var(--dur) ease}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:hover{color:var(--ac)}
+.faq summary::after{content:"";flex:none;width:13px;height:13px;
+  background:linear-gradient(var(--ac),var(--ac)) center/100% 1.5px no-repeat,linear-gradient(var(--ac),var(--ac)) center/1.5px 100% no-repeat;
+  transition:transform .3s var(--lp-ease)}
+.faq details[open] summary::after{transform:rotate(45deg)}
+.faq .resp{color:var(--ink-2);max-width:68ch;padding-bottom:calc(var(--paso) * 1.05);font-size:1rem}
+.faq .resp b{color:var(--ink)}
 
 /* ---------- CIERRE Y PIE ---------- */
 .cierre{text-align:center;padding-block:var(--seccion)}
-.cierre h2{font-size:clamp(2.4rem,5.4vw,4.2rem)}
-.cierre p{color:var(--txt-2);max-width:44ch;margin:calc(var(--paso) * 1.2) auto 0;font-size:clamp(1.02rem,1.35vw,1.2rem)}
+.cierre p{color:var(--ink-2);max-width:46ch;margin:calc(var(--paso) * 1.1) auto 0;font-size:clamp(1rem,1.3vw,1.18rem)}
 .cierre .acciones{justify-content:center}
-/* ---------- TABLA COMPARATIVA ----------
-   Las tres tarjetas de plan venden; esta tabla decide. Son dos trabajos
-   distintos y por eso conviven: la tarjeta tiene que caber de un vistazo, asi
-   que solo lista lo que ese plan trae. Quien duda entre dos planes necesita
-   justo lo contrario -- verlos en la misma fila, incluido lo que NO trae cada
-   uno -- y eso en una tarjeta no cabe sin convertirla en un muro.
-
-   El scroll horizontal se queda DENTRO del contenedor. Una tabla de cinco
-   columnas no cabe en un telefono, y dejarla desbordar es lo que hace que la
-   pagina entera se pueda arrastrar de lado. */
-.comparativa{margin-top:calc(var(--paso) * 3);overflow-x:auto}
-.comparativa table{width:100%;border-collapse:collapse;min-width:600px;font-size:.95rem}
-.comparativa th,.comparativa td{padding:14px 14px;text-align:center;border-bottom:1px solid var(--hair)}
-.comparativa thead th{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;
-  letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);border-bottom-color:var(--line)}
-.comparativa thead th.destacada{color:var(--mint)}
-.comparativa th:first-child,.comparativa td:first-child{text-align:left;color:var(--txt-2);
-  font-weight:400;min-width:220px}
-.comparativa tbody tr:last-child td{border-bottom:none}
-.comparativa .si{color:var(--mint)}
-.comparativa .no{color:var(--txt-3)}
-.comparativa .fila-precio td{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
-  color:var(--txt);border-top:1px solid var(--line)}
-
-/* ---------- PREGUNTAS ----------
-   Con <details> nativo: sin una linea de JavaScript, plegable con el teclado y
-   buscable con Ctrl+F aunque este cerrado. Un acordeon hecho a mano pierde las
-   tres cosas y no gana ninguna. */
-.faq details{border-top:1px solid var(--hair)}
-.faq details:last-of-type{border-bottom:1px solid var(--hair)}
-.faq summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:20px;
-  justify-content:space-between;padding:calc(var(--paso) * .95) 0;
-  font-size:clamp(1.02rem,1.5vw,1.22rem);color:var(--txt);
-  transition:color .25s var(--suave)}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary:hover{color:var(--mint)}
-/* Una cruz dibujada con dos degradados, que gira 45 grados al abrir y se
-   convierte en aspa. Sin icono que cargar y sin fuente de simbolos. */
-.faq summary::after{
-  content:"";flex:none;width:13px;height:13px;
-  background:
-    linear-gradient(var(--mint),var(--mint)) center/100% 1.5px no-repeat,
-    linear-gradient(var(--mint),var(--mint)) center/1.5px 100% no-repeat;
-  transition:transform .3s var(--ease);
-}
-.faq details[open] summary::after{transform:rotate(45deg)}
-.faq .resp{color:var(--txt-2);max-width:68ch;margin:0;
-  padding-bottom:calc(var(--paso) * 1.15);font-size:1rem}
-
-/* ---------- PIE ---------- */
-.pie{border-top:1px solid var(--hair);padding-block:calc(var(--paso) * 2.8) calc(var(--paso) * 1.6)}
-/* Dos columnas en el telefono (la marca y su texto ocupan la fila entera), y
-   las cuatro de siempre a partir de 720 px. En una sola columna el pie median
-   mas de 1300 px: cuatro listas apiladas para llegar a un enlace legal. */
-.pie .cols{display:grid;gap:calc(var(--paso) * 1.6) calc(var(--paso) * 1.2);grid-template-columns:1fr 1fr}
+.pie{border-top:1px solid var(--line-soft);padding-block:calc(var(--paso) * 2.4) calc(var(--paso) * 1.5);font-size:14px}
+.pie .cols{display:grid;gap:calc(var(--paso) * 1.4) calc(var(--paso) * 1.2);grid-template-columns:1fr 1fr}
 .pie .cols > div:first-child{grid-column:1 / -1}
-@media (min-width:720px){
-  .pie .cols{grid-template-columns:1.7fr 1fr 1fr 1fr;gap:calc(var(--paso) * 1.9)}
-  .pie .cols > div:first-child{grid-column:auto}
-}
-.pie .marca-pie{font-family:"Barlow Condensed",sans-serif;font-weight:900;font-size:1.55rem;
-  letter-spacing:.005em;text-transform:uppercase;color:var(--txt);line-height:1}
-.pie .blurb{color:var(--txt-3);font-size:14px;line-height:1.6;margin:14px 0 0;max-width:36ch}
-.pie h4{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;
-  letter-spacing:.15em;text-transform:uppercase;color:var(--txt-3);margin:0 0 15px}
-.pie ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
-/* 44 px de alto: los enlaces del pie median 18, menos de la mitad del
-   objetivo tactil. */
-.pie a{font-size:14px;color:var(--txt-2);transition:color .25s var(--suave);
-  display:inline-flex;align-items:center;min-height:44px}
-.pie ul{gap:0}
-.nav a,.nav-links a{display:inline-flex;align-items:center;min-height:44px}
-.pie a:hover{color:var(--mint)}
-.pie .abajo{margin-top:calc(var(--paso) * 2.3);padding-top:calc(var(--paso) * 1.15);
-  border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;
-  justify-content:space-between;align-items:center;gap:16px}
-.pie .abajo span{font-size:13px;color:var(--txt-3)}
+@media (min-width:720px){.pie .cols{grid-template-columns:1.7fr 1fr 1fr 1fr;gap:calc(var(--paso) * 1.8)}.pie .cols > div:first-child{grid-column:auto}}
+.pie .blurb{color:var(--ink-3);font-size:13.5px;line-height:1.6;margin-top:14px;max-width:36ch}
+.pie h4{margin:0 0 12px}
+.pie ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.pie ul a{color:var(--ink-2);display:inline-flex;align-items:center;min-height:44px;transition:color var(--dur) ease}
+.pie a:hover{color:var(--ac)}
+.pie .titularidad{margin:calc(var(--paso) * 1.9) 0 0;font-size:12.5px;line-height:1.65;color:var(--ink-3);max-width:82ch}
+.pie .titularidad b{color:var(--ink-2);font-weight:500}
+.pie .abajo{margin-top:calc(var(--paso) * 1.3);padding-top:calc(var(--paso) * 1.05);border-top:1px solid var(--line-soft);
+  display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;font-size:13px;color:var(--ink-3)}
+/* El distintivo del Libro es un boton y no un enlace de texto: en Peru el
+   consumidor lo busca con la vista, es el sello de la Ley 29571. */
+.pie-libro{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--line-soft);border-radius:var(--r-card);background:var(--panel);
+  padding:9px 15px;transition:border-color var(--dur) ease,background var(--dur) ease}
+.pie-libro:hover{border-color:var(--ac);background:var(--panel-2)}
+.pie-libro .icono{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;background:var(--ac-soft);color:var(--ac)}
+.pie-libro .icono svg{width:16px;height:16px}
+.pie-libro .abajo-txt{display:block;font-size:13.5px;font-weight:600;color:var(--ink-2)}
 
-/* El distintivo del Libro. Es un boton y no un enlace de texto porque en Peru
-   el consumidor lo busca CON LA VISTA: es el sello que dice que el comercio
-   cumple la Ley 29571, y una linea mas en una columna no lo sustituye. */
-.pie .pie-libro{display:inline-flex;align-items:center;gap:12px;
-  border:1px solid var(--hair);border-radius:14px;background:var(--bg-2);
-  padding:9px 15px;transition:border-color .25s var(--suave),background .25s var(--suave)}
-.pie .pie-libro:hover{border-color:var(--mint);background:var(--panel)}
-.pie .pie-libro .icono{width:30px;height:30px;border-radius:9px;flex:none;
-  display:grid;place-items:center;font-size:15px;
-  background:rgba(52,224,180,.14);color:var(--mint)}
-.pie .pie-libro .arriba{display:block;font-family:"JetBrains Mono",monospace;
-  font-size:9.5px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--txt-3)}
-.pie .pie-libro .abajo-txt{display:block;font-size:13.5px;font-weight:600;color:var(--txt-2)}
-.pie .titularidad{margin:calc(var(--paso) * 2.1) 0 0;font-size:12.5px;
-  line-height:1.65;color:var(--txt-3);max-width:82ch}
-.pie .titularidad b{color:var(--txt-2);font-weight:500}
-.sep{border:0;border-top:1px solid var(--hair);margin:0}
-
-/* ---------- ACCESIBILIDAD ----------
-   Quien pide menos movimiento suele pedirlo porque le marea o le dispara
-   migranas. La respuesta correcta no es "animaciones mas cortas": es ninguna.
-   Y sobre todo, NADA puede quedarse invisible: si un revelado se quedara a
-   opacity 0, la pagina estaria en blanco para esa persona. */
+/* ---------- ACCESIBILIDAD: menos movimiento = ninguno, y nada invisible ---------- */
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  *,*::before,*::after{
-    animation-duration:.001ms !important;animation-iteration-count:1 !important;
-    transition-duration:.001ms !important;transition-delay:0ms !important;
-  }
-  .rv{opacity:1;transform:none}
+  .rv,.rv.rv-pre{opacity:1;transform:none}
   .linea > span{transform:none}
-  .cifra{opacity:1;transform:none}
+  .anillo.pre{stroke-dashoffset:153.06}
+  #bars.pre .bar-fill.p35{transform:scaleX(.35)} #bars.pre .bar-fill.p40{transform:scaleX(.4)} #bars.pre .bar-fill.p55{transform:scaleX(.55)}
+  #bars.pre .bar-fill.p70{transform:scaleX(.7)} #bars.pre .bar-fill.p100{transform:scaleX(1)}
   .scrollhint{display:none}
-  /* Sin scroll pegajoso: recorrer tres pantallas para ver tres cifras es
-     exactamente el tipo de trayecto que molesta. Se muestran de una vez. */
-  .cifras-stage{height:auto}
-  .cifras-pin{position:static;min-height:0;padding-block:var(--seccion)}
 }
 </style>
 </head>
 
-<body>
+<body class="portada">
 {# El canvas va ANTES del contenido para que quede detras sin depender de
    z-index negativos, que se comportan distinto dentro de contextos de
    apilamiento y son una fuente clasica de "aqui se ve y alli no". #}
 <canvas id="territorio" aria-hidden="true"></canvas>
 <div class="shell">
 
-<nav id="nav">
+<nav id="nav" aria-label="Principal">
   <a class="brand" href="/">
     <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
-        <g fill="currentColor" opacity=".4">
-          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
-        </g>
-        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
-        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
-      </svg>
+      <g fill="currentColor" opacity=".4">
+        <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+      </g>
+      <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+      <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+    </svg>
     LicitaPro <span class="pe">Perú</span>
   </a>
   <div class="navlinks">
     <a class="opt" href="#como">Cómo funciona</a>
     <a class="opt" href="#puntaje">Puntaje</a>
     <a class="opt" href="#preguntas">Preguntas</a>
-    {# A /precios y no al ancla #planes: el ancla vive dentro de una portada con
-       scroll animado, y desde ahi no hay forma de llegar al resumen del pedido
-       sin recorrerla entera. La pagina de precios es una direccion propia, se
-       puede mandar por WhatsApp y esta en el sitemap. #}
+    {# A /precios y no al ancla #planes: la pagina de precios es una direccion
+       propia, se puede mandar por WhatsApp y esta en el sitemap. #}
     <a class="opt" href="/precios">Planes</a>
     {% if usuario %}
       <a class="btn" href="/panel">Ir al panel <span class="fl">&rarr;</span></a>
@@ -579,45 +319,53 @@ body::after{
 </nav>
 
 <header class="hero wrap" id="top">
-  <span class="kicker">Licitaciones del Estado peruano</span>
+  <span class="kicker rotulo">Licitaciones del Estado peruano</span>
   <h1>
     <span class="linea"><span>Encontrar la licitación</span></span>
     <span class="linea"><span class="apagado">es la parte fácil.</span></span>
     <span class="linea"><span>Nosotros llegamos hasta el cobro.</span></span>
   </h1>
   <p class="bajada">
-    Te avisamos al correo de lo que encaja con tu empresa, te preparamos el
-    expediente con los anexos llenos, y perseguimos el pago de la entidad
-    cuando se pasa del plazo. Los demás se paran en el aviso.
+    Vigilamos el SEACE y los contratos menores del OECE en las 25 regiones, te
+    avisamos de lo que encaja con tu empresa, te dejamos el expediente listo y
+    seguimos el pago de la entidad hasta que cobras. Los demás se paran en el aviso.
   </p>
   <div class="acciones">
     <a class="btn grande" href="/registro">Empezar gratis <span class="fl">&rarr;</span></a>
-    <a class="btn ghost grande" href="#como">Ver cómo funciona</a>
+    <a class="btn sec grande" href="#como">Ver cómo funciona</a>
   </div>
-  <p class="letra-chica"><span class="punto"></span>14 días de plan Pro. Sin tarjeta.</p>
+  <p class="letra-chica"><span class="punto ac"></span>14 días de plan Pro. Sin tarjeta.</p>
+  <ul class="hechos">
+    <li><span class="punto ac"></span><b>SEACE + OECE</b> en las 25 regiones</li>
+    <li><span class="punto ac"></span><b>+2.400</b> compras menores a 8 UIT vigentes hoy</li>
+    <li><span class="punto ac"></span>Alertas por <b>correo, Telegram y WhatsApp</b></li>
+  </ul>
   <div class="scrollhint" aria-hidden="true"></div>
 </header>
 
-<section class="cifras-stage" id="datos">
-  <div class="cifras-pin">
-    <div class="wrap">
-      <div class="cifras">
-        <div class="cifra" data-hasta="32893" data-miles="1">
-          <div class="n mono">0</div>
-          <div class="lb">Convocatorias publicadas en el SEACE el año pasado.</div>
-          <div class="sub">Fuente: SEACE</div>
-        </div>
-        <div class="cifra" data-hasta="41">
-          <div class="n mono">0</div>
-          <div class="lb">Días que dura, de media, una convocatoria abierta.</div>
-          <div class="sub">Tu ventana para presentarte</div>
-        </div>
-        <div class="cifra foco" data-hasta="9" data-sufijo=" seg">
-          <div class="n mono">0</div>
-          <div class="lb">Lo que tardas en decidir si vale la pena, con nuestra alerta.</div>
-          <div class="sub">Y ahí empieza el trabajo</div>
-        </div>
-      </div>
+<hr class="sep">
+
+<section class="pad wrap" id="datos">
+  <div class="shead rv">
+    <span class="tag rotulo">Lo que cubrimos</span>
+    <h2>Todo el país, todos los tramos.</h2>
+    <p>Las convocatorias del SEACE y, debajo de las 8 UIT, los contratos menores que las entidades publican en el OECE. Lo revisamos varias veces al día.</p>
+  </div>
+  <div class="cifras">
+    <div class="cifra" data-hasta="25">
+      <div class="n">25</div>
+      <div class="lb">Regiones vigiladas: SEACE y contratos menores del OECE, sin excluir ninguna.</div>
+      <span class="sub rotulo">Cobertura nacional</span>
+    </div>
+    <div class="cifra foco" data-hasta="2400" data-miles="1" data-prefijo="+">
+      <div class="n">+2.400</div>
+      <div class="lb">Compras menores a 8 UIT vigentes hoy, tomadas del OECE.</div>
+      <span class="sub rotulo">Actualizado varias veces al día</span>
+    </div>
+    <div class="cifra" data-hasta="3">
+      <div class="n">3</div>
+      <div class="lb">Canales de aviso: correo, Telegram y WhatsApp. Eliges por dónde.</div>
+      <span class="sub rotulo">Y ahí empieza el trabajo</span>
     </div>
   </div>
 </section>
@@ -626,25 +374,25 @@ body::after{
 
 <section class="pad wrap" id="como">
   <div class="shead rv">
-    <span class="tag">Cómo funciona</span>
-    <h2>Detectar, preparar, cobrar.</h2>
+    <span class="tag rotulo">Cómo funciona</span>
+    <h2>Del aviso al cobro.</h2>
     <p>Tres etapas, y solo la primera la cubre alguien más. Las otras dos son las que te cuestan la tarde y el cobro.</p>
   </div>
-  <div class="pasos">
-    <article class="paso rv d1">
-      <span class="num">01 — Detectar</span>
-      <h3>Vigilamos el SEACE por ti</h3>
-      <p>Cada convocatoria nueva pasa por tus filtros: rubro, región, monto y experiencia. Lo que encaja te llega al correo &mdash;y a Telegram, si lo conectas&mdash; con su puntaje.</p>
+  <div class="etapas">
+    <article class="etapa rv d1">
+      <span class="num rotulo">01 — Detectar</span>
+      <h3>Vigilamos el SEACE y el OECE por ti</h3>
+      <p>Cada convocatoria nueva pasa por tus filtros: rubro, región, monto y experiencia. Lo que encaja te llega por correo, Telegram o WhatsApp con su puntaje.</p>
     </article>
-    <article class="paso rv d2">
-      <span class="num">02 — Preparar</span>
+    <article class="etapa rv d2">
+      <span class="num rotulo">02 — Preparar</span>
       <h3>El expediente, hecho</h3>
       <p>Anexos rellenados con los datos de tu empresa, declaraciones juradas y el ZIP listo para subir. Lo que te llevaba una tarde.</p>
     </article>
-    <article class="paso rv d3">
-      <span class="num">03 — Cobrar</span>
+    <article class="etapa rv d3">
+      <span class="num rotulo">03 — Cobrar</span>
       <h3>Hasta que te pagan</h3>
-      <p>Conformidad, plazos legales de pago y expediente SIAF. Te avisamos cuando la entidad se pasa de fecha, que es cuando hay que reclamar.</p>
+      <p>Buena pro, conformidad y los plazos de pago de la Ley 32069. Te avisamos cuando la entidad se pasa de fecha, que es cuando hay que reclamar.</p>
     </article>
   </div>
 </section>
@@ -653,7 +401,7 @@ body::after{
 
 <section class="pad wrap" id="puntaje">
   <div class="shead rv">
-    <span class="tag">Puntaje de viabilidad</span>
+    <span class="tag rotulo">Puntaje de viabilidad</span>
     <h2>Cada alerta explica por qué llegó.</h2>
     <p>No es una caja negra. Seis factores, cada uno con su peso, y el desglose completo visible en cada licitación que te mandamos.</p>
   </div>
@@ -661,14 +409,14 @@ body::after{
     <div class="rv d1">
       <div class="gauge">
         <svg viewBox="0 0 200 200" role="img" aria-label="Puntaje de viabilidad: 71 sobre 100">
-          <circle cx="100" cy="100" r="84" fill="none" stroke="#141C23" stroke-width="12"></circle>
-          <circle id="ring" cx="100" cy="100" r="84" fill="none" stroke="#34E0B4"
+          <circle class="pista" cx="100" cy="100" r="84" fill="none" stroke-width="12"></circle>
+          <circle id="ring" class="anillo" cx="100" cy="100" r="84" fill="none"
                   stroke-width="12" stroke-linecap="round"
-                  stroke-dasharray="527.8" stroke-dashoffset="527.8"
-                  transform="rotate(-90 100 100)" class="anillo"></circle>
+                  stroke-dasharray="527.8"
+                  transform="rotate(-90 100 100)"></circle>
         </svg>
-        <div class="val mono" id="dialval">0</div>
-        <div class="cap">Viabilidad</div>
+        <div class="val" id="dialval">71</div>
+        <div class="cap rotulo">Viabilidad</div>
       </div>
       <p class="obj">Mantenimiento y rehabilitación estructural — Gobierno Regional</p>
     </div>
@@ -688,28 +436,28 @@ body::after{
 
 <section class="pad wrap">
   <div class="shead rv">
-    <span class="tag">Lo que recibes</span>
+    <span class="tag rotulo">Lo que recibes</span>
     <h2>Así llega tu aviso.</h2>
     <p>Lo justo para decidir en diez segundos si vale la pena abrir las bases.</p>
   </div>
-  <div class="alertwrap">
+  <div class="alertas">
     <article class="alerta rv d1">
-      <div class="top"><span class="sc mint">71</span><span class="pill hi">Alta prioridad</span></div>
-      <div class="ent">Gobierno Regional de Madre de Dios</div>
+      <div class="top"><span class="sc ac">71</span><span class="pill ac">Alta prioridad</span></div>
+      <span class="ent rotulo">Gobierno Regional de Madre de Dios</span>
       <div class="desc">Adquisición de servidores para despliegue de sistema académico</div>
-      <div class="meta"><span>S/ <b>184,500</b></span><span>Cierra en <b>9 días</b></span><span><b>CP</b> Concurso Público</span></div>
+      <div class="meta"><span class="monto">S/ <b>184,500</b></span><span>Cierra en <b>9 días</b></span><span><b>CP</b> Concurso Público</span></div>
     </article>
     <article class="alerta rv d2">
-      <div class="top"><span class="sc amber">58</span><span class="pill mid">Revisar</span></div>
-      <div class="ent">Municipalidad Provincial de Tambopata</div>
+      <div class="top"><span class="sc warn">58</span><span class="pill pend">Revisar</span></div>
+      <span class="ent rotulo">Municipalidad Provincial de Tambopata</span>
       <div class="desc">Contratación de software para monitoreo de red y soporte técnico</div>
-      <div class="meta"><span>S/ <b>62,300</b></span><span>Cierra en <b>14 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
+      <div class="meta"><span class="monto">S/ <b>62,300</b></span><span>Cierra en <b>14 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
     </article>
     <article class="alerta rv d3">
-      <div class="top"><span class="sc red">64</span><span class="pill urg">Cierra pronto</span></div>
-      <div class="ent">Universidad Nacional Amazónica de Madre de Dios</div>
+      <div class="top"><span class="sc urg">64</span><span class="pill urg">Cierra pronto</span></div>
+      <span class="ent rotulo">Universidad Nacional Amazónica de Madre de Dios</span>
       <div class="desc">Servicio de cableado estructurado y videovigilancia en sede central</div>
-      <div class="meta"><span>S/ <b>97,800</b></span><span>Cierra en <b>2 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
+      <div class="meta"><span class="monto">S/ <b>97,800</b></span><span>Cierra en <b>2 días</b></span><span><b>AS</b> Adj. Simplificada</span></div>
     </article>
   </div>
 </section>
@@ -718,55 +466,47 @@ body::after{
 
 <section class="pad wrap" id="planes">
   <div class="shead rv">
-    <span class="tag">Planes</span>
+    <span class="tag rotulo">Planes</span>
     <h2>Una licitación ganada lo paga todo.</h2>
     <p>Sin permanencia. Cancelas cuando quieras. Precios en soles, con IGV incluido.</p>
   </div>
-  <div class="plans">
+  {# Las tarjetas son el componente .planes/.plan del sistema, el mismo de
+     /precios: quien compara las dos paginas ve el mismo producto. El numero de
+     planes es un dato (auto-fit): anadir uno en la base no toca esto. #}
+  <div class="planes">
     {% for p in planes %}
-      <div class="plan rv d{{ loop.index }}{% if p.codigo == 'pro' %} feat{% endif %}">
-        <span class="nm">{{ p.nombre }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
-        <div class="pr">
-          {% if p.precio_mensual and p.precio_mensual > 0 %}
-            S/ {{ '%.0f'|format(p.precio_mensual) }}<small> /mes</small>
-          {% else %}
-            Gratis<small> siempre</small>
-          {% endif %}
-        </div>
+      <div class="plan rv d{{ loop.index }}{% if p.codigo == 'pro' %} destacado{% endif %}">
+        <span class="rotulo">{{ p.codigo }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
+        <h3>{{ p.nombre }}</h3>
+        {% if p.precio_mensual and p.precio_mensual > 0 %}
+          <div class="precio">S/ {{ '%.0f'|format(p.precio_mensual) }}<small>/mes</small></div>
+          {% if p.precio_anual %}<p class="anual">o S/ {{ '%.0f'|format(p.precio_anual) }} al año</p>{% endif %}
+        {% else %}
+          <div class="precio">Gratis<small>siempre</small></div>
+          <p class="anual">Donde te quedas si no renuevas</p>
+        {% endif %}
         <ul>
           <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
           <li>{% if p.max_regiones %}{{ p.max_regiones }} departamento{% if p.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
           {% if p.alertas %}
             <li>Avisos por correo y Telegram</li>
           {% else %}
-            <li class="sin">Sin avisos: entras tú a buscar</li>
+            <li class="no">Sin avisos: entras tú a buscar</li>
           {% endif %}
           <li>Expedientes automáticos</li>
           {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
           {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
         </ul>
-        {# LOS TRES BOTONES LLEVABAN A /registro, Y ESE ERA EL AGUJERO
-
-           La tarjeta anunciaba un precio y el boton abria un formulario de alta:
-           entre el importe y el pago no habia nada. Quien no queria una cuenta
-           todavia -- que es todo el mundo la primera vez, y tambien el
-           validador de la pasarela -- no llegaba a ver nunca un total ni un
-           boton de pagar.
-
-           Ahora cada plan de pago apunta a SU resumen de pedido, con el importe
-           en el propio boton. El gratuito sigue yendo al alta, que es lo que
-           es: no hay nada que cobrar. #}
-        {% if p.precio_mensual and p.precio_mensual > 0 %}
-          <a class="btn{% if p.codigo != 'pro' %} ghost{% endif %}"
-             href="/comprar/{{ p.codigo }}?periodo=mensual">
-            Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}
-            <span class="fl">&rarr;</span>
-          </a>
-        {% else %}
-          <a class="btn ghost" href="/registro">
-            Entrar gratis <span class="fl">&rarr;</span>
-          </a>
-        {% endif %}
+        {# Cada plan de pago apunta a SU resumen de pedido, con el importe en el
+           propio boton: entre el precio y el pago no puede haber un alta de por
+           medio. El gratuito va al registro, que es lo que es. #}
+        <div class="acciones">
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            <a class="btn{% if p.codigo != 'pro' %} sec{% endif %}" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}</a>
+          {% else %}
+            <a class="btn sec" href="/registro">Entrar gratis</a>
+          {% endif %}
+        </div>
       </div>
     {% endfor %}
   </div>
@@ -775,60 +515,63 @@ body::after{
     echamos: te quedas en el plan Gratis, con tus datos y tu panel intactos.
   </p>
 
-  {# Las columnas salen de la misma consulta que las tarjetas. Escribirlas a
-     mano es como se desincronizo la portada la primera vez: se anadio el plan
-     Gratis en la base y aqui seguian tres precios viejos. #}
+  {# Las columnas salen de la misma consulta que las tarjetas. La tarjeta
+     vende; esta tabla decide: quien duda entre dos planes necesita verlos en
+     la misma fila, incluido lo que NO trae cada uno. El scroll horizontal se
+     queda dentro de .tabla-caja. #}
   <div class="comparativa rv">
-    <table>
-      <thead>
-        <tr>
-          <th>Qué incluye</th>
-          {% for p in planes %}
-            <th class="{% if p.codigo == 'pro' %}destacada{% endif %}">{{ p.nombre }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Empresas registradas</td>
-          {% for p in planes %}<td>{{ p.max_empresas }}</td>{% endfor %}
-        </tr>
-        <tr>
-          <td>Cobertura</td>
-          {% for p in planes %}
-            <td>{% if p.max_regiones %}{{ p.max_regiones }} depto.{% else %}Todo el país{% endif %}</td>
-          {% endfor %}
-        </tr>
-        <tr>
-          <td>Avisos por correo y Telegram</td>
-          {% for p in planes %}
-            <td>{% if p.alertas %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
-          {% endfor %}
-        </tr>
-        <tr>
-          <td>Expedientes con los anexos llenos</td>
-          {% for p in planes %}<td><span class="si">&check;</span></td>{% endfor %}
-        </tr>
-        <tr>
-          <td>Análisis de bases con IA</td>
-          {% for p in planes %}
-            <td>{% if p.analisis_ia %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
-          {% endfor %}
-        </tr>
-        <tr>
-          <td>Seguimiento de contratos y cobros</td>
-          {% for p in planes %}
-            <td>{% if p.codigo != 'gratis' %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
-          {% endfor %}
-        </tr>
-        <tr class="fila-precio">
-          <td>Precio al mes, con IGV</td>
-          {% for p in planes %}
-            <td>{% if p.precio_mensual and p.precio_mensual > 0 %}S/ {{ '%.0f'|format(p.precio_mensual) }}{% else %}Gratis{% endif %}</td>
-          {% endfor %}
-        </tr>
-      </tbody>
-    </table>
+    <div class="tabla-caja">
+      <table class="datos">
+        <thead>
+          <tr>
+            <th>Qué incluye</th>
+            {% for p in planes %}
+              <th class="{% if p.codigo == 'pro' %}destacada{% endif %}">{{ p.nombre }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Empresas registradas</td>
+            {% for p in planes %}<td>{{ p.max_empresas }}</td>{% endfor %}
+          </tr>
+          <tr>
+            <td>Cobertura</td>
+            {% for p in planes %}
+              <td>{% if p.max_regiones %}{{ p.max_regiones }} depto.{% else %}Todo el país{% endif %}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td>Avisos por correo y Telegram</td>
+            {% for p in planes %}
+              <td>{% if p.alertas %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td>Expedientes con los anexos llenos</td>
+            {% for p in planes %}<td><span class="si">&check;</span></td>{% endfor %}
+          </tr>
+          <tr>
+            <td>Análisis de bases con IA</td>
+            {% for p in planes %}
+              <td>{% if p.analisis_ia %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <td>Seguimiento de contratos y cobros</td>
+            {% for p in planes %}
+              <td>{% if p.codigo != 'gratis' %}<span class="si">&check;</span>{% else %}<span class="no">&mdash;</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          <tr class="fila-precio">
+            <td>Precio al mes, con IGV</td>
+            {% for p in planes %}
+              <td>{% if p.precio_mensual and p.precio_mensual > 0 %}S/ {{ '%.0f'|format(p.precio_mensual) }}{% else %}Gratis{% endif %}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
@@ -836,15 +579,15 @@ body::after{
 
 <section class="pad wrap" id="preguntas">
   <div class="shead rv">
-    <span class="tag">Preguntas</span>
+    <span class="tag rotulo">Preguntas</span>
     <h2>Lo que todos preguntan.</h2>
   </div>
   <div class="faq rv d1">
     <details>
       <summary>¿De dónde salen las licitaciones?</summary>
       <p class="resp">Del SEACE, que es donde el Estado peruano publica sus
-         convocatorias, y del buscador de compras menores de gob.pe, que cubre
-         las contrataciones por debajo de las 8 UIT en todo el país. Las
+         convocatorias, y de los contratos menores del OECE, que cubren las
+         contrataciones por debajo de las 8 UIT en las 25 regiones. Los
          revisamos varias veces al día; no hay que entrar a mirar.</p>
     </details>
     <details>
@@ -867,10 +610,18 @@ body::after{
     </details>
     <details>
       <summary>¿Cómo me avisan?</summary>
-      <p class="resp">Por correo y por Telegram. Cada aviso explica <b>por qué</b>
-         te llegó: el puntaje de encaje, el plazo que queda y lo que hay que
-         presentar. Un aviso que no dice por qué te obliga a abrir las bases
-         para descartarlo, y eso es el trabajo que veníamos a quitarte.</p>
+      <p class="resp">Por correo, por Telegram o por WhatsApp, como prefieras.
+         Cada aviso explica <b>por qué</b> te llegó: el puntaje de encaje, el
+         plazo que queda y lo que hay que presentar. Un aviso que no dice por
+         qué te obliga a abrir las bases para descartarlo, y eso es el trabajo
+         que veníamos a quitarte.</p>
+    </details>
+    <details>
+      <summary>¿Qué pasa después de ganar?</summary>
+      <p class="resp">Registras la buena pro y el contrato, y desde ahí llevamos
+         el expediente: conformidad, plazos de pago de la Ley 32069 y el aviso
+         cuando la entidad se pasa de fecha. Lo que falta por cobrar se ve en
+         tu panel, no en una carpeta.</p>
     </details>
     <details>
       <summary>¿Los datos de mi empresa son míos?</summary>
@@ -882,8 +633,8 @@ body::after{
     <details>
       <summary>¿Cuánto tardo en tenerlo funcionando?</summary>
       <p class="resp">Una tarde. Registras tu empresa con su RUC, marcas tu
-         rubro y los departamentos donde te presentas, y conectas Telegram.
-         Desde ese momento entran los avisos.</p>
+         rubro y los departamentos donde te presentas, y conectas Telegram o
+         WhatsApp. Desde ese momento entran los avisos.</p>
     </details>
   </div>
 </section>
@@ -904,13 +655,22 @@ body::after{
   <div class="wrap">
     <div class="cols">
       <div>
-        <div class="marca-pie">LicitaPro</div>
+        <a class="brand" href="#top">
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+            <g fill="currentColor" opacity=".4">
+              <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+            </g>
+            <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+            <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+          </svg>
+          LicitaPro <span class="pe">Perú</span>
+        </a>
         <p class="blurb">Licitaciones del Estado peruano, del aviso hasta que
-           cobras. SEACE y compras menores, expediente preparado y seguimiento
-           del pago de la entidad.</p>
+           cobras. SEACE y contratos menores del OECE, expediente preparado y
+           seguimiento del pago de la entidad.</p>
       </div>
       <div>
-        <h4>Producto</h4>
+        <h4 class="rotulo">Producto</h4>
         <ul>
           <li><a href="#como">Cómo funciona</a></li>
           <li><a href="#puntaje">Puntaje de viabilidad</a></li>
@@ -919,7 +679,7 @@ body::after{
         </ul>
       </div>
       <div>
-        <h4>Tu cuenta</h4>
+        <h4 class="rotulo">Tu cuenta</h4>
         <ul>
           <li><a href="/entrar">Entrar</a></li>
           <li><a href="/registro">Crear cuenta</a></li>
@@ -927,12 +687,12 @@ body::after{
         </ul>
       </div>
       <div>
-        <h4>Legal y contacto</h4>
+        <h4 class="rotulo">Legal y contacto</h4>
         <ul>
           <li><a href="/privacidad">Privacidad</a></li>
           <li><a href="/terminos">Términos del servicio</a></li>
           <li><a href="/reclamaciones">Libro de Reclamaciones</a></li>
-          <li><a href="mailto:soporte@sisac.pe">soporte@sisac.pe</a></li>
+          <li><!--email_off--><a href="mailto:soporte@sisac.pe">soporte@sisac.pe</a><!--/email_off--></li>
         </ul>
       </div>
     </div>
@@ -940,9 +700,11 @@ body::after{
     <div class="abajo">
       <span>© 2026 LicitaPro Perú &middot; Hecho en Perú</span>
       <a class="pie-libro" href="/reclamaciones">
-        <span class="icono" aria-hidden="true">&#9998;</span>
+        <span class="icono" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/></svg>
+        </span>
         <span>
-          <span class="arriba">Libro de</span>
+          <span class="rotulo">Libro de</span>
           <span class="abajo-txt">Reclamaciones</span>
         </span>
       </a>

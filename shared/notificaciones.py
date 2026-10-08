@@ -458,6 +458,18 @@ async def avisar_cobros_vencidos() -> dict:
                     [dueno.get("nombre") or "Hola", str(len(pagos)),
                      "cobros con el plazo vencido"])
                 enviado |= ok
+            elif canal == CANAL_EMAIL:
+                # `_canales_de` ya incluia el correo; esta rama no existia y
+                # el aviso se perdia para quien solo tenia correo.
+                from shared import plantillas_correo
+                enviado |= await _por_email_aviso(
+                    config["email_notificaciones"],
+                    "Tienes cobros con el plazo legal vencido",
+                    "Cobros con el plazo legal vencido",
+                    [ln.replace("\n  ", " · ") for ln in lineas]
+                    + [("La Ley 32069 da 10 días hábiles desde la conformidad. "
+                        "Ya puedes reclamar formalmente a la entidad.")],
+                    boton_texto="Ver mis cobros", acento=plantillas_correo.ROJO)
         parte["avisados"] += bool(enviado)
 
     log.info("Aviso de cobros vencidos: %s", parte)
@@ -541,6 +553,15 @@ async def detectar_adjudicaciones() -> dict:
     """
     parte = {"revisadas": 0, "coincidencias": 0, "avisados": 0}
 
+    # 'listo' Y 'enviado', NO SOLO 'enviado'
+    #
+    #   Comprobado el 2026-10-07: ninguna ruta de la web ni del prep_bot pone
+    #   una propuesta en 'enviado'. El ciclo real es 'iniciado' (se abre) ->
+    #   'listo' (expediente generado) -> 'ganada' (se registra la buena pro).
+    #   Con `= 'enviado'` esta consulta devolvia cero filas SIEMPRE: el
+    #   detector corria cada 30 minutos sobre nada, y el "parece que ganaste"
+    #   no podia llegarle a nadie. 'listo' es lo mas cerca de "presentada" que
+    #   hoy se sabe; 'enviado' se conserva por si algun dia se registra.
     async with connection() as conn:
         filas = await conn.fetch(
             """SELECT p.id AS propuesta_id, p.licitacion_id,
@@ -550,7 +571,7 @@ async def detectar_adjudicaciones() -> dict:
                  FROM propuestas p
                  JOIN empresas e ON e.id = p.empresa_id
                  JOIN licitaciones l ON l.id = p.licitacion_id
-                WHERE p.estado = 'enviado'
+                WHERE p.estado IN ('listo', 'enviado')
                   AND l.proveedor_ganador IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM contratos c
                                    WHERE c.propuesta_id = p.id)""")
@@ -607,6 +628,19 @@ async def detectar_adjudicaciones() -> dict:
                 [usuario.get("nombre") or "Hola", str(len(ganadas)),
                  "procesos donde figuras como adjudicatario"])
             enviado |= ok
+        # El correo es el canal que TODO usuario tiene (es su cuenta) y el
+        # unico que tenia el primer cliente real. Sin esta rama, quien no
+        # vinculo Telegram ni WhatsApp no se enteraba de que gano.
+        config = await get_config_usuario(uid)
+        destino = (config or {}).get("email_notificaciones") or usuario["email"]
+        if destino:
+            enviado |= await _por_email_aviso(
+                destino, "Parece que ganaste una licitación",
+                "Parece que ganaste",
+                [f"{_titulo(g)} — {g.get('entidad') or ''}" for g in ganadas[:MAX_EN_RESUMEN]]
+                + [("El nombre del adjudicatario coincide con el de tu empresa. "
+                    "Entra al panel y confírmalo para empezar a llevar el contrato.")],
+                boton_texto="Confirmar en el panel")
 
         if enviado:
             await anotar_envio(uid, [g["licitacion_id"] for g in ganadas],
@@ -615,3 +649,64 @@ async def detectar_adjudicaciones() -> dict:
 
     log.info("Deteccion de adjudicaciones: %s", parte)
     return parte
+
+
+async def _por_email_aviso(destino: str, asunto: str, titulo: str, lineas: list[str],
+                           boton_texto: str = "Abrir el panel", acento: str | None = None) -> bool:
+    """Un aviso de contrato por correo, con la misma plantilla que el resto."""
+    from shared import plantillas_correo
+    from shared.email_sender import enviar_email
+    texto, html_ = plantillas_correo.componer(
+        titulo=titulo, intro=list(lineas),
+        boton={"texto": boton_texto, "url": URL_PANEL},
+        acento=acento or plantillas_correo.MENTA)
+    return await enviar_email(destino, asunto, html_, texto)
+
+
+def texto_plazo_proximo(plazo: dict) -> tuple[str, str]:
+    """(titulo, cuerpo) del aviso de un plazo de contrato que se acerca."""
+    dias = (plazo["fecha_limite"] - fechas.hoy()).days
+    if dias < 0:
+        titulo = f"Plazo vencido hace {abs(dias)} día(s)"
+    elif dias == 0:
+        titulo = "Un plazo de tu contrato vence hoy"
+    elif dias == 1:
+        titulo = "Un plazo de tu contrato vence mañana"
+    else:
+        titulo = f"Un plazo de tu contrato vence en {dias} días"
+    cuerpo = (f"{plazo.get('descripcion') or ''}\n"
+              f"{(plazo.get('objeto') or '')[:100]}\n"
+              f"{plazo.get('entidad') or ''}\n"
+              f"Fecha límite: {plazo['fecha_limite'].strftime('%d/%m/%Y')}\n"
+              f"Contrato: {plazo.get('numero_contrato') or '—'}")
+    return titulo, cuerpo
+
+
+async def avisar_plazo_proximo(plazo: dict) -> bool:
+    """Avisa al DUENO del contrato de un plazo que se acerca. True si salio.
+
+    Antes `check_plazos_proximos` mandaba todos los plazos de todos los
+    contratos a ADMIN_ID: el mismo fallo multi-inquilino que ya se corrigio en
+    las alertas y en los cobros. El plazo de un contrato solo le sirve a quien
+    tiene que cumplirlo.
+    """
+    dueno = await _dueno_de_empresa(plazo["empresa_id"])
+    if not dueno:
+        return False
+    config = await get_config_usuario(dueno["id"])
+    titulo, cuerpo = texto_plazo_proximo(plazo)
+    enviado = False
+    for canal in _canales_de(dict(dueno), config):
+        if canal == CANAL_TELEGRAM:
+            enviado |= await _por_telegram_texto(
+                dueno["telegram_chat_id"], f"⏰ <b>{_esc(titulo)}</b>\n\n{_esc(cuerpo)}")
+        elif canal == CANAL_WHATSAPP:
+            ok, _ = await whatsapp.enviar_plantilla(
+                dueno["whatsapp_numero"], PLANTILLA_AVISO,
+                [dueno.get("nombre") or "Hola", "1", "plazo de contrato por vencer"])
+            enviado |= ok
+        elif canal == CANAL_EMAIL:
+            enviado |= await _por_email_aviso(
+                config["email_notificaciones"], titulo, titulo, cuerpo.split("\n"),
+                boton_texto="Ver el contrato")
+    return enviado

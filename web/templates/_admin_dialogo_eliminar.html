@@ -1,11 +1,13 @@
 {# Confirmacion de borrado de una cuenta. Uno solo por pagina: el boton que
    lo abre trae en data-* la accion y el correo (ver licitapro.js), y el
    servidor vuelve a comprobar el correo escrito -- lo del navegador es
-   comodidad, no seguridad. #}
-<dialog class="confirmar" id="dlg-eliminar" aria-labelledby="dlg-eliminar-titulo">
+   comodidad, no seguridad.
+   Los ganchos (.dlg-correo, .dlg-resumen, [data-esperado], [data-exige],
+   [data-cerrar]) son contrato con el JS: no se renombran. #}
+<dialog class="confirmar" id="dlg-eliminar" aria-labelledby="dlg-eliminar-titulo" aria-describedby="dlg-eliminar-texto">
   <form method="post" action="" data-cargando="Eliminando…">
     <h2 id="dlg-eliminar-titulo">Eliminar la cuenta</h2>
-    <p>Se borra <span class="dlg-correo"></span> con <span class="dlg-resumen"></span>.
+    <p id="dlg-eliminar-texto">Se borra <span class="dlg-correo"></span> con <span class="dlg-resumen"></span>.
        No se puede deshacer y no queda copia.</p>
     <label class="campo">
       <span>Escribe el correo de la cuenta para confirmar</span>
@@ -13,8 +15,8 @@
              data-esperado="" placeholder="correo@empresa.pe" required>
     </label>
     <div class="pie-form">
+      <button type="button" class="fantasma" data-cerrar>Cancelar</button>
       <button type="submit" class="peligro" data-exige disabled>Eliminar definitivamente</button>
-      <button type="button" class="sec" data-cerrar>Cancelar</button>
     </div>
   </form>
 </dialog>

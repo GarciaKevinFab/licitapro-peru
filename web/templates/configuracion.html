@@ -4,51 +4,43 @@
 {% set sub_pagina = 'Por dónde te avisamos, tus credenciales y los filtros que deciden qué licitaciones son tuyas.' %}
 
 {% block estilos %}
-.peligro-zona{border-color:var(--urg)}
-.peligro-zona h2{color:var(--urg)}
+main{max-width:900px}
 
-.wa-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}
-.consiento{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2);line-height:1.45}
-.consiento input{width:auto;margin-top:2px;flex:none}
+/* Estado de un canal: el punto de color del sistema (.punto) con su texto al
+   lado. El color nunca va solo: "Conectado" / "Sin conectar" lo dice la frase. */
+.estado{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.estado .punto{margin-top:6px}
+.estado b{color:var(--ink);font-weight:600}
 
-main{max-width:860px}
-.estado{display:flex;align-items:center;gap:9px;margin-bottom:16px}
-.punto{width:9px;height:9px;border-radius:50%;flex:none}
-.punto.si{background:var(--ok)} .punto.no{background:var(--ink-3)}
-.estado .txt{font-size:13.5px}
-.estado .txt b{font-weight:500}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
-.pasos{margin:14px 0 18px;padding-left:20px;color:var(--ink-2);font-size:13px}
-.pasos li{margin-bottom:5px}
-.tabla-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-inline:-2px}
-table.cred{width:100%;min-width:420px;border-collapse:collapse;font-size:13.5px}
-table.cred th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
-table.cred td{padding:11px 10px 11px 0;border-bottom:1px solid var(--line-soft);vertical-align:middle}
-table.cred tr:last-child td{border-bottom:none}
-.marca-cred{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.marca-cred.si{background:var(--ok-soft);color:var(--ok)}
-.marca-cred.no{background:var(--panel-2);color:var(--ink-3)}
-.fila-cred{display:flex;gap:8px;align-items:center}
-.fila-cred input{min-width:150px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
+/* Los pasos para conectar Telegram: numerados con el acento, cortos. */
+ol.como{margin:0 0 16px;padding:0 0 0 22px;color:var(--ink-2);font-size:13.5px;display:flex;flex-direction:column;gap:6px}
+ol.como li::marker{color:var(--ac);font-family:var(--f-mono);font-size:12px}
+ol.como b{color:var(--ink);font-weight:600}
+
+/* El consentimiento es una casilla con un parrafo al lado, no una fila de
+   38 px: el texto ocupa dos lineas y la casilla se alinea con la primera. */
+.consiento{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--ink-2);line-height:1.5;cursor:pointer}
+.consiento input{margin-top:3px;flex:none}
+
+/* Credenciales: el campo de reemplazo y su boton en una sola fila. */
+.fila-cred{display:flex;gap:8px;align-items:center;min-width:220px}
+.fila-cred input{min-width:0;flex:1}
+table.datos td{vertical-align:middle}
+
 /* Las 25 regiones en rejilla: cuatro columnas en ancho, tres en tableta y dos
-   en el telefono, con cada casilla a 36 px de alto (44 en movil) para que se
-   pueda acertar con el dedo. */
-.rotulo{margin:0}
-.rotulo>span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
-.regiones{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 16px;margin-top:6px}
+   en el telefono. Cada casilla es un .check del sistema (38 px, 44 en movil)
+   para que se pueda acertar con el dedo. */
+.regiones{display:grid;grid-template-columns:repeat(4,1fr);gap:0 16px}
 @media (max-width:720px){ .regiones{grid-template-columns:repeat(3,1fr)} }
 @media (max-width:480px){ .regiones{grid-template-columns:repeat(2,1fr)} }
-.regiones label{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:400;
-  text-transform:none;letter-spacing:0;color:var(--ink);min-height:36px;cursor:pointer;
-  padding:0 6px;margin:0 -6px;border-radius:var(--r);transition:background var(--dur) ease}
-.regiones label:hover{background:var(--panel-2)}
-.regiones input{width:16px;height:16px;flex:none}
-@media (max-width:640px){ .regiones label{min-height:44px} }
-.nota{font-size:12.5px;color:var(--ink-3);margin:16px 0 0;padding-top:14px;
-  border-top:1px solid var(--line-soft);max-width:70ch}
+.regiones .check{padding:0 8px;margin:0 -8px;border-radius:var(--r);transition:background var(--dur) ease;font-size:13.5px}
+.regiones .check:hover{background:var(--panel-2)}
+.regiones .check:has(input:checked){color:var(--ink)}
+
+/* La zona de borrar: borde en rojo tenue y titulo en rojo. Lo unico rojo de
+   la pagina, para que se distinga de todo lo demas. */
+.peligro-zona{border-color:color-mix(in srgb,var(--urg) 45%,var(--line))}
+.peligro-zona h2{color:var(--urg)}
 {% endblock %}
 
 {% block cuerpo_nota %}
@@ -68,30 +60,35 @@ table.cred tr:last-child td{border-bottom:none}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
-  <section class="tarjeta">
-    <h2>Telegram</h2>
-    <p class="sub">Por dónde llegan las alertas. Se vincula con un clic: no tienes
-       que buscar ni copiar ningún número de identificación.</p>
+  <section class="tarjeta" id="telegram">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Telegram</h2>
+        <p class="sub">Por dónde llegan las alertas. Se vincula con un clic: no tienes
+           que buscar ni copiar ningún número de identificación.</p>
+      </div>
+      {% if usuario.telegram_chat_id %}<span class="pill ok">conectado</span>{% else %}<span class="pill neutro">sin conectar</span>{% endif %}
+    </div>
 
-    <div class="estado">
-      <span class="punto {% if usuario.telegram_chat_id %}si{% else %}no{% endif %}"></span>
-      <span class="txt">
+    <p class="estado">
+      <span class="punto {% if usuario.telegram_chat_id %}ok{% endif %}" aria-hidden="true"></span>
+      <span>
         {% if usuario.telegram_chat_id %}<b>Conectado.</b> Recibirás las alertas en tu chat.
         {% else %}<b>Sin conectar.</b> Todavía no puedes recibir alertas.{% endif %}
       </span>
-    </div>
+    </p>
 
     {% if not usuario.telegram_chat_id %}
-      <ol class="pasos">
+      <ol class="como">
         <li>Pulsa <b>Conectar Telegram</b>: se abrirá el bot con un código de un solo uso.</li>
         <li>Envía el mensaje que aparece ya escrito.</li>
         <li>Listo. El código caduca a los 10 minutos.</li>
       </ol>
     {% endif %}
 
-    <div class="acciones">
+    <div class="btn-grupo">
       <form method="post" action="/configuracion/telegram/vincular">
-        <button type="submit">{% if usuario.telegram_chat_id %}Volver a conectar{% else %}Conectar Telegram{% endif %}</button>
+        <button type="submit" class="{% if usuario.telegram_chat_id %}sec{% endif %}">{% if usuario.telegram_chat_id %}Volver a conectar{% else %}Conectar Telegram{% endif %}</button>
       </form>
       {% if usuario.telegram_chat_id %}
         <form method="post" action="/configuracion/telegram/desvincular">
@@ -101,62 +98,70 @@ table.cred tr:last-child td{border-bottom:none}
     </div>
   </section>
 
-  <section class="tarjeta">
-    <h2>WhatsApp</h2>
-    <p class="sub">El mismo aviso, en el canal que ya miras. Llega un resumen
-       agrupado, no un mensaje por licitación.</p>
+  <section class="tarjeta" id="whatsapp">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>WhatsApp</h2>
+        <p class="sub">El mismo aviso, en el canal que ya miras. Llega un resumen
+           agrupado, no un mensaje por licitación.</p>
+      </div>
+      {% if not whatsapp_disponible %}<span class="pill neutro">próximamente</span>
+      {% elif usuario.whatsapp_estado == 'activo' %}<span class="pill ok">activo</span>
+      {% elif usuario.whatsapp_estado == 'pendiente' %}<span class="pill pend">pendiente</span>
+      {% else %}<span class="pill neutro">sin activar</span>{% endif %}
+    </div>
 
     {% if not whatsapp_disponible %}
-      <div class="estado">
-        <span class="punto no"></span>
-        <span class="txt"><b>Todavía no disponible.</b> Estamos terminando de
+      <p class="estado">
+        <span class="punto" aria-hidden="true"></span>
+        <span><b>Todavía no disponible.</b> Estamos terminando de
           activar el canal de WhatsApp. Mientras tanto, usa Telegram o el correo.</span>
-      </div>
+      </p>
 
     {% elif usuario.whatsapp_estado == 'activo' %}
-      <div class="estado">
-        <span class="punto si"></span>
-        <span class="txt"><b>Activo</b> en {{ usuario.whatsapp_numero }}.
+      <p class="estado">
+        <span class="punto ok" aria-hidden="true"></span>
+        <span><b>Activo</b> en <span class="mono">{{ usuario.whatsapp_numero }}</span>.
           Responde <b>BAJA</b> desde WhatsApp cuando quieras dejar de recibirlos.</span>
-      </div>
-      <div class="acciones">
+      </p>
+      <div class="btn-grupo">
         <form method="post" action="/configuracion/whatsapp/quitar">
           <button type="submit" class="peligro">Quitar número</button>
         </form>
       </div>
 
     {% elif usuario.whatsapp_estado == 'pendiente' %}
-      <div class="estado">
-        <span class="punto no"></span>
-        <span class="txt"><b>Falta tu confirmación.</b> Te escribimos al
-          {{ usuario.whatsapp_numero }}. Responde <b>ALTA</b> en ese chat y
+      <p class="estado">
+        <span class="punto warn" aria-hidden="true"></span>
+        <span><b>Falta tu confirmación.</b> Te escribimos al
+          <span class="mono">{{ usuario.whatsapp_numero }}</span>. Responde <b>ALTA</b> en ese chat y
           quedará activado.</span>
-      </div>
-      <p class="ayuda">¿No te llegó? Vuelve a enviarlo con el formulario de abajo.</p>
+      </p>
+      <p class="ayuda mb-16">¿No te llegó? Vuelve a enviarlo con el formulario de abajo.</p>
 
     {% elif usuario.whatsapp_estado == 'baja' %}
-      <div class="estado">
-        <span class="punto no"></span>
-        <span class="txt"><b>Diste de baja</b> los avisos por WhatsApp. Puedes
+      <p class="estado">
+        <span class="punto" aria-hidden="true"></span>
+        <span><b>Diste de baja</b> los avisos por WhatsApp. Puedes
           volver a activarlos cuando quieras.</span>
-      </div>
+      </p>
     {% endif %}
 
     {% if whatsapp_disponible and usuario.whatsapp_estado != 'activo' %}
-      <form method="post" action="/configuracion/whatsapp" class="wa-form" data-validar>
-        <label class="campo">
+      <form method="post" action="/configuracion/whatsapp" class="col-15" data-validar>
+        <label class="campo w-300">
           <span>Tu número de móvil</span>
-          <input type="text" name="numero" inputmode="tel" placeholder="987654321"
+          <input type="tel" name="numero" inputmode="tel" placeholder="987654321" class="num"
                  value="{{ usuario.whatsapp_numero or '' }}" required>
+          <p class="ayuda">Escríbelo como quieras: con o sin +51, con espacios o guiones.
+             Tiene que ser un móvil — WhatsApp no funciona en teléfonos fijos.</p>
         </label>
-        <p class="ayuda">Escríbelo como quieras: con o sin +51, con espacios o guiones.
-           Tiene que ser un móvil — WhatsApp no funciona en teléfonos fijos.</p>
         <label class="consiento">
           <input type="checkbox" name="consiento" value="1" required>
           <span>Acepto recibir avisos de licitaciones por WhatsApp. Entiendo que
             puedo darme de baja respondiendo BAJA en cualquier momento.</span>
         </label>
-        <div class="acciones">
+        <div class="btn-grupo">
           <button type="submit">
             {% if usuario.whatsapp_estado == 'pendiente' %}Reenviar confirmación{% else %}Activar WhatsApp{% endif %}
           </button>
@@ -165,45 +170,44 @@ table.cred tr:last-child td{border-bottom:none}
     {% endif %}
   </section>
 
-  <section class="tarjeta">
+  <section class="tarjeta" id="credenciales">
     <h2>Credenciales</h2>
     <p class="sub">Se guardan cifradas y <b>no se pueden volver a ver</b>, ni siquiera
        desde aquí: solo puedes reemplazarlas. Es a propósito — si esta pantalla pudiera
        mostrarlas, cualquiera con acceso a tu sesión también podría.</p>
 
-    {# La tabla va dentro de un contenedor con scroll propio: mide 489 px y
-       sobre 375 desbordaba la PAGINA entera, no solo la tabla. Es el patron
-       que la guia recomienda para tablas densas, y el que ya usa el panel. #}
-    <div class="tabla-scroll">
-    <table class="cred">
+    {# La tabla va dentro de .tabla-caja con scroll propio y se apila en movil:
+       medía 489 px y sobre 375 desbordaba la PAGINA entera, no solo la tabla. #}
+    <div class="tabla-caja">
+    <table class="datos apilada">
       <thead>
         <tr><th>Credencial</th><th>Estado</th><th>Reemplazar</th><th></th></tr>
       </thead>
       <tbody>
         {% for tipo, etiqueta in tipos_credencial.items() %}
         <tr>
-          <td>{{ etiqueta }}</td>
-          <td>
+          <td data-eti="Credencial"><span class="obj">{{ etiqueta }}</span></td>
+          <td data-eti="Estado">
             {% if tipo in credenciales %}
-              <span class="marca-cred si">configurada</span>
-              <div class="ayuda">{{ credenciales[tipo].strftime('%d/%m/%Y %H:%M') }}</div>
+              <span class="pill ok">configurada</span>
+              <div class="ayuda fecha">{{ credenciales[tipo].strftime('%d/%m/%Y %H:%M') }}</div>
             {% else %}
-              <span class="marca-cred no">sin configurar</span>
+              <span class="pill neutro">sin configurar</span>
             {% endif %}
           </td>
-          <td>
+          <td data-eti="Reemplazar">
             <form method="post" action="/configuracion/credencial" class="fila-cred">
               <input type="hidden" name="tipo" value="{{ tipo }}">
               <input type="password" name="valor" placeholder="nuevo valor" autocomplete="off" required
                      aria-label="Nuevo valor de {{ etiqueta }}">
-              <button type="submit">Guardar</button>
+              <button type="submit" class="sec chico">Guardar</button>
             </form>
           </td>
-          <td>
+          <td class="acciones">
             {% if tipo in credenciales %}
               <form method="post" action="/configuracion/credencial/borrar">
                 <input type="hidden" name="tipo" value="{{ tipo }}">
-                <button type="submit" class="peligro">Borrar</button>
+                <button type="submit" class="peligro chico">Borrar</button>
               </form>
             {% endif %}
           </td>
@@ -214,72 +218,80 @@ table.cred tr:last-child td{border-bottom:none}
     </div>
   </section>
 
-  <section class="tarjeta">
+  <section class="tarjeta" id="filtros">
     <h2>Qué licitaciones te interesan</h2>
     <p class="sub">Estos filtros deciden qué se te alerta. Las licitaciones son públicas
        y las rastreamos para todos; esto define cuáles son tuyas.</p>
 
     <form method="post" action="/configuracion/filtros" data-cargando="Guardando…">
-      {# Un rotulo, no un <label>: no hay un control unico al que asociarlo. #}
-      <p class="campo rotulo"><span>Regiones</span></p>
-      <div class="regiones">
-        {% for d in departamentos %}
-          <label>
-            <input type="checkbox" name="regiones" value="{{ d }}"
-              {% if config and config.regiones and d in config.regiones %}checked{% endif %}>
-            {{ d }}
+      {# Un fieldset con legend y no un <label>: no hay un control unico al que
+         asociar el rotulo "Regiones", son 25 casillas con el mismo name. #}
+      <fieldset>
+        <legend>Regiones</legend>
+        <div class="regiones">
+          {% for d in departamentos %}
+            <label class="check">
+              <input type="checkbox" name="regiones" value="{{ d }}"
+                {% if config and config.regiones and d in config.regiones %}checked{% endif %}>
+              <span>{{ d }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <p class="ayuda">Sin ninguna marcada se te alertan todas las regiones.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Palabras</legend>
+        <div class="col-15">
+          <label class="campo"><span>Palabras clave</span>
+            <textarea name="keywords" placeholder="software, servidores, cableado estructurado">{{ (config.keywords | join(', ')) if config and config.keywords else '' }}</textarea>
+            <p class="ayuda">Separadas por comas, y <strong>palabras completas</strong>
+               (<code>tecnologia</code>, <code>internet</code>, <code>impresora</code>).
+               El plural se cubre solo, y las tildes dan igual: la comparación las
+               ignora. Una raíz suelta como <code>tecnolog</code> no coincide con nada,
+               así que escribe también las variantes que uses
+               (<code>informatico</code>, <code>informatica</code>).</p>
           </label>
-        {% endfor %}
-      </div>
-      <p class="ayuda">Sin ninguna marcada se te alertan todas las regiones.</p>
 
-      <div class="mt-18 col-15">
-        <label class="campo"><span>Palabras clave</span>
-          <textarea name="keywords" placeholder="software, servidores, cableado estructurado">{{ (config.keywords | join(', ')) if config and config.keywords else '' }}</textarea>
-          <p class="ayuda">Separadas por comas, y <strong>palabras completas</strong>
-             (<code>tecnologia</code>, <code>internet</code>, <code>impresora</code>).
-             El plural se cubre solo, y las tildes dan igual: la comparación las
-             ignora. Una raíz suelta como <code>tecnolog</code> no coincide con nada,
-             así que escribe también las variantes que uses
-             (<code>informatico</code>, <code>informatica</code>).</p>
-        </label>
+          <label class="campo"><span>Palabras a excluir</span>
+            <textarea name="keywords_excluir" placeholder="calzado, media tension, aire acondicionado">{{ (config.keywords_excluir | join(', ')) if config and config.keywords_excluir else '' }}</textarea>
+            <p class="ayuda">Descartan una licitación aunque coincida con tus palabras clave.
+               Hacen falta por la homonimia del español: «servidores» son máquinas y también
+               personal, y «redes» son informáticas pero también de media tensión o de salud.</p>
+          </label>
+        </div>
+      </fieldset>
 
-        <label class="campo"><span>Palabras a excluir</span>
-          <textarea name="keywords_excluir" placeholder="calzado, media tension, aire acondicionado">{{ (config.keywords_excluir | join(', ')) if config and config.keywords_excluir else '' }}</textarea>
-          <p class="ayuda">Descartan una licitación aunque coincida con tus palabras clave.
-             Hacen falta por la homonimia del español: «servidores» son máquinas y también
-             personal, y «redes» son informáticas pero también de media tensión o de salud.</p>
-        </label>
-
-        <div class="rejilla">
+      <fieldset>
+        <legend>Montos</legend>
+        <div class="rejilla dos">
           <label class="campo"><span>Monto mínimo (S/)</span>
-            <input type="number" name="monto_min" min="0" step="100"
+            <input type="number" name="monto_min" min="0" step="100" class="monto"
                    value="{{ (config.monto_min | round | int) if config and config.monto_min else 0 }}"></label>
           <label class="campo"><span>Monto máximo (S/)</span>
-            <input type="number" name="monto_max" min="0" step="1000"
+            <input type="number" name="monto_max" min="0" step="1000" class="monto"
                    value="{{ (config.monto_max | round | int) if config and config.monto_max else 999999999 }}"></label>
         </div>
         <p class="ayuda">Las convocatorias sin monto publicado pasan el filtro igualmente:
            hoy son el 77%, y descartarlas por un dato que la entidad no publicó te haría
            perder licitaciones buenas.</p>
-      </div>
+      </fieldset>
 
-      <div class="acciones mt-18">
+      <div class="pie-tarjeta">
+        <span class="ayuda mb-0">Tu cuenta: <b>{{ usuario.email }}</b></span>
         <button type="submit">Guardar filtros</button>
       </div>
     </form>
-
-    <p class="nota">Tu cuenta: <b>{{ usuario.email }}</b></p>
   </section>
 
-  <section class="tarjeta peligro-zona">
+  <section class="tarjeta peligro-zona" id="borrar-cuenta">
     <h2>Borrar mi cuenta</h2>
     <p class="sub">Se borra todo: tus empresas, propuestas, contratos, logos y
        firmas. No hay vuelta atrás y no guardamos copia.</p>
-    <p class="ayuda">Es tu derecho según la Ley 29733. Si solo quieres dejar de
+    <p class="ayuda mb-16">Es tu derecho según la Ley 29733. Si solo quieres dejar de
        recibir avisos, no hace falta esto: desconecta los canales arriba.</p>
-    <form method="post" action="/configuracion/cuenta/borrar" class="wa-form" data-validar>
-      <label class="campo">
+    <form method="post" action="/configuracion/cuenta/borrar" class="col-15" data-validar>
+      <label class="campo w-300">
         <span>Tu contraseña</span>
         <input type="password" name="password" autocomplete="current-password" required>
       </label>
@@ -287,7 +299,7 @@ table.cred tr:last-child td{border-bottom:none}
         <input type="checkbox" name="confirmo" value="1" required>
         <span>Entiendo que se borrará todo y que no se puede recuperar.</span>
       </label>
-      <div class="acciones">
+      <div class="btn-grupo">
         <button type="submit" class="peligro">Borrar mi cuenta para siempre</button>
       </div>
     </form>

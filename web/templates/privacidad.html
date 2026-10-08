@@ -4,34 +4,53 @@
 {% set titularidad_en_cuerpo = true %}
 
 {% block estilos %}
+/* ============================================================================
+   PAGINA LEGAL (la misma hoja que terminos.html)
+
+   Tipografia editorial: un titular en serif, el indice de secciones arriba
+   para llegar a la clausula que se busca, numeros de seccion en mono y
+   parrafos a 70 caracteres. El texto legal no se toca aqui: solo se viste.
+   Lo compartido con terminos esta anotado en docs/diseno/PENDIENTE-ganar.md
+   para subirlo a licitapro.css.
+   ========================================================================== */
 .legal{max-width:70ch;margin:0 auto}
-.legal h1{font-family:Sora,sans-serif;font-size:1.7rem;font-weight:600;
-  letter-spacing:-.02em;margin:0 0 6px}
-.legal .fecha{font-size:12.5px;color:var(--ink-3);margin:0 0 26px}
-.legal h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;
-  margin:30px 0 10px;letter-spacing:-.01em}
-.legal p{margin:0 0 12px;line-height:1.62}
-.legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
-.legal li{margin-bottom:6px}
-.legal table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 14px}
-.legal th,.legal td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line-soft);
-  vertical-align:top}
-.legal thead th{background:var(--panel-2);font-size:11px;letter-spacing:.07em;
-  text-transform:uppercase;color:var(--ink-3);font-weight:500}
-.revisar{background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--r);
-  padding:15px 17px;margin-bottom:26px;font-size:13.5px;color:var(--warn);line-height:1.55}
-.legal .titularidad{margin:14px 0 0;padding:13px 15px;background:var(--panel-2);
+.legal h1{font-size:clamp(30px,5vw,42px)}
+.legal .fecha{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 26px}
+.legal .intro{font-size:16px;color:var(--ink-2);line-height:1.6}
+.legal p{margin:0 0 13px;line-height:1.7;color:var(--ink-2)}
+.legal p b,.legal li b{color:var(--ink);font-weight:600}
+.legal ul{margin:0 0 14px;padding-left:20px;line-height:1.65;color:var(--ink-2)}
+.legal li{margin-bottom:7px}
+.legal h2{font-family:var(--f-display);font-size:21px;font-weight:600;letter-spacing:-.012em;
+  margin:38px 0 12px;display:flex;gap:12px;align-items:baseline;scroll-margin-top:80px;
+  font-variation-settings:"opsz" 48,"SOFT" 20}
+.legal h2 .n{font-family:var(--f-mono);font-size:12px;font-weight:500;color:var(--ac);letter-spacing:.06em;flex:none;min-width:2.4ch}
+.indice{margin:26px 0 30px;padding:16px 18px 12px;border:1px solid var(--line-soft);border-radius:var(--r-card);background:var(--panel)}
+.indice .rotulo{display:block;margin-bottom:6px}
+.indice ol{margin:0;padding:0;list-style:none;columns:2;column-gap:24px}
+.indice li{break-inside:avoid;margin:0}
+.indice a{display:flex;gap:10px;align-items:baseline;color:var(--ink-2);text-decoration:none;font-size:13.5px;padding:5px 0;min-height:32px}
+.indice a:hover{color:var(--ac)}
+.indice a .n{font-family:var(--f-mono);font-size:11px;color:var(--ink-4);min-width:2.2ch;flex:none}
+@media (max-width:640px){.indice ol{columns:1}}
+.legal .titularidad{margin:0 0 26px;padding:13px 16px;background:var(--panel);border:1px solid var(--line-soft);
   border-radius:var(--r);font-size:13px;line-height:1.6;color:var(--ink-2)}
 .legal .titularidad b{color:var(--ink);font-weight:600}
-.legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
-  font-size:13px;color:var(--ink-3)}
-.marco-tabla{overflow-x:auto}
+.legal .pie-legal{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-3)}
+.legal .pie-legal a{text-decoration:none}
+/* Solo privacidad: la tabla de datos tratados, en prosa, con las celdas
+   mas altas que una tabla de cifras. */
+.legal .tabla-caja{margin:4px 0 18px}
+.legal table.datos td{font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.legal table.datos td b{color:var(--ink)}
+.legal table.datos td:first-child{color:var(--ink);font-weight:500}
+@media (max-width:640px){.legal table.apilada td{flex-direction:column;gap:3px}}
 {% endblock %}
 
 {% block cuerpo %}
 {% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
-<main>
-<article class="legal tarjeta">
+<main class="estrecho">
+<article class="legal">
 
   {# EL AVISO SE APAGA SOLO, Y ESO ES EL PUNTO
 
@@ -43,22 +62,36 @@
      puede ejercer el derecho de acceso contra alguien a quien no puedes
      escribir). En cuanto esten los cuatro en el entorno, desaparece. #}
   {% if not identidad_completa %}
-    <div class="revisar">
-      <b>Política incompleta.</b> Faltan los datos del responsable del
+    <div class="mensaje aviso">
+      <p class="mb-0"><b>Política incompleta.</b> Faltan los datos del responsable del
       tratamiento, que la Ley 29733 exige para que puedas ejercer tus derechos.
       El resto del texto describe con exactitud lo que el sistema hace con los
-      datos: está escrito a partir del esquema real, no de una plantilla.
+      datos: está escrito a partir del esquema real, no de una plantilla.</p>
     </div>
   {% endif %}
 
-  <h1>Política de privacidad</h1>
+  <h1 class="display">Política de privacidad</h1>
   <p class="fecha">Última actualización: {{ hoy }}</p>
 
-  <p>Esta política explica qué datos personales trata LicitaPro Perú, para qué,
+  <p class="intro">Esta política explica qué datos personales trata LicitaPro Perú, para qué,
      con quién se comparten y qué puedes exigir sobre ellos. Se rige por la
      <b>Ley 29733</b>, Ley de Protección de Datos Personales, y su reglamento.</p>
 
-  <h2>1. Quién es el responsable</h2>
+  <nav class="indice" aria-label="Secciones">
+    <span class="rotulo">Contenido</span>
+    <ol>
+      <li><a href="#p-1"><span class="n">1</span>Quién es el responsable</a></li>
+      <li><a href="#p-2"><span class="n">2</span>Qué datos tratamos y por qué</a></li>
+      <li><a href="#p-3"><span class="n">3</span>Con quién se comparten</a></li>
+      <li><a href="#p-4"><span class="n">4</span>Lo que NO hacemos</a></li>
+      <li><a href="#p-5"><span class="n">5</span>Cuánto tiempo los guardamos</a></li>
+      <li><a href="#p-6"><span class="n">6</span>Tus derechos</a></li>
+      <li><a href="#p-7"><span class="n">7</span>Seguridad</a></li>
+      <li><a href="#p-8"><span class="n">8</span>Cambios</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="p-1"><span class="n">1.</span> Quién es el responsable</h2>
   {# Los mismos datos que el pie del checkout, de la misma fuente. Escritos dos
      veces es como acaban discrepando, y una politica que no coincide con lo que
      figura en el contrato de comercio es peor que no tenerla. #}
@@ -76,65 +109,65 @@
 
   {% include "_titularidad.html" %}
 
-  <h2>2. Qué datos tratamos y por qué</h2>
-  <div class="marco-tabla">
-  <table>
+  <h2 id="p-2"><span class="n">2.</span> Qué datos tratamos y por qué</h2>
+  <div class="tabla-caja">
+  <table class="datos apilada">
     <thead><tr><th>Dato</th><th>Para qué</th><th>Si no lo das</th></tr></thead>
     <tbody>
       <tr>
-        <td>Correo y nombre</td>
-        <td>Identificar tu cuenta, avisarte y recuperar tu contraseña.</td>
-        <td>No se puede crear la cuenta.</td>
+        <td data-eti="Dato">Correo y nombre</td>
+        <td data-eti="Para qué">Identificar tu cuenta, avisarte y recuperar tu contraseña.</td>
+        <td data-eti="Si no lo das">No se puede crear la cuenta.</td>
       </tr>
       <tr>
-        <td>Contraseña</td>
-        <td>Acceder. Se guarda cifrada con bcrypt: <b>no la conocemos ni podemos
+        <td data-eti="Dato">Contraseña</td>
+        <td data-eti="Para qué">Acceder. Se guarda cifrada con bcrypt: <b>no la conocemos ni podemos
             recuperarla</b>, solo restablecerla.</td>
-        <td>No se puede crear la cuenta.</td>
+        <td data-eti="Si no lo das">No se puede crear la cuenta.</td>
       </tr>
       <tr>
-        <td>Número de WhatsApp</td>
-        <td>Enviarte los avisos de licitaciones. Solo tras confirmarlo tú desde
+        <td data-eti="Dato">Número de WhatsApp</td>
+        <td data-eti="Para qué">Enviarte los avisos de licitaciones. Solo tras confirmarlo tú desde
             ese teléfono; guardamos la fecha de ese consentimiento y la de tu
             baja si la pides.</td>
-        <td>No recibes avisos por WhatsApp. Todo lo demás funciona igual.</td>
+        <td data-eti="Si no lo das">No recibes avisos por WhatsApp. Todo lo demás funciona igual.</td>
       </tr>
       <tr>
-        <td>Identificador de Telegram</td>
-        <td>Lo mismo, por ese canal. Lo entrega Telegram al vincular; nunca lo
+        <td data-eti="Dato">Identificador de Telegram</td>
+        <td data-eti="Para qué">Lo mismo, por ese canal. Lo entrega Telegram al vincular; nunca lo
             escribes tú.</td>
-        <td>No recibes avisos por Telegram.</td>
+        <td data-eti="Si no lo das">No recibes avisos por Telegram.</td>
       </tr>
       <tr>
-        <td>Datos de tu empresa: RUC, razón social, representante legal, su DNI
+        <td data-eti="Dato">Datos de tu empresa: RUC, razón social, representante legal, su DNI
             y cargo, dirección y teléfono</td>
-        <td>Rellenar los anexos y declaraciones juradas que exige cada proceso.</td>
-        <td>Puedes mirar licitaciones, pero no generar documentos.</td>
+        <td data-eti="Para qué">Rellenar los anexos y declaraciones juradas que exige cada proceso.</td>
+        <td data-eti="Si no lo das">Puedes mirar licitaciones, pero no generar documentos.</td>
       </tr>
       <tr>
-        <td>Logo, firma escaneada y sello</td>
-        <td>Incrustarlos en los documentos que generas. Se sirven por una ruta
+        <td data-eti="Dato">Logo, firma escaneada y sello</td>
+        <td data-eti="Para qué">Incrustarlos en los documentos que generas. Se sirven por una ruta
             autenticada, nunca por una URL pública adivinable.</td>
-        <td>Los documentos salen sin ellos.</td>
+        <td data-eti="Si no lo das">Los documentos salen sin ellos.</td>
       </tr>
       <tr>
-        <td>Datos de pago</td>
-        <td>Cobrar tu suscripción. <b>No guardamos el número de tu tarjeta:</b>
+        <td data-eti="Dato">Datos de pago</td>
+        <td data-eti="Para qué">Cobrar tu suscripción. <b>No guardamos el número de tu tarjeta:</b>
             solo un identificador que nos devuelve la pasarela, cifrado, más la
             marca y los cuatro últimos dígitos para que reconozcas cuál es.</td>
-        <td>No puedes contratar un plan de pago.</td>
+        <td data-eti="Si no lo das">No puedes contratar un plan de pago.</td>
       </tr>
       <tr>
-        <td>Intentos de acceso fallidos, con tu correo y tu IP</td>
-        <td>Frenar a quien intente adivinar contraseñas. Se borran solos a las
+        <td data-eti="Dato">Intentos de acceso fallidos, con tu correo y tu IP</td>
+        <td data-eti="Para qué">Frenar a quien intente adivinar contraseñas. Se borran solos a las
             24 horas, y también en cuanto entras correctamente.</td>
-        <td>No es opcional: es una medida de seguridad, no un servicio.</td>
+        <td data-eti="Si no lo das">No es opcional: es una medida de seguridad, no un servicio.</td>
       </tr>
     </tbody>
   </table>
   </div>
 
-  <h2>3. Con quién se comparten</h2>
+  <h2 id="p-3"><span class="n">3.</span> Con quién se comparten</h2>
   <p>Solo con quien hace falta para prestarte el servicio, y solo lo que hace
      falta:</p>
   <ul>
@@ -155,7 +188,7 @@
   </ul>
   <p>No vendemos datos a nadie, ni los cedemos con fines publicitarios.</p>
 
-  <h2>4. Lo que NO hacemos</h2>
+  <h2 id="p-4"><span class="n">4.</span> Lo que NO hacemos</h2>
   <p>Conviene decirlo explícitamente, porque hay quien sí lo hace:</p>
   <ul>
     <li><b>No te pedimos el PIN de tu DNI electrónico</b>, ni podríamos usarlo.
@@ -168,7 +201,7 @@
         que los descargues.</li>
   </ul>
 
-  <h2>5. Cuánto tiempo los guardamos</h2>
+  <h2 id="p-5"><span class="n">5.</span> Cuánto tiempo los guardamos</h2>
   <p>Mientras tengas la cuenta abierta. Si la borras, se borran con ella tus
      empresas, propuestas, contratos, logos y firmas — de verdad, no marcados
      como inactivos. Los registros de intentos de acceso se eliminan a las 24
@@ -180,7 +213,7 @@
      fecha—, no tus licitaciones, tus propuestas ni tus documentos, que sí
      desaparecen.</p>
 
-  <h2>6. Tus derechos</h2>
+  <h2 id="p-6"><span class="n">6.</span> Tus derechos</h2>
   <p>La Ley 29733 te reconoce estos, y puedes ejercerlos escribiendo a
      {% if comercio.email %}<b><!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off--></b>
      {%- else %}la dirección de contacto del responsable{% endif %}:</p>
@@ -198,7 +231,7 @@
   <p>Si crees que no atendimos tu solicitud como debíamos, puedes reclamar ante
      la Autoridad Nacional de Protección de Datos Personales.</p>
 
-  <h2>7. Seguridad</h2>
+  <h2 id="p-7"><span class="n">7.</span> Seguridad</h2>
   <p>Las contraseñas van con bcrypt y las credenciales que cargas, cifradas. La
      sesión viaja en una cookie firmada y, fuera de desarrollo, solo por HTTPS.
      Cada cuenta ve únicamente sus propios datos, y eso se comprueba en cada
@@ -206,7 +239,7 @@
   <p>Ninguna medida es perfecta. Si detectamos una brecha que afecte a tus
      datos, te lo diremos.</p>
 
-  <h2>8. Cambios</h2>
+  <h2 id="p-8"><span class="n">8.</span> Cambios</h2>
   <p>Si cambiamos esta política te avisaremos por correo antes de que empiece a
      aplicarse. La fecha de arriba dice cuándo se actualizó por última vez.</p>
 

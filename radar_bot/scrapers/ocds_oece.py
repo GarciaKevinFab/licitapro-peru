@@ -34,6 +34,7 @@ Notas de la estructura OCDS, verificadas contra la API:
 import hashlib
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -43,6 +44,7 @@ from shared import fechas
 from shared.banderas import calcular, umbrales_por_tipo
 from shared.config import DEPARTAMENTOS, normalizar
 from shared.db import log_scraping_end, log_scraping_start, refrescar_licitacion
+from shared.ubigeo import departamento_de_entidad
 
 log = logging.getLogger("radar.ocds_oece")
 
@@ -207,18 +209,66 @@ def _tipo_entidad(entidad: str) -> str:
 _DEPTOS_NORM = [(normalizar(d), d) for d in DEPARTAMENTOS]
 
 
-def _departamento(texto: str) -> str | None:
-    """Detecta el departamento en el texto libre del proceso."""
+def _palabra(nombre: str, texto: str) -> bool:
+    """True si `nombre` aparece como palabra entera, no como trozo de otra."""
+    return re.search(r"(?<![a-z0-9])" + re.escape(nombre) + r"(?![a-z0-9])",
+                     texto) is not None
+
+
+def _departamento(texto: str, entidad: str | None = None) -> str | None:
+    """Detecta el departamento en el texto libre del proceso.
+
+    EN QUE ORDEN SE MIRA, Y POR QUE
+
+      1. "DEPARTAMENTO DE X" / "REGION X" en cualquier parte: es la forma
+         explicita y vale aunque la entidad sea de otro sitio (un ministerio
+         de Lima que compra para Cusco compra en Cusco).
+      2. La ENTIDAD por la tabla de ubigeos (shared/ubigeo.py): una
+         municipalidad o UGEL se ubica por su provincia o distrito, y eso
+         manda sobre cualquier palabra: "SAN MARTIN DE PORRES" es Lima.
+      3. La ENTIDAD por nombre de departamento o alias ("Gobierno Regional de
+         Puno", "UGEL Huancayo").
+      4. El resto del texto (objeto e items). Va al final porque es donde se
+         cuela el ruido: 51 filas tenian la region del objeto en vez de la de
+         la entidad ("GOBIERNO REGIONAL DE TACNA" etiquetado Moquegua porque
+         la obra lindaba con Moquegua).
+
+    SE COMPARA POR PALABRA ENTERA, NO POR SUBCADENA
+
+      La version anterior hacia `if "ica" in texto`, y "ica" esta dentro de
+      publICA, tecnICA, medICA, electrICA y farmaceutICA. Medido contra la
+      base el 2026-10-07: el Gobierno Regional de Puno tenia 65 procesos en
+      Puno y 50 en "Ica", e Ica era el segundo departamento con mas
+      convocatorias del pais sin serlo. El filtro por regiones compara contra
+      esta columna, asi que un cliente de Ica recibia compras de Puno y uno de
+      Puno dejaba de ver la mitad de las suyas.
+
+      `orchestrator._detectar_depto` tuvo exactamente este fallo y se corrigio
+      igual; esta funcion se habia quedado atras. Las filas ya guardadas se
+      arreglan con tools/reparar_departamentos.py.
+    """
     t = normalizar(texto)
     # "DEPARTAMENTO DE PIURA" es la forma mas confiable: se busca primero.
     for norm, real in _DEPTOS_NORM:
         if f"departamento de {norm}" in t or f"region {norm}" in t:
             return real
+    if entidad:
+        por_ubigeo = departamento_de_entidad(entidad)
+        if por_ubigeo:
+            return por_ubigeo
+        en_entidad = _por_palabras(normalizar(entidad))
+        if en_entidad:
+            return en_entidad
+    return _por_palabras(t)
+
+
+def _por_palabras(t: str) -> str | None:
+    """Alias (ciudades) y nombres de departamento como palabra entera."""
     for alias, real in ALIAS_DEPTO.items():
-        if alias in t:
+        if _palabra(alias, t):
             return real
     for norm, real in _DEPTOS_NORM:
-        if norm in t:
+        if _palabra(norm, t):
             return real
     return None
 
@@ -338,7 +388,7 @@ def _parsear(release: dict) -> dict | None:
         # enquiryPeriod.endDate es el unico plazo accionable que publica la API.
         "fecha_cierre": _fecha((tender.get("enquiryPeriod") or {}).get("endDate")),
         "estado": estado,
-        "departamento": _departamento(texto_ubicacion),
+        "departamento": _departamento(texto_ubicacion, entidad),
         "url": f"{API}?ocid={ocid}",
         "bases_urls": bases,
         # La propia API cuenta los dias segun su norma; recalcularlos entre

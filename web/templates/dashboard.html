@@ -1,427 +1,83 @@
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-{# HTMX inyecta al arrancar una hoja de estilos propia para `htmx-indicator`.
-   Nuestra CSP no admite estilos en linea, asi que el navegador la bloqueaba y
-   dejaba un error en la consola en cada carga del panel. No se pierde nada al
-   desactivarla: la espera se marca con `.htmx-request`, que se define mas
-   abajo en este mismo archivo y por tanto lleva el nonce, y `htmx-indicator`
-   no se usa en ninguna plantilla.
-   Va aqui y no en _base.html porque esta plantilla NO hereda de ella, y es la
-   unica que carga HTMX.
-   Se apaga con una meta y no con JS porque script-src tampoco admite en linea. #}
-<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
-<title>Panel · LicitaPro Perú</title>
-{# Esta plantilla NO hereda de _base.html, asi que el favicon que va alli no
-   llega aqui. El panel es la pagina que el cliente deja abierta en una pestana
-   todo el dia: es justo donde mas se nota que no haya icono. #}
-<link rel="icon" href="{{ estatico('favicon.svg') }}" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
-<style nonce="{{ request.state.csp_nonce }}">
-/* ====================================================================
-   ESTA PLANTILLA NO HEREDA DE _base.html
-   --------------------------------------------------------------------
-   Lleva su propia copia de los tokens, la cabecera, los botones y las
-   reglas de movil. Mientras siga siendo un documento aparte, los dos
-   archivos hay que tocarlos a la vez: lo que cambie alli en cabecera,
-   botones o controles, cambia aqui.
-   ==================================================================== */
-:root{
-  --bg:#F7F9FA; --panel:#FFFFFF; --panel-2:#EEF2F4;
-  --ink:#12181C; --ink-2:#46555E; --ink-3:#5F6E76;
-  --line:#DCE3E7; --line-soft:#E8EDF0;
-  --ac:#0F7A63; --ac-soft:#E2F1EC;
-  --urg:#B3261E; --urg-soft:#F9E4E2;
-  --warn:#8A5A00; --warn-soft:#F7EEDC;
-  --btn-txt:#FFFFFF;
-  --ease-out:cubic-bezier(.16,1,.3,1);
-  --dur:150ms;
-  --r:5px; --r-card:6px; --r-chip:3px;
-}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-    --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
-    --line:#27333A; --line-soft:#1F2A30;
-    --ac:#4ECBA8; --ac-soft:#123029;
-    --urg:#F08B82; --urg-soft:#3A1F1D;
-    --warn:#E0B45C; --warn-soft:#332714;
-    --btn-txt:#06211B;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#0D1216; --panel:#151C21; --panel-2:#1C252B;
-  --ink:#E7EEF1; --ink-2:#AFBEC6; --ink-3:#8A99A0;
-  --line:#27333A; --line-soft:#1F2A30;
-  --ac:#4ECBA8; --ac-soft:#123029;
-  --urg:#F08B82; --urg-soft:#3A1F1D;
-  --warn:#E0B45C; --warn-soft:#332714;
-  --btn-txt:#06211B;
-}
-*{box-sizing:border-box}
-html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ac) 30%,var(--line)) transparent}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14.5px;line-height:1.5;
-  -webkit-font-smoothing:antialiased}
-.mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
-a{color:var(--ac)}
-::selection{background:var(--ac-soft);color:var(--ink)}
-h1,h2,h3{text-wrap:balance}
-p,li,dd{text-wrap:pretty}
-:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:3px}
-
-/* ---------- CABECERA (copia de _base.html) ---------- */
-header{
-  position:sticky;top:0;z-index:40;
-  background:color-mix(in srgb, var(--panel) 82%, transparent);
-  backdrop-filter:blur(16px) saturate(150%);
-  -webkit-backdrop-filter:blur(16px) saturate(150%);
-  border-bottom:1px solid var(--line);
-  padding:0 22px;
-  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
-}
-.brand{font-family:Sora,sans-serif;font-weight:600;font-size:15px;letter-spacing:-.022em;
-  display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;
-  padding-block:13px;margin-right:4px}
-.brand .ico{width:19px;height:19px;color:var(--ac);flex:none}
-.brand .pe{color:var(--ink-3);font-weight:400}
-nav.menu{display:flex;align-items:center;gap:2px;font-size:13.5px;flex:1;flex-wrap:wrap}
-nav.menu a{color:var(--ink-2);text-decoration:none;position:relative;
-  padding:15px 11px;transition:color var(--dur) ease}
-nav.menu a:hover{color:var(--ink)}
-nav.menu a.activo{color:var(--ac);font-weight:500}
-nav.menu a::after{
-  content:"";position:absolute;left:11px;right:11px;bottom:-1px;height:2px;
-  background:var(--ink-3);border-radius:2px 2px 0 0;
-  transform:scaleX(0);transform-origin:center;
-  transition:transform var(--dur) var(--ease-out),background var(--dur) ease;
-}
-nav.menu a:hover::after{transform:scaleX(1)}
-nav.menu a.activo::after{transform:scaleX(1);background:var(--ac)}
-.sesion{display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--ink-3);
-  padding-block:10px;padding-left:20px;border-left:1px solid var(--line)}
-.sesion .yo{width:27px;height:27px;border-radius:50%;flex:none;
-  background:var(--ac-soft);color:var(--ac);
-  display:flex;align-items:center;justify-content:center;
-  font-family:Sora,sans-serif;font-weight:600;font-size:12px;text-transform:uppercase}
-.sesion .quien{max-width:17ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:900px){ .sesion .quien{display:none} }
-.sesion button.sec{min-height:32px;padding:4px 12px;font-size:12.5px}
-.en-linea{display:inline}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;background:var(--ac-soft);color:var(--ac);
-  padding:3px 7px;border-radius:var(--r-chip);white-space:nowrap}
-.aviso.urg{background:var(--urg-soft);color:var(--urg)}
-
-main{max-width:1400px;margin:0 auto;padding:22px 22px 60px}
-
-/* ---------- BOTONES Y CONTROLES (copia de _base.html) ---------- */
-button,.btn{background:var(--ac);color:var(--btn-txt);border:1px solid var(--ac);border-radius:var(--r);
-  min-height:36px;padding:6px 16px;font:inherit;font-size:13.5px;font-weight:500;line-height:1.25;
-  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  transition:background var(--dur) ease,color var(--dur) ease,border-color var(--dur) ease,
-    transform var(--dur) var(--ease-out),box-shadow var(--dur) ease}
-button:hover,.btn:hover{background:color-mix(in srgb,var(--ac) 86%,var(--ink));border-color:color-mix(in srgb,var(--ac) 86%,var(--ink))}
-button:active,.btn:active{transform:scale(.97)}
-button.sec,.btn.sec{background:transparent;color:var(--ink-2);border-color:var(--line)}
-button.sec:hover,.btn.sec:hover{background:var(--panel-2);color:var(--ink);border-color:var(--ink-3)}
-input[type=search],input[type=number],select{
-  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:var(--r);
-  padding:7px 10px;font:inherit;font-size:13.5px;min-width:130px;min-height:36px;
-  transition:border-color var(--dur) ease}
-input[type=search]{min-width:250px}
-input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:0;border-color:var(--ac)}
-input[type=checkbox]{accent-color:var(--ac);width:16px;height:16px;margin:0}
-
-/* ---------- CABECERA DE PAGINA ----------
-   El titulo y la cuenta. La cuenta la escribe _tabla.html: al cargar, dentro
-   de esta pagina; al filtrar por HTMX, como intercambio fuera de banda
-   (hx-swap-oob) sobre el mismo id, para que el numero de arriba siga al
-   filtro sin duplicar la fuente del dato. */
-.cab-pag{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 24px;
-  flex-wrap:wrap;margin:0 0 18px}
-.cab-pag h1{font-family:Sora,sans-serif;font-size:23px;font-weight:600;letter-spacing:-.02em;
-  line-height:1.15;margin:0}
-.cab-pag .cab-sub{margin:5px 0 0;font-size:13.5px;color:var(--ink-3);
-  font-variant-numeric:tabular-nums}
-.cab-pag .cab-sub b{font-weight:500;color:var(--ink-2)}
-.ult{font-size:12px;color:var(--ink-3)}
-
-/* ---------- CIFRAS ---------- */
-.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
-  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;margin-bottom:18px;
-  perspective:1100px}
-.t{background:var(--panel);padding:13px 16px;
-  transform-style:preserve-3d;
-  transition:transform .35s var(--ease-out),box-shadow .35s var(--ease-out)}
-/* Un grado de inclinacion y no ocho: esto se abre cuarenta veces al dia. */
-.t:hover{transform:translateY(-3px) rotateX(1.2deg) scale(1.008);
-  box-shadow:0 14px 30px -18px color-mix(in srgb,var(--ink) 45%,transparent)}
-.t .n{font-family:Sora,sans-serif;font-weight:600;font-size:1.7rem;line-height:1.1;
-  letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.t .l{font-size:11.5px;color:var(--ink-3);margin-top:3px;letter-spacing:.02em}
-.t.alerta .n{color:var(--urg)}
-.t.dato .n{color:var(--ac)}
-/* La de urgentes lleva un filo de color arriba: es la unica de las cuatro que
-   pide una accion HOY, y merece distinguirse sin gritar. */
-.t.alerta{position:relative;overflow:hidden}
-.t.alerta::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--urg)}
-
-/* ---------- FILTROS ---------- */
-form.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:end;
-  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:13px 16px;margin-bottom:16px}
-.campo{display:flex;flex-direction:column;gap:5px}
-.campo label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
-.check{display:flex;align-items:center;gap:8px;font-size:13.5px;min-height:36px}
-
-/* ---------- TABLA ---------- */
-.tabla-caja{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);overflow-x:auto;
-  -webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;width:100%;min-width:900px}
-/* La caption se queda para los lectores de pantalla; a la vista, la cuenta
-   ya esta en la cabecera de la pagina y repetirla a 60 px es ruido. */
-caption{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
-thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;background:var(--panel-2);border-bottom:1px solid var(--line)}
-tbody tr:last-child td{border-bottom:none}
-tbody tr{transition:background .18s ease}
-tbody tr:hover{background:var(--panel-2)}
-td.num,th.num{text-align:right}
-
-.score{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:56px}
-.score .sv{font-family:Sora,sans-serif;font-weight:600;font-size:1.05rem;font-variant-numeric:tabular-nums}
-.sbar{display:block;width:52px;height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden}
-.sfill{display:block;height:100%;background:var(--ac);border-radius:2px}
-.nd{color:var(--ink-3);font-size:12.5px}
-
-.cierre .fecha{font-family:"JetBrains Mono",monospace;font-size:13px;margin-right:6px;font-variant-numeric:tabular-nums}
-.chip{font-family:"JetBrains Mono",monospace;font-size:10.5px;padding:2px 6px;border-radius:var(--r-chip);white-space:nowrap;
-  font-variant-numeric:tabular-nums}
-.chip.urg{background:var(--urg-soft);color:var(--urg)}
-.chip.pronto{background:var(--warn-soft);color:var(--warn)}
-.chip.ok{background:var(--ac-soft);color:var(--ac)}
-.chip.venc{background:var(--panel-2);color:var(--ink-3)}
-.tipo{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-2)}
-.reg{font-size:13px;color:var(--ink-2);white-space:nowrap}
-
-td.obj{max-width:560px}
-.obj .ent{display:block;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3)}
-.obj .desc{display:block;margin-top:2px;color:var(--ink);text-decoration:none;
-  transition:color var(--dur) ease}
-.obj .desc:hover{color:var(--ac);text-decoration:underline;text-underline-offset:2px}
-.obj details{margin-top:6px}
-.obj summary{font-size:12px;color:var(--ac);cursor:pointer;width:max-content}
-.desglose{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
-.desglose div{background:var(--panel-2);border-radius:var(--r-chip);padding:3px 8px;display:flex;gap:6px;align-items:baseline}
-.desglose dt{font-size:11px;color:var(--ink-3);margin:0}
-.desglose dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
-.monto{white-space:nowrap;font-size:13px;font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
-.marca{display:inline-block;margin-top:4px;font-size:11.5px;padding:1px 7px;border-radius:var(--r-chip);
-  background:var(--panel-2);color:var(--ink-2)}
-.marca.n2{background:var(--warn-soft);color:var(--warn)}
-.marca.n3{background:var(--urg-soft);color:var(--urg)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
+{% extends "_base.html" %}
+{# El panel. Hasta el rediseno era un documento aparte con su propia copia de
+   los tokens, la cabecera y los botones (380 lineas de CSS que habia que
+   tocar a la vez que _base.html). Ahora hereda como las demas y solo anade
+   lo que de verdad es suyo: la espera de HTMX, el filtro en movil y la
+   tabla apilada. Ver docs/diseno/SISTEMA.md. #}
+{% set titulo_pagina = "Licitaciones" %}
+{% set og_titulo = "Panel de licitaciones · LicitaPro Perú" %}
+{% block titulo %}Panel · LicitaPro Perú{% endblock %}
+{% block estilos %}
+/* La espera de HTMX: hx-indicator="body" pone .htmx-request en el body
+   mientras llega el fragmento. Se atenua la caja y nada mas; la tabla vieja
+   sigue legible hasta que entra la nueva. */
 .htmx-request .tabla-caja{opacity:.55;transition:opacity .15s}
-
-/* Entrada escalonada de las diez primeras filas, igual que en _base.html. */
-@keyframes filaEntra{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
-tbody tr{animation:filaEntra .38s var(--ease-out) backwards}
-tbody tr:nth-child(1){animation-delay:.02s}
-tbody tr:nth-child(2){animation-delay:.05s}
-tbody tr:nth-child(3){animation-delay:.08s}
-tbody tr:nth-child(4){animation-delay:.11s}
-tbody tr:nth-child(5){animation-delay:.14s}
-tbody tr:nth-child(6){animation-delay:.17s}
-tbody tr:nth-child(7){animation-delay:.20s}
-tbody tr:nth-child(8){animation-delay:.23s}
-tbody tr:nth-child(9){animation-delay:.26s}
-tbody tr:nth-child(10){animation-delay:.29s}
-
-/* ---------- primeros pasos ---------- */
-.arranque{background:var(--panel);border:1px solid var(--ac);border-radius:var(--r-card);
-  padding:20px 22px;margin-bottom:22px;display:flex;flex-direction:column;gap:6px}
-.arr-cab{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.arr-cab h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;margin:0;
-  letter-spacing:-.01em}
-.arr-cuenta{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ac);
-  font-variant-numeric:tabular-nums}
-.arr-sub{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
-.arr-pasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
-.arr-pasos li{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:center}
-.arr-marca{width:16px;height:16px;border:1.5px solid var(--line);border-radius:50%;
-  flex:none;position:relative}
-.arr-pasos li.listo .arr-marca{background:var(--ac);border-color:var(--ac)}
-.arr-pasos li.listo .arr-marca::after{content:"";position:absolute;left:5px;top:2px;
-  width:3px;height:7px;border:solid var(--btn-txt);border-width:0 2px 2px 0;
-  transform:rotate(42deg)}
-.arr-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
-.arr-txt b{font-size:13.5px;font-weight:600}
-.arr-pasos li.listo .arr-txt b{color:var(--ink-3);text-decoration:line-through}
-.arr-txt span{font-size:12.5px;color:var(--ink-2);line-height:1.45}
-.arr-pasos li.listo .arr-txt span{display:none}
-
-/* Tramos de la barra de puntaje. Ver el comentario en _tabla.html. */
-.sfill.p0{width:0%}
-.sfill.p5{width:5%}
-.sfill.p10{width:10%}
-.sfill.p15{width:15%}
-.sfill.p20{width:20%}
-.sfill.p25{width:25%}
-.sfill.p30{width:30%}
-.sfill.p35{width:35%}
-.sfill.p40{width:40%}
-.sfill.p45{width:45%}
-.sfill.p50{width:50%}
-.sfill.p55{width:55%}
-.sfill.p60{width:60%}
-.sfill.p65{width:65%}
-.sfill.p70{width:70%}
-.sfill.p75{width:75%}
-.sfill.p80{width:80%}
-.sfill.p85{width:85%}
-.sfill.p90{width:90%}
-.sfill.p95{width:95%}
-.sfill.p100{width:100%}
-
-@media (prefers-reduced-motion:reduce){
-  .t,.t:hover{transform:none;transition:none}
-  tbody tr{animation:none}
-  button,.btn,button:active,.btn:active{transition:none;transform:none}
-  nav.menu a::after{transition:none}
-}
-
-/* ====================================================================
-   EL PANEL EN EL TELEFONO
-   --------------------------------------------------------------------
-   Medido a 390 px antes de esto: la tabla, con su ancho minimo de 900,
-   obligaba a desplazarse de lado dentro de la caja y cada fila mostraba
-   solo puntaje, fecha, tipo y region. El objeto -lo unico que dice si
-   la licitacion interesa- quedaba fuera de la vista, a 600 px a la
-   derecha. Una tabla de siete columnas no cabe en un telefono, y
-   encogerla no la arregla: la reescribe.
-
-   Por debajo de 640 px cada fila pasa a ser una TARJETA con el mismo
-   marcado: la fila se convierte en un contenedor flexible, las celdas
-   en bloques, y el orden lo pone CSS. Arriba: puntaje con su barra,
-   entidad y objeto, chip de cierre. Abajo, en una linea: tipo, region,
-   monto y el enlace a las bases. Una sola fuente de datos, ningun
-   marcado duplicado.
-   ==================================================================== */
+.cab-pag .cab-sub b{color:var(--ink);font-weight:600;font-family:var(--f-mono)}
+.cab-pag .cab-sub{font-variant-numeric:tabular-nums}
+.arr-marca svg{width:11px;height:11px;color:var(--btn-txt)}
+table.datos .cierre .fecha{font-size:13px;margin-right:6px}
+table.datos td.obj{max-width:620px;min-width:260px}
+table.datos .marca{margin-top:6px}
+table.datos .acciones{white-space:nowrap}
+table.datos td.monto{white-space:nowrap}
+/* Las cuatro cifras, en dos por fila en el telefono: el sistema las apila
+   de una en una por debajo de 400 px y eso empuja los filtros una pantalla
+   entera hacia abajo. */
 @media (max-width:640px){
-  header{padding:0 14px;row-gap:0}
-  header .sesion .aviso{display:none}
-  header .sesion{order:2;margin-left:auto;gap:8px}
-  header .brand{order:1;margin-right:auto;min-height:44px;display:inline-flex;align-items:center}
-  header nav.menu{
-    order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;
-    overflow-x:auto;-webkit-overflow-scrolling:touch;
-    gap:4px;padding-bottom:2px;padding-right:14px;scrollbar-width:none;
-  }
-  header nav.menu::-webkit-scrollbar{display:none}
-  header nav.menu a{white-space:nowrap;min-height:44px;padding:0 8px;
-    display:inline-flex;align-items:center}
-  header nav.menu a::after{left:8px;right:8px}
-
-  main{padding:16px 14px 56px}
-
-  /* Las cuatro cifras, en dos por fila y algo mas pequenas. */
   .tarjetas{grid-template-columns:1fr 1fr}
-  .t .n{font-size:1.5rem}
-
-  /* Filtros en dos columnas: la busqueda ocupa la fila entera, region y
-     puntaje se reparten la siguiente, y los botones la ultima. */
-  form.filtros{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;align-items:end;padding:14px}
-  form.filtros .campo:first-child{grid-column:1 / -1}
-  form.filtros input[type=search],form.filtros input[type=number],form.filtros select{min-width:0;width:100%;min-height:44px}
-  form.filtros .check{min-height:44px}
-  form.filtros button{min-height:44px;width:100%}
-  input[type=checkbox]{width:22px;height:22px}
-
-  /* Los primeros pasos, en vertical: el boton baja a su propia fila. */
-  .arr-pasos li{grid-template-columns:auto 1fr;row-gap:9px;align-items:start}
-  .arr-pasos li > a{grid-column:2;justify-self:start}
-  .arr-marca{margin-top:3px}
-
-  /* --- la tabla, en tarjetas --- */
-  table{min-width:0}
-  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  tbody tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 12px;
-    padding:14px 14px 12px;border-bottom:1px solid var(--line-soft)}
-  tbody tr:last-child{border-bottom:none}
-  tbody tr:hover{background:transparent}
-  td{display:block;padding:0;border:0}
-  /* Arriba: puntaje | entidad + objeto | cierre. */
-  td:first-child{order:1;flex:none;width:52px}
-  .score{align-items:flex-start;min-width:0}
-  td.obj{order:2;flex:1 1 0;min-width:0;max-width:none}
-  .obj .desc{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
-    line-height:1.4;padding:0}
-  .obj summary{min-height:40px;display:flex;align-items:center}
-  td.cierre{order:3;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-left:auto}
-  .cierre .fecha{margin-right:0;font-size:12.5px}
-  /* Salto de linea: el pseudo-elemento ocupa el ancho entero y empuja lo que
-     sigue a la fila de abajo. Con `tr` en flex ya no es una fila de tabla,
-     asi que ::after se comporta como en cualquier caja. */
-  tbody tr::after{content:"";order:4;flex-basis:100%;height:0;margin-top:-4px}
-  /* Abajo: tipo · region · monto, y el enlace a las bases pegado a la
-     derecha como boton pequeno, para que no salte de linea. */
-  td.tipo-c,td.reg,td.monto{order:5;flex:none;font-size:12.5px;color:var(--ink-2);
-    display:inline-flex;align-items:center;min-height:28px}
-  td.reg::before,td.monto::before{content:"·";color:var(--ink-3);margin-right:12px}
-  td.monto{text-align:left}
-  /* Una region sin dato no merece un guion en la tarjeta. */
-  td.reg.sin-dato{display:none}
-  td.bases{order:6;margin-left:auto;display:flex;align-items:center;min-height:28px}
-  td.bases a{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;
-    margin:-8px -10px -8px 0;padding:0 10px;font-size:12.5px;font-weight:500;text-decoration:none;
-    border:1px solid var(--line);border-radius:var(--r)}
-  td.bases .nd{display:none}
-  .vacio{padding:26px 16px}
+  .tarjetas .t .n{font-size:28px}
 }
-/* Franja "estas dentro de otra cuenta" (ver _nav.html). Copiada de
-   _base.html porque esta plantilla no hereda de ella: si se cambia alla,
-   cambiar aqui. */
-.dentro-de{position:sticky;top:0;z-index:41;display:flex;align-items:center;
-  justify-content:space-between;gap:12px;padding:8px 22px;font-size:13.5px;font-weight:500;
-  line-height:1.35;background:var(--warn);color:var(--bg)}
-.dentro-de>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.dentro-de strong{font-weight:700}
-.dentro-de form{flex:none}
-.dentro-de button{background:var(--bg);color:var(--warn);border-color:var(--bg);
-  min-height:30px;padding:3px 12px;font-size:12.5px;font-weight:600}
-.dentro-de button:hover{background:var(--panel);border-color:var(--panel);color:var(--warn)}
-.dentro-de + header{top:46px}
+/* Filtros en el telefono: cada campo a lo ancho y los dos botones repartidos
+   en la ultima fila. El sistema deja los campos encogerse en linea, que a
+   390 px da un select de 90 px. */
 @media (max-width:640px){
-  .dentro-de{position:static;padding:10px 14px;font-size:13px}
-  .dentro-de>span{white-space:normal;overflow:visible}
-  .dentro-de strong{overflow-wrap:anywhere}
-  .dentro-de button{min-height:44px}
-  .dentro-de + header{top:0}
+  .filtros .campo,.filtros .check{flex:1 1 100%}
+  .filtros .check{flex-basis:calc(50% - 7px)}
+  .filtros .acciones{width:100%;margin-left:0}
+  .filtros .acciones button{flex:1 1 0}
+  .filtros .w-120{max-width:none}
 }
-</style>
-</head>
-<body>
-
-{% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}
-
-<main>
-  <div class="cab-pag">
-    <div>
-      <h1>Licitaciones</h1>
-      <p class="cab-sub" id="cuenta-lic"><b>{{ licitaciones|length }}</b> ordenadas por puntaje</p>
-    </div>
+/* La tabla apilada en movil (data-eti en cada celda). Medido a 390 px antes
+   del rediseno: con desplazamiento lateral el objeto -- lo unico que dice si
+   la licitacion interesa -- quedaba 600 px a la derecha. Apilada, cada fila
+   es una tarjeta: puntaje, cierre, entidad y objeto a lo ancho, y debajo
+   region, tipo, monto y bases con su rotulo. */
+@media (max-width:640px){
+  table.apilada td{justify-content:flex-start;gap:10px;align-items:center}
+  table.apilada td[data-eti]::before{margin-right:auto}
+  table.apilada td.obj{display:block;padding:8px 14px}
+  table.apilada td.obj .desc{display:block;font-size:14.5px;line-height:1.4}
+  table.apilada .score{flex-direction:row;align-items:center;gap:8px}
+  table.apilada td.reg.nd{display:none}
+  table.apilada td.bases .btn{margin:-6px 0}
+  table.apilada tr{padding:8px 0 10px}
+  .tabla-caja table.apilada tbody tr:hover td:first-child{box-shadow:none}
+}
+{% endblock %}
+{% block nav %}{% with activo='licitaciones' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
+{% block cabecera_pagina %}
+<div class="cab-pag">
+  <div>
+    <h1>{{ titulo_pagina }}</h1>
+    {# La cuenta la escribe _tabla.html: al cargar, aqui; al filtrar por
+       HTMX, como intercambio fuera de banda (hx-swap-oob) sobre el mismo id,
+       para que el numero de arriba siga al filtro sin duplicar la fuente del
+       dato. Es el total que pasa los filtros, no las 30 de la pagina. #}
+    <p class="cab-sub" id="cuenta-lic"><b>{{ total }}</b> ordenadas por puntaje</p>
   </div>
-
+  <div class="cab-acc">
+    <a class="btn sec" href="/informes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>
+      Informes
+    </a>
+  </div>
+</div>
+{% endblock %}
+{% block contenido %}
   {% if primeros_pasos %}
-  <section class="arranque">
+  <section class="arranque" aria-labelledby="arr-titulo">
     <div class="arr-cab">
-      <h2>Te faltan {{ primeros_pasos.total - primeros_pasos.hechos }} paso(s) para
+      <h2 id="arr-titulo">Te faltan {{ primeros_pasos.total - primeros_pasos.hechos }} paso(s) para
           que esto trabaje por ti</h2>
       <span class="arr-cuenta">{{ primeros_pasos.hechos }}/{{ primeros_pasos.total }}</span>
     </div>
@@ -430,10 +86,12 @@ tbody tr:nth-child(10){animation-delay:.29s}
     <ol class="arr-pasos">
       {% for paso in primeros_pasos.pasos %}
         <li class="{% if paso.hecho %}listo{% endif %}">
-          <span class="arr-marca"></span>
+          <span class="arr-marca" aria-hidden="true">
+            {% if paso.hecho %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>{% endif %}
+          </span>
           <div class="arr-txt">
             <b>{{ paso.titulo }}</b>
-            <span>{{ paso.detalle }}</span>
+            {% if not paso.hecho %}<span>{{ paso.detalle }}</span>{% endif %}
           </div>
           {% if not paso.hecho %}
             <a class="btn sec" href="{{ paso.enlace }}">{{ paso.accion }}</a>
@@ -444,7 +102,10 @@ tbody tr:nth-child(10){animation-delay:.29s}
   </section>
   {% endif %}
 
-  <section class="tarjetas">
+  {# Las cuatro cifras. El JS anima `.tarjetas .t .n`: no cambiar esa
+     estructura. La de urgentes es la unica que pide una accion HOY y por eso
+     es la unica en rojo; las demas son contexto. #}
+  <section class="tarjetas" aria-label="Resumen">
     <div class="t dato"><div class="n">{{ resumen.vigentes }}</div><div class="l">vigentes ahora</div></div>
     <div class="t {% if resumen.urgentes %}alerta{% endif %}">
       <div class="n">{{ resumen.urgentes }}</div><div class="l">cierran en 3 días o menos</div></div>
@@ -454,10 +115,12 @@ tbody tr:nth-child(10){animation-delay:.29s}
 
   <form class="filtros" hx-get="/parts/tabla" hx-target="#tabla"
         hx-trigger="submit, change from:select, keyup changed delay:400ms from:input[type=search]"
-        hx-indicator="body">
-    <div class="campo">
+        hx-indicator="body" role="search" aria-label="Filtrar licitaciones">
+    <div class="campo crece">
       <label for="q">Buscar</label>
-      <input type="search" id="q" name="q" value="{{ q }}" placeholder="objeto o entidad…">
+      <div class="buscador">
+        <input type="search" id="q" name="q" value="{{ q }}" placeholder="Objeto o entidad…" autocomplete="off">
+      </div>
     </div>
     <div class="campo">
       <label for="region">Región</label>
@@ -468,22 +131,33 @@ tbody tr:nth-child(10){animation-delay:.29s}
         {% endfor %}
       </select>
     </div>
-    <div class="campo">
+    <div class="campo w-120">
       <label for="score_min">Puntaje mínimo</label>
-      <input type="number" id="score_min" name="score_min" min="0" max="100" step="5" value="{{ score_min }}">
+      <input type="number" id="score_min" name="score_min" min="0" max="100" step="5" value="{{ score_min }}" inputmode="numeric">
     </div>
     <label class="check"><input type="checkbox" name="vigentes" value="1" {% if vigentes %}checked{% endif %}> Solo vigentes</label>
     <label class="check" title="Postor único, muy pocos postores o un plazo de consultas anómalo para su tipo"><input type="checkbox" name="banderas" value="1" {% if banderas %}checked{% endif %}> Solo con indicios</label>
-    <button type="submit">Filtrar</button>
-    <button type="button" class="sec" data-ir-a="/panel">Limpiar</button>
+    <div class="acciones">
+      <button type="submit">Filtrar</button>
+      <button type="button" class="sec" data-ir-a="/panel">Limpiar</button>
+    </div>
   </form>
 
   <div class="tabla-caja" id="tabla">
     {% include "_tabla.html" %}
   </div>
-</main>
-
+{% endblock %}
+{% block scripts %}
+{# HTMX inyecta al arrancar una hoja de estilos propia para `htmx-indicator`.
+   Nuestra CSP no admite estilos en linea, asi que el navegador la bloqueaba y
+   dejaba un error en la consola en cada carga del panel. No se pierde nada al
+   desactivarla: la espera se marca con `.htmx-request`, que va en el bloque
+   de estilos de esta plantilla (con nonce), y `htmx-indicator` no se usa en
+   ninguna plantilla. Se apaga con una meta y no con JS porque script-src
+   tampoco admite en linea.
+   La meta va en el bloque `head` de _base.html, donde le corresponde. #}
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-<script src="{{ estatico('licitapro.js') }}" defer></script>
-</body>
-</html>
+{% endblock %}
+{% block head %}
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
+{% endblock %}

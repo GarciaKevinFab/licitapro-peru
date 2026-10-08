@@ -21,14 +21,78 @@
     }
   });
 
+  // Menu lateral en movil: el boton de la barra superior abre el cajon y el
+  // telon o Escape lo cierran. En escritorio la barra esta siempre visible y
+  // nada de esto interviene.
+  var menu = function (abrir) {
+    var barra = document.getElementById("barra-lateral");
+    var telon = document.querySelector("[data-cerrar-menu]");
+    var boton = document.querySelector("[data-abrir-menu]");
+    if (!barra) return;
+    barra.classList.toggle("abierta", abrir);
+    if (telon) { telon.hidden = !abrir; telon.classList.toggle("visible", abrir); }
+    if (boton) boton.setAttribute("aria-expanded", abrir ? "true" : "false");
+    document.body.classList.toggle("menu-abierto", abrir);
+  };
+  document.addEventListener("click", function (ev) {
+    if (ev.target.closest("[data-abrir-menu]")) {
+      var barra = document.getElementById("barra-lateral");
+      menu(!(barra && barra.classList.contains("abierta")));
+    } else if (ev.target.closest("[data-cerrar-menu]")) {
+      menu(false);
+    } else if (ev.target.closest("#barra-lateral a")) {
+      menu(false);
+    }
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") menu(false);
+  });
+
   // Confirmacion antes de algo que no se deshace facilmente. El texto viaja en
   // el propio elemento para que quede junto a la accion que describe, y no en
   // una tabla de mensajes que se desincroniza al cambiar el formulario.
+  //
+  // EN LA PAGINA, NO EN UNA VENTANA DEL NAVEGADOR. Antes era window.confirm():
+  // un cuadro del sistema, con la tipografia del navegador, que bloquea toda
+  // la pestana y que algunos navegadores moviles ignoran o recortan. Ahora el
+  // boton se sustituye en su sitio por la pregunta y dos botones (Si / No);
+  // al confirmar se reenvia el formulario con la marca puesta.
   document.addEventListener("submit", function (ev) {
     var form = ev.target.closest("[data-confirmar]");
-    if (form && !window.confirm(form.dataset.confirmar)) {
-      ev.preventDefault();
-    }
+    if (!form || form.dataset.confirmado) return;
+    ev.preventDefault();
+    if (form.querySelector(".confirmar-en-linea")) return;
+
+    var boton = form.querySelector('button[type="submit"], button:not([type])');
+    var caja = document.createElement("div");
+    caja.className = "confirmar-en-linea";
+    caja.setAttribute("role", "group");
+    caja.setAttribute("aria-label", "Confirmar");
+    var texto = document.createElement("p");
+    texto.textContent = form.dataset.confirmar;
+    var si = document.createElement("button");
+    si.type = "button"; si.className = "peligro"; si.textContent = "Sí, continuar";
+    var no = document.createElement("button");
+    no.type = "button"; no.className = "sec"; no.textContent = "No";
+    caja.appendChild(texto); caja.appendChild(si); caja.appendChild(no);
+
+    var cerrar = function () {
+      caja.remove();
+      if (boton) { boton.hidden = false; boton.focus(); }
+    };
+    si.addEventListener("click", function () {
+      form.dataset.confirmado = "1";
+      caja.remove();
+      if (boton) boton.hidden = false;
+      if (typeof form.requestSubmit === "function") form.requestSubmit(boton || undefined);
+      else form.submit();
+    });
+    no.addEventListener("click", cerrar);
+    caja.addEventListener("keydown", function (e) { if (e.key === "Escape") cerrar(); });
+
+    if (boton) boton.hidden = true;
+    form.appendChild(caja);
+    si.focus();
   });
 
   // Cuadro de confirmacion escrita (<dialog>) para borrar una cuenta desde el
@@ -242,5 +306,64 @@
       boton.disabled = true;
       if (texto) boton.textContent = texto;
     }, 0);
+  });
+})();
+
+/* AUTOCOMPLETAR LA EMPRESA POR RUC
+ *
+ * Al escribir 11 digitos en el campo con data-autocompletar-ruc se pide
+ * /empresas/ruc/{ruc} y se rellenan razon social, direccion y departamento,
+ * SOLO si estan vacios: lo que el usuario ya escribio no se pisa. El estado
+ * de SUNAT (ACTIVO/HABIDO) se muestra debajo del campo, nunca se guarda solo.
+ * Delegacion en el documento, como todo lo demas de este archivo.
+ */
+(() => {
+  let ultimo = "";
+  const estado = (campo, texto, mal) => {
+    const nodo = campo.parentElement.querySelector("[data-ruc-estado]");
+    if (!nodo) return;
+    nodo.textContent = texto;
+    nodo.classList.toggle("error", !!mal);
+  };
+  const rellenar = (form, nombre, valor) => {
+    const campo = form.querySelector('[name="' + nombre + '"]');
+    if (!campo || !valor || campo.value.trim()) return;
+    if (campo.tagName === "SELECT") {
+      const hay = Array.from(campo.options).some((o) => o.value === valor);
+      if (hay) campo.value = valor;
+      return;
+    }
+    campo.value = valor;
+  };
+
+  document.addEventListener("input", async (ev) => {
+    const campo = ev.target.closest("[data-autocompletar-ruc]");
+    if (!campo) return;
+    const ruc = campo.value.replace(/\D/g, "");
+    if (ruc !== campo.value) campo.value = ruc;
+    if (ruc.length !== 11 || ruc === ultimo) {
+      if (ruc.length < 11) estado(campo, "");
+      return;
+    }
+    ultimo = ruc;
+    estado(campo, "Consultando SUNAT…");
+    try {
+      const r = await fetch("/empresas/ruc/" + ruc, {
+        credentials: "same-origin", headers: { Accept: "application/json" } });
+      if (!r.ok) {
+        estado(campo, r.status === 404 ? "SUNAT no tiene ese RUC." : "No se pudo consultar; complétalo a mano.", true);
+        return;
+      }
+      const d = await r.json();
+      const form = campo.closest("form");
+      rellenar(form, "razon_social", d.razon_social);
+      rellenar(form, "direccion", d.direccion);
+      rellenar(form, "departamento", d.departamento);
+      const donde = [d.distrito, d.provincia].filter(Boolean).join(", ");
+      estado(campo, "SUNAT: " + (d.estado || "?") + " · " + (d.condicion || "?") + (donde ? " · " + donde : ""),
+             d.estado !== "ACTIVO" || d.condicion !== "HABIDO");
+    } catch (e) {
+      estado(campo, "No se pudo consultar; complétalo a mano.", true);
+    }
   });
 })();

@@ -22,58 +22,50 @@
    feo, se lee como un plan de segunda: el ojo cuenta tres opciones y toma el
    cuarto por una nota al pie.
 
-   Se baja la pista y se ensancha el contenedor para que los cuatro entren en
-   una fila, y se deja `auto-fit` para que siga cuadrando el dia que se anada o
-   se quite un plan, que es un UPDATE sin tocar codigo. */
+   Se ensancha el contenedor para que los cuatro entren en una fila con la
+   pista de 230 px del sistema, y se deja `auto-fit` para que siga cuadrando
+   el dia que se anada o se quite un plan, que es un UPDATE sin tocar codigo. */
 main{max-width:1180px}
 
 /* La cabecera de sitio para quien llega SIN cuenta. Antes esta pagina
    arrancaba en el titulo, sin marca ni forma de volver: desde WhatsApp se
-   aterrizaba en un catalogo sin salida. Son las mismas piezas que la barra del
-   panel (header, .brand, nav.menu, .sesion de _base.html): pegajosa, con el
-   menu en su fila propia en el telefono, y "Planes" marcado como activo. Los
-   dos botones de sesion van a la altura del "Salir" del panel. */
+   aterrizaba en un catalogo sin salida. Son las piezas de la cabecera antigua
+   del sistema (header.cab-antigua, .brand, nav.menu, .sesion): pegajosa, con
+   el menu en su fila propia en el telefono, y "Planes" marcado como activo.
+   Los dos botones de sesion van a la altura del "Salir" del panel. */
+/* La marca de la cabecera publica. La hoja comun solo la estila bajo
+   `body > header`, pero dentro de <div class="app"> la cabecera es
+   header.cab-antigua y el logo salia a tamano natural. Pendiente de pasar a
+   la hoja: docs/diseno/PENDIENTE-cuenta.md. */
+header.cab-antigua .brand{font-family:var(--f-display);font-weight:600;font-size:17px;display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;padding-block:13px}
+header.cab-antigua .brand .ico{width:19px;height:19px;color:var(--ac)}
+header.cab-antigua .brand .pe{color:var(--ink-3);font-weight:400;font-style:italic}
+@media (max-width:640px){
+  header.cab-antigua{padding:0 14px}
+  header.cab-antigua nav.menu{order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  header.cab-antigua .sesion{margin-left:auto;border-left:0;padding-left:0}
+}
 .sesion .btn{min-height:32px;padding:4px 12px;font-size:12.5px}
 @media (max-width:640px){ .sesion .btn{min-height:44px} }
 
+/* El hero: un titular editorial grande y una sola frase. Sin tarjeta: el
+   catalogo son las tarjetas, y una tarjeta alrededor de otras cuatro era una
+   caja dentro de otra caja. */
+.hero{padding:16px 0 30px;max-width:760px}
+.hero .rotulo{display:block;margin-bottom:14px;color:var(--ac)}
+.hero h1{font-size:clamp(34px,5vw,54px);margin-bottom:16px}
+.hero p{font-size:16px;line-height:1.6;color:var(--ink-2);margin:0;max-width:62ch}
+.hero p b{color:var(--ink);font-weight:600}
+
 /* De cuatro a dos a una. `auto-fit` sigue mandando en ancho -asi el dia que
-   haya cinco planes se recolocan solos-, pero entre 768 y 1100 px se fuerza
+   haya cinco planes se recolocan solos-, pero entre 640 y 1100 px se fuerza
    2x2: ahi el auto-fit daba tres columnas y dejaba a "Empresa" solo en una
    segunda fila, que se lee como un plan de segunda. */
-.planes{display:grid;gap:16px;
-  grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
 @media (max-width:1100px){ .planes{grid-template-columns:repeat(2,minmax(0,1fr))} }
-@media (max-width:767px){ .planes{grid-template-columns:1fr} }
-.plan{border:1px solid var(--line);border-radius:var(--r-card);padding:22px;
-  background:var(--panel);display:flex;flex-direction:column;
-  transition:transform .25s var(--ease-out),box-shadow .25s var(--ease-out),border-color var(--dur) ease}
-.plan:hover{transform:translateY(-2px);
-  box-shadow:0 14px 30px -20px color-mix(in srgb,var(--ink) 40%,transparent)}
-/* El destacado se marca con el borde de acento y no con un fondo distinto: un
-   fondo de color en una de tres tarjetas descuadra la comparacion de precios,
-   que es justo a lo que se viene aqui. */
-.plan.destacado{border-color:var(--ac);
-  box-shadow:0 0 0 1px var(--ac),0 12px 28px -18px color-mix(in srgb,var(--ac) 55%,transparent)}
-.plan.destacado:hover{box-shadow:0 0 0 1px var(--ac),0 18px 34px -18px color-mix(in srgb,var(--ac) 60%,transparent)}
+@media (max-width:640px){ .planes{grid-template-columns:1fr} }
+.plan{transition:transform .25s var(--ease-out),box-shadow .25s var(--ease-out),border-color var(--dur) ease}
+.plan:hover{transform:translateY(-2px)}
 @media (prefers-reduced-motion:reduce){ .plan,.plan:hover{transform:none;transition:none} }
-.plan .nm{font-family:"JetBrains Mono",monospace;font-size:10.5px;
-  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
-.plan.destacado .nm{color:var(--ac)}
-.plan h3{font-family:Sora,sans-serif;font-size:1.15rem;font-weight:600;margin:5px 0 0}
-.precio{font-family:Sora,sans-serif;font-weight:600;font-size:2.1rem;
-  letter-spacing:-.035em;font-variant-numeric:tabular-nums;margin:12px 0 2px}
-.precio small{font-size:.85rem;font-weight:400;color:var(--ink-3);
-  letter-spacing:0;font-family:"DM Sans",sans-serif}
-.anual{font-size:12px;color:var(--ink-3);margin:0}
-.plan ul{list-style:none;margin:16px 0 20px;padding:0;flex:1;
-  display:flex;flex-direction:column;gap:8px}
-.plan li{position:relative;padding-left:22px;font-size:13.5px;color:var(--ink-2)}
-.plan li::before{content:"";position:absolute;left:0;top:.5em;width:10px;height:5px;
-  border-left:1.5px solid var(--ac);border-bottom:1.5px solid var(--ac);
-  transform:rotate(-45deg)}
-.plan li.sin{color:var(--ink-3)}
-.plan li.sin::before{border:none;left:2px;top:.62em;width:8px;height:1.5px;
-  background:var(--ink-3);transform:none}
 
 /* LOS DOS PERIODOS, APILADOS Y NO EN FILA
 
@@ -81,31 +73,25 @@ main{max-width:1180px}
    "Anual" quedaba del mismo ancho sin decir cuanto cuesta. Dos botones
    desiguales que no dicen su precio no son una eleccion, son un acertijo.
 
-   Apilados caben enteros, y cada uno lleva SU importe encima: el precio del
-   ano deja de estar solo en la linea gris de arriba, que es donde nadie lo
-   suma. */
-.periodos{display:flex;flex-direction:column;gap:8px}
-/* Son los botones comunes (.btn / .btn.sec de _base.html): misma altura,
-   mismo radio y la misma respuesta al pulsar que en el resto del sitio. Antes
-   eran una clase propia con su radio de 4 px y un hover por opacidad. */
-.periodos .btn{width:100%;white-space:nowrap}
+   Apilados caben enteros (.plan .acciones del sistema ya los apila), y cada
+   uno lleva SU importe encima: el precio del ano deja de estar solo en la
+   linea gris de arriba, que es donde nadie lo suma. */
+.plan .acciones .btn{white-space:nowrap}
 
-.medios{display:flex;flex-wrap:wrap;gap:8px}
-.medios span{font-family:"JetBrains Mono",monospace;font-size:10.5px;
-  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
-  border:1px solid var(--line);border-radius:var(--r-chip);padding:4px 9px}
-.comercio{font-size:12.5px;color:var(--ink-3);line-height:1.7;margin:0}
+.medios{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 4px}
+.comercio{font-size:13px;color:var(--ink-3);line-height:1.7;margin:0}
 .comercio b{color:var(--ink-2);font-weight:500}
-.titularidad{font-size:12.5px;color:var(--ink-3);line-height:1.7;
+.tarjeta .titularidad{font-size:12.5px;color:var(--ink-3);line-height:1.7;
   margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line-soft)}
-.titularidad b{color:var(--ink-2);font-weight:500}
+.tarjeta .titularidad b{color:var(--ink-2);font-weight:500}
+.cuadricula{margin-top:18px}
 {% endblock %}
 
 {% block cuerpo %}
 {% if usuario %}
   {% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}
 {% else %}
-  <header>
+  <header class="cab-antigua">
     <a class="brand" href="/">
       <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
         <g fill="currentColor" opacity=".4">
@@ -130,62 +116,64 @@ main{max-width:1180px}
 {% endif %}
 <main>
 
-  <div class="tarjeta">
-    <h2 class="portada">Una licitación ganada lo paga todo.</h2>
-    <p class="sub">Precios en soles (PEN), con IGV incluido. Sin permanencia:
-       cancelas cuando quieras y conservas el acceso hasta el final del periodo
-       que ya pagaste. Toda cuenta empieza con 14 días del plan Pro sin coste.</p>
+  <section class="hero">
+    <span class="rotulo">Precios · soles, IGV incluido</span>
+    <h1 class="display">Una licitación ganada lo paga todo.</h1>
+    <p>Sin permanencia: cancelas cuando quieras y conservas el acceso hasta el
+       final del periodo que ya pagaste. <b>Toda cuenta empieza con 14 días del
+       plan Pro sin coste.</b></p>
+  </section>
 
-    <div class="planes">
-      {% for p in planes %}
-        <div class="plan{% if p.codigo == 'pro' %} destacado{% endif %}">
-          <span class="nm">{{ p.codigo }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
-          <h3>{{ p.nombre }}</h3>
+  <div class="planes">
+    {% for p in planes %}
+      <div class="plan{% if p.codigo == 'pro' %} destacado{% endif %}">
+        <span class="rotulo">{{ p.codigo }}{% if p.codigo == 'pro' %} · el más elegido{% endif %}</span>
+        <h3>{{ p.nombre }}</h3>
 
-          {% if p.precio_mensual and p.precio_mensual > 0 %}
-            <div class="precio">S/ {{ '%.2f'|format(p.precio_mensual) }}<small> /mes</small></div>
+        {% if p.precio_mensual and p.precio_mensual > 0 %}
+          <div class="precio">S/ {{ '%.2f'|format(p.precio_mensual) }}<small>/mes</small></div>
+          {% if p.precio_anual %}
+            <p class="anual">o S/ {{ '%.2f'|format(p.precio_anual) }} al año</p>
+          {% endif %}
+        {% else %}
+          <div class="precio">S/ 0<small>siempre</small></div>
+          <p class="anual">Donde te quedas si no renuevas</p>
+        {% endif %}
+
+        <ul>
+          <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
+          <li>{% if p.max_regiones %}{{ p.max_regiones }} departamento{% if p.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
+          {% if p.alertas %}
+            <li>Avisos por correo y Telegram</li>
+          {% else %}
+            <li class="no">Sin avisos: entras tú a buscar</li>
+          {% endif %}
+          <li>Expedientes automáticos</li>
+          {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+          {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
+        </ul>
+
+        {# Dos enlaces y no un desplegable: el periodo es parte de lo que se
+           compra, y esconderlo en un <select> obliga a abrirlo para saber
+           cuanto cuesta el ano. Aqui los dos precios estan a la vista y cada
+           boton lleva a su propio resumen de pedido. #}
+        {% if p.precio_mensual and p.precio_mensual > 0 %}
+          <div class="acciones">
+            <a class="btn{% if p.codigo != 'pro' %} sec{% endif %}" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}/mes</a>
             {% if p.precio_anual %}
-              <p class="anual">o S/ {{ '%.2f'|format(p.precio_anual) }} al año</p>
+              <a class="btn {% if p.codigo == 'pro' %}sec{% else %}fantasma{% endif %}" href="/comprar/{{ p.codigo }}?periodo=anual">Pagar el año · S/ {{ '%.0f'|format(p.precio_anual) }}</a>
             {% endif %}
-          {% else %}
-            <div class="precio">Gratis<small> siempre</small></div>
-            <p class="anual">Donde te quedas si no renuevas</p>
-          {% endif %}
-
-          <ul>
-            <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
-            <li>{% if p.max_regiones %}{{ p.max_regiones }} departamento{% if p.max_regiones != 1 %}s{% endif %}{% else %}Cobertura nacional{% endif %}</li>
-            {% if p.alertas %}
-              <li>Avisos por correo y Telegram</li>
-            {% else %}
-              <li class="sin">Sin avisos: entras tú a buscar</li>
-            {% endif %}
-            <li>Expedientes automáticos</li>
-            {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
-            {% if p.codigo != 'gratis' %}<li>Seguimiento de contratos y cobros</li>{% endif %}
-          </ul>
-
-          {# Dos enlaces y no un desplegable: el periodo es parte de lo que se
-             compra, y esconderlo en un <select> obliga a abrirlo para saber
-             cuanto cuesta el ano. Aqui los dos precios estan a la vista y cada
-             boton lleva a su propio resumen de pedido. #}
-          {% if p.precio_mensual and p.precio_mensual > 0 %}
-            <div class="periodos">
-              <a class="btn" href="/comprar/{{ p.codigo }}?periodo=mensual">Contratar · S/ {{ '%.0f'|format(p.precio_mensual) }}/mes</a>
-              {% if p.precio_anual %}
-                <a class="btn sec" href="/comprar/{{ p.codigo }}?periodo=anual">Pagar el año · S/ {{ '%.0f'|format(p.precio_anual) }}</a>
-              {% endif %}
-            </div>
-          {% else %}
-            <div class="periodos">
-              <a class="btn sec" href="/registro">Crear cuenta gratis</a>
-            </div>
-          {% endif %}
-        </div>
-      {% endfor %}
-    </div>
+          </div>
+        {% else %}
+          <div class="acciones">
+            <a class="btn sec" href="/registro">Crear cuenta gratis</a>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
   </div>
 
+  <div class="cuadricula">
   <div class="tarjeta">
     <h2>Cómo se paga</h2>
     {# La promesa sale de `cobro_recurrente()`, que mira las llaves de verdad, y
@@ -195,8 +183,9 @@ main{max-width:1180px}
        Los datos de tu tarjeta viajan directos a la pasarela: LicitaPro nunca
        los ve ni los guarda.</p>
     <div class="medios">
-      <span>Visa</span><span>Mastercard</span><span>American Express</span>
-      <span>Diners Club</span><span>Soles · PEN</span>
+      <span class="pill neutro">Visa</span><span class="pill neutro">Mastercard</span>
+      <span class="pill neutro">American Express</span><span class="pill neutro">Diners Club</span>
+      <span class="pill neutro">Soles · PEN</span>
     </div>
     <p class="ayuda mt-16">
       {% if cobro_recurrente() %}
@@ -235,7 +224,7 @@ main{max-width:1180px}
     <h2>Quién emite el cobro</h2>
     <p class="comercio">
       {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b><br>{% endif %}
-      {% if comercio.ruc %}RUC {{ comercio.ruc }}<br>{% endif %}
+      {% if comercio.ruc %}<span class="mono">RUC {{ comercio.ruc }}</span><br>{% endif %}
       {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
       {% if comercio.email %}<!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off-->{% endif %}
       {% if comercio.telefono %} · <a href="tel:{{ comercio.telefono_uri }}">{{ comercio.telefono }}</a>{% endif %}
@@ -243,6 +232,7 @@ main{max-width:1180px}
     {% include "_titularidad.html" %}
   </div>
   {% endif %}
+  </div>
 
 </main>
 {% endblock %}

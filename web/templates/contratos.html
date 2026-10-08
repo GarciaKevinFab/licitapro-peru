@@ -3,79 +3,105 @@
 {% set titulo_pagina = 'Contratos' %}
 {% set sub_pagina = 'Lo que ganaste: estado, plazos y lo que falta por cobrar.' %}
 {% block estilos %}
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
-
+/* Solo lo propio de esta vista. Pastillas, tablas, vacio y campos vienen de
+   licitapro.css. */
+.vacio p{max-width:54ch;margin-left:auto;margin-right:auto}
+/* La hoja comun pinta todos los span directos de label.campo como rotulo;
+   la ayuda bajo el campo vuelve a texto normal (anotado en PENDIENTE). */
+label.campo > span.ayuda{font-family:var(--f-ui);font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:400}
+/* El formulario de la buena pro: tres campos y un boton. En escritorio la
+   propuesta ocupa dos columnas porque su texto es el largo; monto y plazo
+   son numeros cortos. */
+.form-ganar .rejilla{grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr))}
+@media (min-width:900px){.form-ganar .rejilla{grid-template-columns:2fr 1fr 1fr}}
 {% endblock %}
 {% block nav %}{% with activo='contratos' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
-  {% if candidatas %}<div class="cab-acc"><a class="btn" href="#registrar">Registrar una buena pro</a></div>{% endif %}
+  {% if candidatas and contratos %}<div class="cab-acc"><a class="btn" href="#registrar">Registrar una buena pro</a></div>{% endif %}
 {% endblock %}
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
-  <div class="tarjeta">
-    {% if not contratos %}
+
+  {% if not contratos %}
+    <div class="tarjeta">
       <div class="vacio">
-        <p><strong>Todavía no tienes contratos registrados.</strong></p>
-        <p>Cuando ganes una buena pro, regístrala abajo y el sistema arma el
-           calendario de plazos.</p>
+        <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 21h8M12 17v4"/>
+          <path d="M7 4h10v5a5 5 0 0 1-10 0z"/>
+          <path d="M7 6H4a3 3 0 0 0 3 3M17 6h3a3 3 0 0 1-3 3"/>
+        </svg>
+        <b>Todavía no tienes contratos registrados.</b>
+        <p>Cuando ganes una buena pro, regístrala aquí y el sistema arma el
+           calendario de plazos: firma, entregables, conformidad y pago.</p>
+        <p>No hace falta que estés pendiente del SEACE: cuando el nombre del
+           adjudicatario coincide con el de una de tus empresas, te avisamos con
+           un «parece que ganaste» para que lo confirmes con un clic.</p>
+        {% if candidatas %}
+          <a class="btn" href="#registrar">Registrar una buena pro</a>
+        {% else %}
+          <a class="btn" href="/panel">Ver licitaciones</a>
+        {% endif %}
       </div>
-    {% else %}
+    </div>
+  {% else %}
+    <div class="tarjeta sin-relleno">
       <div class="tabla-caja">
-      <table class="datos">
+      <table class="datos apilada">
         <thead><tr><th>Contrato</th><th>Empresa</th><th>Estado</th>
           <th class="num">Monto</th><th class="num">Por cobrar</th>
-          <th class="num">Entrega</th><th></th></tr></thead>
+          <th class="num">Entrega</th><th><span class="visualmente-oculto">Acciones</span></th></tr></thead>
         <tbody>
         {% for c in contratos %}
           <tr>
-            <td><span class="ent">{{ c.entidad or '—' }}</span>{{ (c.objeto or '—')[:60] }}</td>
-            <td>{{ c.razon_social }}</td>
-            <td><span class="pill {% if c.estado == 'pagado' %}ok{% elif c.estado == 'cancelado' %}neutro{% else %}pend{% endif %}">{{ c.estado }}</span>
-              {% if c.plazos_urgentes %}<span class="pill urg">{{ c.plazos_urgentes }} plazo</span>{% endif %}</td>
-            <td class="num">{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}—{% endif %}</td>
-            <td class="num cobrar{% if c.por_cobrar %} hay{% endif %}">{% if c.por_cobrar %}S/ {{ '{:,.0f}'.format(c.por_cobrar) }}{% else %}—{% endif %}</td>
-            <td class="num">{{ c.fecha_entrega_final.strftime('%d/%m/%y') if c.fecha_entrega_final else '—' }}</td>
-            <td><a class="btn sec" href="/contratos/{{ c.id }}">Abrir</a></td>
+            <td data-eti="Contrato"><span><span class="ent">{{ c.entidad or 'Sin entidad' }}</span><a class="obj" href="/contratos/{{ c.id }}">{{ (c.objeto or 'Contrato sin objeto')[:70] }}</a></span></td>
+            <td data-eti="Empresa">{{ c.razon_social }}</td>
+            <td data-eti="Estado"><span class="fila">
+              <span class="pill {% if c.estado == 'pagado' %}ok{% elif c.estado == 'cancelado' %}neutro{% elif c.estado == 'adjudicado' %}info{% else %}pend{% endif %}">{{ c.estado | replace('_', ' ') }}</span>
+              {% if c.plazos_urgentes %}<span class="pill urg">{{ c.plazos_urgentes }} plazo{% if c.plazos_urgentes > 1 %}s{% endif %} esta semana</span>{% endif %}
+            </span></td>
+            <td class="num monto" data-eti="Monto">{% if c.monto_adjudicado %}S/ {{ '{:,.0f}'.format(c.monto_adjudicado) }}{% else %}<span class="nd">—</span>{% endif %}</td>
+            <td class="num monto cobrar{% if c.por_cobrar %} hay{% endif %}" data-eti="Por cobrar">{% if c.por_cobrar %}S/ {{ '{:,.0f}'.format(c.por_cobrar) }}{% else %}<span class="nd">—</span>{% endif %}</td>
+            <td class="num fecha" data-eti="Entrega">{{ c.fecha_entrega_final.strftime('%d/%m/%y') if c.fecha_entrega_final else '—' }}</td>
+            <td class="acciones" data-eti=""><a class="btn sec chico" href="/contratos/{{ c.id }}">Abrir</a></td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
-  <div class="tarjeta" id="registrar">
-    <h2>Registrar una buena pro</h2>
-    <p class="sub">Al registrarla se crea el contrato y su calendario de plazos.</p>
+  <div class="tarjeta form-ganar" id="registrar">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Registrar una buena pro</h2>
+        <p class="sub">Elige la propuesta que ganaste. Al registrarla se crea el
+           contrato y su calendario de plazos, contando feriados peruanos.</p>
+      </div>
+    </div>
     {% if not candidatas %}
-      <p class="ayuda">No hay propuestas sin contrato asociado.</p>
+      <p class="ayuda">No hay propuestas sin contrato asociado. Para registrar una
+         buena pro primero tiene que existir la <a href="/propuestas">propuesta</a>
+         con la que te presentaste.</p>
     {% else %}
-      <form method="post" action="/contratos/ganar" class="acciones">
-        <select class="w-380" name="propuesta_id" required>
-          {% for p in candidatas %}
-            <option value="{{ p.id }}">{{ (p.objeto or 'Propuesta')[:55] }} — {{ p.razon_social }}</option>
-          {% endfor %}
-        </select>
-        <input class="w-180" type="number" name="monto" step="0.01" min="0" placeholder="Monto adjudicado"
-               required>
-        <input class="w-110" type="number" name="plazo_dias" min="1" value="30"
-               title="Plazo de ejecución en días">
-        <button type="submit">Registrar</button>
+      <form method="post" action="/contratos/ganar">
+        <div class="rejilla">
+          <label class="campo"><span>Propuesta ganada</span>
+            <select name="propuesta_id" required>
+              {% for p in candidatas %}
+                <option value="{{ p.id }}">{{ (p.objeto or 'Propuesta')[:70] }} — {{ p.razon_social }}</option>
+              {% endfor %}
+            </select></label>
+          <label class="campo"><span>Monto adjudicado (S/)</span>
+            <input type="number" name="monto" step="0.01" min="0" placeholder="0.00" required></label>
+          <label class="campo"><span>Plazo de ejecución (días)</span>
+            <input type="number" name="plazo_dias" min="1" value="30">
+            <span class="ayuda">Desde hoy. Marca la fecha de entrega final.</span></label>
+        </div>
+        <div class="fila derecha mt-16">
+          <button type="submit">Registrar</button>
+        </div>
       </form>
     {% endif %}
   </div>

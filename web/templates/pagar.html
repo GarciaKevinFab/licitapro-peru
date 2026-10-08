@@ -1,25 +1,41 @@
 {% extends "_base.html" %}
 {% block titulo %}Pagar · LicitaPro{% endblock %}
 {% block estilos %}
-main{max-width:520px}
-.resumen{display:flex;flex-direction:column;gap:9px;font-size:14px;margin-bottom:20px}
-.resumen div{display:flex;justify-content:space-between;padding-bottom:9px;
-  border-bottom:1px solid var(--line-soft)}
-.resumen div:last-child{border-bottom:none;font-weight:600;font-size:1.05rem}
-.resumen b{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+/* Las lineas del importe, iguales a las de /comprar: concepto a la izquierda,
+   cifra mono a la derecha, total grande en la serif. */
+.lineas{display:flex;flex-direction:column;margin:0;border-top:1px solid var(--line-soft)}
+.lineas div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px;color:var(--ink-2)}
+.lineas div:last-child{border-bottom:none}
+.lineas b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink);white-space:nowrap}
+.lineas .total{border-top:1px solid var(--line);margin-top:4px;padding-top:12px;font-size:15px;font-weight:600;color:var(--ink);align-items:baseline}
+.lineas .total b{font-family:var(--f-display);font-size:28px;letter-spacing:-.02em;font-weight:500}
 #izipay-form{margin-top:16px;min-height:40px}
+.pago{max-width:520px}
 {% endblock %}
 {% block cuerpo %}
-<main class="pt-40">
-  <div class="tarjeta">
-    <h2>Confirmar pago</h2>
-    <div class="resumen mt-16">
+{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endif %}
+<main class="estrecho">
+  <div class="cab-pag">
+    <div>
+      <p class="miga"><a href="/suscripcion">Suscripción</a> <span>/</span> <span>Pagar</span></p>
+      <h1>Confirmar pago</h1>
+      <p class="cab-sub">Revisa el importe y sigue al formulario seguro de la pasarela.</p>
+    </div>
+  </div>
+
+  <div class="pago">
+  <div class="tarjeta realzada">
+    <h2>Resumen del pedido</h2>
+    <p class="sub">Suscripción a LicitaPro Perú</p>
+    <div class="lineas">
       <div><span>Plan</span><b>{{ plan }}</b></div>
       <div><span>Periodo</span><b>{{ periodo }}</b></div>
       <div><span>Orden</span><b>{{ numero_orden }}</b></div>
-      <div><span>Total</span><b>S/ {{ '%.2f'|format(monto) }}</b></div>
+      <div class="total"><span>Total a pagar</span><b>S/ {{ '%.2f'|format(monto) }}</b></div>
     </div>
+  </div>
 
+  <div class="tarjeta">
     {% if modo == 'simulado' %}
       <div class="mensaje aviso">
         <b>Modo simulado.</b> No se cobra nada. Sirve para probar el flujo completo
@@ -28,11 +44,13 @@ main{max-width:520px}
       <form method="post" action="/suscripcion/retorno">
         <input type="hidden" name="numero_orden" value="{{ numero_orden }}">
         <input type="hidden" name="simulado" value="1">
-        <button class="w-total-alto" type="submit">Simular pago aprobado</button>
+        <button class="w-total grande" type="submit">Simular pago aprobado</button>
       </form>
     {% else %}
-      <p class="ayuda">Se abrirá el formulario seguro de Izipay. Tus datos de tarjeta
-         viajan directo a la pasarela: LicitaPro nunca los ve ni los guarda.</p>
+      <h2>Pagar con tarjeta</h2>
+      <p class="sub">Se abrirá el formulario seguro de Izipay. Tus datos de tarjeta
+         viajan directo a la pasarela: LicitaPro nunca los ve ni los guarda.
+         No te pedimos el PIN y no guardamos el número de tu tarjeta.</p>
       <div id="izipay-form" data-token="{{ token }}"></div>
       <noscript><p class="mensaje mal">Necesitas JavaScript para pagar con tarjeta.</p></noscript>
       <form class="mt-14" method="post" action="/suscripcion/retorno">
@@ -41,7 +59,8 @@ main{max-width:520px}
       </form>
     {% endif %}
 
-    <p class="ayuda mt-16"><a href="/suscripcion">Cancelar y volver</a></p>
+    <p class="ayuda mt-16 texto-centro"><a href="/suscripcion">Cancelar y volver</a></p>
+  </div>
   </div>
 </main>
 {% endblock %}

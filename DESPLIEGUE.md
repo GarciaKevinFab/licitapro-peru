@@ -525,6 +525,30 @@ por `ocid` y se refresca la fila en vez de insertar, así que dos puentes
 solapados no duplican nada: solo se cubren entre ellos si uno se apaga. Sale
 gratis.
 
+### Cuando cambia el código de los scrapers, el puente también se actualiza
+
+El puente ejecuta `radar_bot/scrapers/ocds_oece.py` y `orchestrator.py` desde
+**su propio clon**. Un cambio desplegado en el servidor no le llega solo: hay
+que hacer `git pull` en la PC peruana (la tarea programada toma el código
+nuevo en la siguiente pasada; no hace falta reinstalar nada).
+
+Desde el 2026-10-07 el log del puente dice qué hizo **cada** portal
+(`GORE Madre de Dios: 25 filas, 11 nuevas`) y, si uno no rinde, lo nombra
+(`GORE Cusco: SIN EXTRAER ...`); antes el que funcionaba tapaba al que no.
+Para ver qué sirve un portal desde esa PC, sin mandar el HTML entero:
+`.venv-tarea\Scripts\python.exe tools\sondear_portal.py https://...`
+(código, URL final, título, tablas y columnas; guarda el HTML en `data/`).
+
+El portal del **GORE Cusco** se probó así ese mismo día y no existe: el
+subdominio `cotizaciones.regioncusco.gob.pe` apunta al servidor principal sin
+sitio detrás y sirve el login de Plesk tanto desde Perú como desde el VPS.
+Está en `GORE_COTIZACIONES_APAGADOS` con el motivo; no hay nada que cosechar
+ni parser que escribir. Sus compras menores llegan por `oece_menores`.
+
+Si el puente no tiene `git`, basta copiar desde el servidor las carpetas
+`radar_bot/`, `shared/` y `tools/` (y `requirements-puente.txt`) encima del
+clon, y reinstalar los requisitos del puente.
+
 ### Y si aun así se para, se sabe
 
 `radar_bot` avisa por Telegram cuando pasan más de 6 horas sin una sola

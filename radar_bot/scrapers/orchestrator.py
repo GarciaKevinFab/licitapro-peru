@@ -159,6 +159,13 @@ def _detectar_depto(texto: str) -> str | None:
       esta columna, asi que un usuario de Ica recibia compras de medicamentos
       de Lima y uno del Callao no veia las de su region.
     """
+    # Una municipalidad o UGEL se ubica por la tabla de ubigeos ANTES de mirar
+    # palabras: "MUNICIPALIDAD DISTRITAL DE SAN MARTIN DE PORRES" es Lima, y
+    # "MUNICIPALIDAD PROVINCIAL DE ESPINAR" no nombra a Cusco por ningun lado.
+    from shared.ubigeo import departamento_de_entidad
+    por_ubigeo = departamento_de_entidad(texto)
+    if por_ubigeo:
+        return por_ubigeo
     upper = texto.upper()
     for key, val in DEPTOS.items():
         if re.search(r"(?<![A-ZÑÁÉÍÓÚ])" + re.escape(key) + r"(?![A-ZÑÁÉÍÓÚ])",
@@ -467,6 +474,14 @@ FUENTES_APAGADAS = {
     #   trabajo de producto, no una URL que cambiar.
     "datos_abiertos": "descarga PAC de 2015 y no extrae ni una convocatoria; "
                       "las 17 filas que guardaba eran fichas de catalogo",
+    # Esta tampoco esta rota: el parser lee la pagina real (ver su prueba).
+    # Esta apagada porque la ENTIDAD dejo de publicar: las tres paginas de
+    # ima.org.pe (58 solicitudes) van del 15/01/2026 al 09/02/2026 y todas
+    # estan vencidas; comprobado el 2026-10-07. Una fuente que responde "0
+    # vigentes" cada hora durante meses es el mismo ruido que las de arriba.
+    # Si el IMA vuelve a publicar, se enciende con una linea en `scrapers`.
+    "ima_cusco": "el IMA no publica solicitudes desde el 09/02/2026; "
+                 "se reengancha cuando vuelva a publicar",
 }
 
 # FUENTES QUE SOLO FUNCIONAN DESDE UNA CONEXION PERUANA.
@@ -568,6 +583,12 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         # docstring de gob_pe.py: es la unica fuente de <8 UIT que cubre todo
         # el pais, y responde tambien al VPS.
         ("gob_pe", _run_gob_pe),
+        # Contratos menores (<=8 UIT) de las 25 regiones, desde la herramienta
+        # del OECE para la Ley 32069. Responde al VPS. Ver oece_menores.py.
+        ("oece_menores", _run_oece_menores),
+        # ima_cusco esta escrito y probado (ima_cusco.py, tests/test_ima_cusco.py)
+        # pero APAGADO: ver FUENTES_APAGADAS. Para encenderlo basta esta linea:
+        #   ("ima_cusco", _run_ima_cusco),
         # ocds_conosce y conosce_contratos quedaron FUERA de las alertas: son
         # volcados XLSX con retraso y producian 0 convocatorias vigentes (291
         # filas, ninguna postulable). Sus datos con monto se migraron a
@@ -611,6 +632,17 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         results["scoreadas"] = 0
         log.error(f"[FAIL] scoring: {e}")
 
+    # Completar la region de lo que llego sin ella. El filtro por regiones lee
+    # esa columna, y una fila con NULL se le ensena a todo el mundo: cuanto
+    # antes se rellene, menos ruido ve cada cliente. Ver shared/departamentos.
+    try:
+        from shared.departamentos import completar_por_ruc
+        results["departamentos_completados"] = await completar_por_ruc()
+    except Exception as e:  # noqa: BLE001
+        results["errores"].append(f"departamentos: {str(e)[:120]}")
+        results["departamentos_completados"] = 0
+        log.error(f"[FAIL] departamentos: {e}")
+
     # Que fuente se quejo, en cristiano. Sin esto el diagnostico se queda
     # escrito en una tabla que solo se mira cuando ya hay un cliente enfadado.
     try:
@@ -637,11 +669,45 @@ async def _run_seace(user_id):
 # ==================== 2. GORE PORTALS ====================
 
 # Registry of known GORE cotizaciones portals (verified working)
+#
+#   `sigla` va en la nomenclatura (COT-123-2026-GOREMAD). Antes estaba escrita
+#   a mano como GOREMAD para todas las regiones, que con una sola no se notaba.
 GORE_COTIZACIONES_PORTALS = {
     "Madre de Dios": {
         "url": "http://cotizaciones.regionmadrededios.gob.pe/",
         "type": "cotizaciones_app",
         "entidad": "Gobierno Regional de Madre de Dios",
+        "sigla": "GOREMAD",
+    },
+}
+
+# PORTALES DE COTIZACIONES QUE SE PROBARON Y NO EXISTEN. No se recorren.
+#
+#   Se guardan con su motivo para que nadie vuelva a "descubrirlos": los tres
+#   enlaces de gob.pe siguen publicados y cada barrido los encuentra de nuevo.
+#
+#   CUSCO (2026-10-07). gob.pe publica "Acceder a las cotizaciones publicas"
+#   y una nota "Cotizaciones en linea" (23/11/2021) apuntando a
+#   https://cotizaciones.regioncusco.gob.pe/. Se dio por bloqueado al VPS,
+#   como Madre de Dios, y se mando al puente. La primera pasada desde Peru
+#   vio EXACTAMENTE lo mismo que el VPS: https redirige a /login.php del
+#   Plesk (titulo "Plesk Obsidian 18.0.81", 98 KB, cero tablas) y http da la
+#   pagina por defecto del servidor (1,6 KB). La causa esta en el DNS: el
+#   subdominio es un CNAME a regioncusco.gob.pe (64.177.118.33), el mismo
+#   servidor del sitio principal, y el certificado que sirve es el de
+#   mail.regioncusco.gob.pe: no hay ningun sitio configurado para ese nombre.
+#   Tampoco hay /cotizaciones en www.regioncusco.gob.pe (404). La aplicacion
+#   de 2021 ya no esta desplegada; las compras < 8 UIT del GORE Cusco entran
+#   por `oece_menores` (130 vigentes ese dia), que es la herramienta que la
+#   Ley 32069 obliga a usar y probablemente la razon de que abandonaran la
+#   suya. Para volver a probarlo: tools/sondear_portal.py desde la PC puente.
+GORE_COTIZACIONES_APAGADOS = {
+    "Cusco": {
+        "url": "https://cotizaciones.regioncusco.gob.pe/",
+        "type": "cotizaciones_app",
+        "entidad": "Gobierno Regional de Cusco",
+        "sigla": "GORECUSCO",
+        "motivo": "subdominio sin sitio: sirve el login de Plesk (2026-10-07)",
     },
 }
 
@@ -657,10 +723,16 @@ GORE_COTIZACIONES_PORTALS = {
 #
 #   BARRIDO COMPLETO del 31/08/2026, desde una conexion peruana: se sondearon
 #   los patrones cotizaciones./compras./logistica. en las 25 regiones (45
-#   URLs). Resultado: el portal de Madre de Dios es EL UNICO sistema de
-#   cotizaciones en linea vivo del pais. Cusco tiene los tres subdominios
-#   creados pero sirviendo la pagina por defecto del servidor: si algun dia
-#   montan la aplicacion, ese es el primer candidato a anadir aqui.
+#   URLs). Resultado: el portal de Madre de Dios era EL UNICO sistema de
+#   cotizaciones en linea vivo del pais. Cusco tenia los tres subdominios
+#   creados pero sirviendo la pagina por defecto del servidor; el 2026-10-07
+#   ya estaba montada y paso a GORE_COTIZACIONES_PORTALS.
+#
+#   Revisados tambien el 2026-10-07 para las regiones de los clientes: GORE
+#   Puno y GORE Junin no tienen portal de cotizaciones; las municipalidades
+#   provinciales de Huancayo, San Roman (Juliaca), Puno y Cusco tampoco (la de
+#   Puno responde 406 y la de Cusco "Coming Soon"). Sus compras menores, si las
+#   publican, entran por gob_pe.
 GORE_GENERIC_PORTALS = {}
 
 
@@ -691,6 +763,13 @@ async def _scrape_gore_cotizaciones_app(
         # Parse the main table
         table = soup.find("table")
         if not table:
+            # Se dice QUE llego, no solo que no habia tabla: el titulo separa
+            # "login de Plesk" de "aplicacion en Angular" de "pagina por
+            # defecto del IIS", y cada una se arregla en un sitio distinto.
+            titulo = soup.title.get_text(strip=True) if soup.title else ""
+            log.warning("GORE %s: %s respondio %d bytes sin <table> (titulo %r); "
+                        "sondear con tools/sondear_portal.py desde la PC puente",
+                        region, _corto(str(resp.url)), len(resp.content), titulo[:80])
             return 0, 0, []
 
         rows = table.find_all("tr")
@@ -738,7 +817,7 @@ async def _scrape_gore_cotizaciones_app(
                 "id": f"gore_{lid}",
                 "fuente": "gore_portals",
                 "tipo": "cotizacion",
-                "nomenclatura": f"COT-{numero}-{anio}-GOREMAD",
+                "nomenclatura": f"COT-{numero}-{anio}-{portal_info.get('sigla', 'GORE')}",
                 "entidad": entidad,
                 "entidad_tipo": "gore",
                 "objeto": objeto[:500],
@@ -910,6 +989,8 @@ async def _run_gore_portals(user_id):
     nuevas = []
     encontradas = 0
     errores = 0
+    # Diagnostico de cada portal de cotizaciones que no rindio. Ver abajo.
+    parciales: list[str] = []
 
     try:
         async with httpx.AsyncClient(
@@ -920,12 +1001,31 @@ async def _run_gore_portals(user_id):
                 if filters["regiones"] and region not in filters["regiones"]:
                     continue
 
+                # UNA SONDA POR PORTAL, NO UNA PARA LA FUENTE ENTERA
+                #
+                #   La primera pasada del puente con Cusco en la lista
+                #   (2026-10-07) anoto "25 encontradas, 11 nuevas, sin error".
+                #   Las 25 eran de Madre de Dios; Cusco devolvio una pagina sin
+                #   tabla y el parser salio con 0 filas sin decir nada. Con una
+                #   sola sonda para los dos, `encontradas > 0` tapaba al que
+                #   fallaba: el diagnostico "SIN EXTRAER" solo salta cuando la
+                #   fuente ENTERA da cero. Cada portal es una entidad distinta
+                #   con su propio servidor, asi que se diagnostica por separado
+                #   y el resultado de cada uno queda en el log del puente, que
+                #   es lo unico que se mira desde esa PC.
+                sonda_portal = Sonda(f"gore_portals/{region}")
                 enc, err, new = await _scrape_gore_cotizaciones_app(
-                    client, region, portal_info, filters, sonda
+                    client, region, portal_info, filters, sonda_portal
                 )
                 encontradas += enc
-                errores += err
+                errores += err + sonda_portal.errores
                 nuevas.extend(new)
+                aviso = sonda_portal.diagnostico(enc)
+                if aviso:
+                    parciales.append(f"{region}: {aviso}")
+                    log.warning("GORE %s: %s", region, aviso)
+                else:
+                    log.info("GORE %s: %d filas, %d nuevas", region, enc, len(new))
                 await asyncio.sleep(1)
 
             # 2. Scrape generic GORE portals (lower quality, strict filtering)
@@ -953,6 +1053,10 @@ async def _run_gore_portals(user_id):
         log.warning(f"GORE portals: {e}")
 
     detalle = sonda.diagnostico(encontradas)
+    if parciales:
+        # Lo de los portales dedicados va primero: es lo que se lee en el
+        # movil cuando el parte recorta.
+        detalle = " || ".join(parciales) + (f" || {detalle}" if detalle else "")
     if detalle:
         log.warning("gore_portals: %s", detalle)
     await log_scraping_end(log_id, encontradas, len(nuevas),
@@ -1511,6 +1615,16 @@ async def _run_gob_pe(user_id):
     return await scrape_gob_pe(user_id)
 
 
+async def _run_ima_cusco(user_id):
+    from radar_bot.scrapers.ima_cusco import scrape_ima_cusco
+    return await scrape_ima_cusco(user_id)
+
+
+async def _run_oece_menores(user_id):
+    from radar_bot.scrapers.oece_menores import scrape_oece_menores
+    return await scrape_oece_menores(user_id)
+
+
 async def _run_ocds_oece(user_id):
     from radar_bot.scrapers.ocds_oece import scrape_ocds_oece
     # Sin user_id: el pozo es compartido y se filtra al leer.
@@ -1547,6 +1661,8 @@ def format_scraping_report(results: dict) -> str:
     fuente_labels = {
         "ocds_oece": "OCDS OECE (principal)",
         "gob_pe": "gob.pe compras menores",
+        "ima_cusco": "IMA Cusco (<8 UIT)",
+        "oece_menores": "OECE contratos menores (<8 UIT, 25 regiones)",
         "seace_3.0": "SEACE 3.0",
         "gore_portals": "GOREs Regionales",
         "peru_compras": "Peru Compras",
