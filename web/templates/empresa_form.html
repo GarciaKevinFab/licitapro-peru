@@ -61,13 +61,41 @@ td .dos-lineas{display:flex;flex-direction:column}
   <div class="disposicion">
   <div class="principal">
 
+  {# e: lo que pinta el formulario. Si se acaba de leer un PDF, sus valores
+     (aun sin guardar); si no, los de la empresa; en el alta, nada. #}
+  {% set e = pre or empresa %}
+
+  <div class="tarjeta">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Rellenar desde tus documentos</h2>
+        <p class="sub">Sube la ficha RUC de SUNAT y la constancia del RNP en PDF y
+           rellenamos el formulario. Revisas y guardas. Si prefieres, escríbelo a mano abajo.</p>
+      </div>
+    </div>
+    <form method="post" action="/empresas/leer-documentos" enctype="multipart/form-data"
+          class="docs-form" data-cargando="Leyendo…">
+      <input type="hidden" name="empresa_id" value="{{ empresa.id if empresa else 0 }}">
+      <div class="rejilla dos">
+        <label class="campo"><span>Ficha RUC (PDF)</span>
+          <input type="file" name="ficha" accept="application/pdf,.pdf"></label>
+        <label class="campo"><span>Constancia del RNP (PDF)</span>
+          <input type="file" name="constancia" accept="application/pdf,.pdf"></label>
+      </div>
+      <div class="pie-tarjeta">
+        <span class="ayuda mb-0">Puedes subir uno solo. Nada se guarda hasta que pulses Guardar.</span>
+        <button type="submit" class="sec">Leer y rellenar</button>
+      </div>
+    </form>
+  </div>
+
   <div class="tarjeta">
     <div class="cab-tarjeta">
       <div>
         <h2>Datos de la empresa</h2>
         <p class="sub">Lo que firma, lo que declara y dónde está.</p>
       </div>
-      {% if empresa and empresa.ruc %}<span class="pill neutro">RUC {{ empresa.ruc }}</span>{% endif %}
+      {% if e and e.ruc %}<span class="pill neutro">RUC {{ e.ruc }}</span>{% endif %}
     </div>
     <form class="emp" method="post" action="/empresas/guardar" data-validar data-cargando="Guardando…">
       <input type="hidden" name="empresa_id" value="{{ empresa.id if empresa else 0 }}">
@@ -78,7 +106,7 @@ td .dos-lineas{display:flex;flex-direction:column}
           <label class="campo"><span>RUC</span>
             <input type="text" name="ruc" maxlength="11" inputmode="numeric" class="codigo"
                    data-autocompletar-ruc
-                   value="{{ empresa.ruc if empresa and empresa.ruc else '' }}">
+                   value="{{ e.ruc if e and e.ruc else '' }}">
             {# Al teclear los 11 digitos se consulta SUNAT y se rellenan razon
                social, direccion y departamento si estan vacios. El estado
                (ACTIVO/HABIDO) se ensena aqui para que el usuario lo vea antes
@@ -89,17 +117,17 @@ td .dos-lineas{display:flex;flex-direction:column}
                la razón social, la dirección y la región si están vacías.</p></label>
           <label class="campo"><span>Razón social *</span>
             <input type="text" name="razon_social" required
-                   value="{{ empresa.razon_social if empresa else '' }}"></label>
+                   value="{{ e.razon_social if e and e.razon_social else '' }}"></label>
         </div>
         <div class="rejilla dos mt-14">
           <label class="campo"><span>Dirección</span>
             <input type="text" name="direccion"
-                   value="{{ empresa.direccion if empresa and empresa.direccion else '' }}"></label>
+                   value="{{ e.direccion if e and e.direccion else '' }}"></label>
           <label class="campo"><span>Departamento</span>
             <select name="departamento">
               <option value="">—</option>
               {% for d in departamentos %}
-                <option value="{{ d }}" {% if empresa and empresa.departamento == d %}selected{% endif %}>{{ d }}</option>
+                <option value="{{ d }}" {% if e and e.departamento == d %}selected{% endif %}>{{ d }}</option>
               {% endfor %}
             </select></label>
         </div>
@@ -110,19 +138,20 @@ td .dos-lineas{display:flex;flex-direction:column}
         <div class="rejilla tres">
           <label class="campo"><span>N.º RNP</span>
             <input type="text" name="rnp_numero" class="codigo"
-                   value="{{ empresa.rnp_numero if empresa and empresa.rnp_numero else '' }}"></label>
+                   value="{{ e.rnp_numero if e and e.rnp_numero else '' }}"></label>
           <label class="campo"><span>Capítulo del RNP</span>
             <input type="text" name="rnp_categoria" placeholder="Ejecutor de Obras"
-                   value="{{ empresa.rnp_categoria if empresa and empresa.rnp_categoria else '' }}"></label>
+                   value="{{ e.rnp_categoria if e and e.rnp_categoria else '' }}"></label>
           {# Esta fecha existía en la base desde el principio y no había forma de
              escribirla. Con el RNP vencido no se puede contratar: sin ella, el
              producto deja preparar expedientes que no se pueden presentar. #}
           <label class="campo"><span>Vence el RNP</span>
             <input type="date" name="rnp_vigencia"
-                   value="{{ empresa.rnp_vigencia.isoformat() if empresa and empresa.rnp_vigencia else '' }}"></label>
+                   value="{{ e.rnp_vigencia.isoformat() if e and e.rnp_vigencia else '' }}"></label>
         </div>
-        <p class="ayuda">Con el RNP vencido no se puede contratar con el Estado.
-           Con la fecha anotada te avisamos en Informes antes de que venza.</p>
+        <p class="ayuda">El N.º RNP es tu RUC. Bienes, Servicios y Obras ya son de vigencia
+           indeterminada (la constancia solo dice "Desde"): deja la fecha vacía salvo que
+           la tuya diga "Hasta". Si la anotas, te avisamos en Informes antes de que venza.</p>
       </fieldset>
 
       <fieldset>
@@ -130,13 +159,13 @@ td .dos-lineas{display:flex;flex-direction:column}
         <div class="rejilla tres">
           <label class="campo"><span>Nombre</span>
             <input type="text" name="representante_legal"
-                   value="{{ empresa.representante_legal if empresa and empresa.representante_legal else '' }}"></label>
+                   value="{{ e.representante_legal if e and e.representante_legal else '' }}"></label>
           <label class="campo"><span>DNI</span>
             <input type="text" name="dni_representante" maxlength="8" inputmode="numeric" class="codigo"
-                   value="{{ empresa.dni_representante if empresa and empresa.dni_representante else '' }}"></label>
+                   value="{{ e.dni_representante if e and e.dni_representante else '' }}"></label>
           <label class="campo"><span>Cargo</span>
             <input type="text" name="cargo_representante" placeholder="Gerente General"
-                   value="{{ empresa.cargo_representante if empresa and empresa.cargo_representante else '' }}"></label>
+                   value="{{ e.cargo_representante if e and e.cargo_representante else '' }}"></label>
         </div>
       </fieldset>
 
@@ -145,13 +174,13 @@ td .dos-lineas{display:flex;flex-direction:column}
         <div class="rejilla dos">
           <label class="campo"><span>Teléfono</span>
             <input type="tel" name="telefono"
-                   value="{{ empresa.telefono if empresa and empresa.telefono else '' }}"></label>
+                   value="{{ e.telefono if e and e.telefono else '' }}"></label>
           <label class="campo"><span>Correo</span>
             <input type="email" name="email"
-                   value="{{ empresa.email if empresa and empresa.email else '' }}"></label>
+                   value="{{ e.email if e and e.email else '' }}"></label>
         </div>
         <label class="campo mt-14"><span>Rubros</span>
-          <textarea name="rubros" placeholder="tecnología, redes, cableado estructurado">{{ (empresa.rubros | join(', ')) if empresa and empresa.rubros else '' }}</textarea>
+          <textarea name="rubros" placeholder="tecnología, redes, cableado estructurado">{{ (e.rubros | join(', ')) if e and e.rubros else '' }}</textarea>
           <p class="ayuda">Separados por comas. Se usan para puntuar qué tan bien
              encaja cada licitación con lo que haces.</p></label>
       </fieldset>

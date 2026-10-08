@@ -30,6 +30,10 @@ tenacity==9.0.0
 fastapi==0.115.0
 uvicorn==0.32.0
 pypdf==5.1.0
+# OCR de la constancia del RNP (shared/constancia_rnp.py): pdfium renderiza la
+# pagina y Tesseract (paquete del sistema, ver Dockerfile) la lee.
+pypdfium2==4.30.0
+pytesseract==0.3.13
 alembic==1.19.1
 bcrypt==5.0.0
 itsdangerous==2.2.0

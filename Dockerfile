@@ -13,8 +13,11 @@ ENV TZ=America/Lima \
 
 WORKDIR /app
 
+# tesseract-ocr + spa: la constancia del RNP llega como PDF sin texto (fuente
+# incrustada sin tabla de caracteres) y solo se puede leer con OCR. Ver
+# shared/constancia_rnp.py.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tzdata curl \
+ && apt-get install -y --no-install-recommends tzdata curl tesseract-ocr tesseract-ocr-spa \
  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
  && rm -rf /var/lib/apt/lists/*
 
