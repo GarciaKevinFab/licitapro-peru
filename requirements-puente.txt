@@ -41,3 +41,7 @@ httpx==0.28.1
 python-dotenv==1.0.1
 tenacity==9.0.0
 beautifulsoup4==4.12.3
+# tzdata: shared/fechas.py construye ZoneInfo("America/Lima") al importarse y
+# Windows no trae la base de zonas horarias del sistema. Sin esto el puente
+# muere con ZoneInfoNotFoundError antes de pedir nada (visto el 2026-10-07).
+tzdata==2025.2

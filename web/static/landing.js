@@ -43,13 +43,26 @@
      que se pierdan las animaciones. Lo que NO puede pasar es que la pagina se
      quede en blanco porque medio contenido esta a opacity 0 esperando una
      clase que nunca llega. */
+  /* Formato final de una cifra: prefijo ("+"), miles con punto (es-PE) y
+     sufijo (" UIT"). Es lo que ya trae escrito el HTML, para que sin script
+     se lea igual. */
+  /* Los miles van con punto, escrito a mano: toLocaleString("es-PE") devuelve
+     coma en algunos Chromium y el "2.400" de la portada se convertia en
+     "2,400" segun el navegador. */
+  const conMiles = (valor) => String(valor).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const formatear = (cifra, valor) => {
+    const miles = cifra.dataset.miles === "1";
+    return (cifra.dataset.prefijo || "") + (miles ? conMiles(valor) : String(valor)) + (cifra.dataset.sufijo || "");
+  };
+
   const revelarTodo = () => {
     document.querySelectorAll(".rv").forEach((el) => { el.classList.remove("rv-pre"); el.classList.add("in"); });
     document.querySelectorAll(".cifra").forEach((c) => {
       c.classList.add("viva");
       const n = c.querySelector(".n");
-      if (n) n.textContent = Number(c.dataset.hasta || 0).toLocaleString("es-PE") + (c.dataset.sufijo || "");
+      if (n) n.textContent = formatear(c, Number(c.dataset.hasta || 0));
     });
+    document.querySelectorAll(".anillo.pre, #bars.pre").forEach((el) => el.classList.remove("pre"));
   };
   /* Se registra ANTES del codigo que podria fallar, que es el unico orden en
      que sirve de algo. Es idempotente, asi que no importa que un error de
@@ -87,25 +100,26 @@
      Arranca rapido y frena al final (easeOutExpo). Un contador lineal parece
      una barra de progreso; este parece que "aterriza", que es lo que hace que
      apetezca mirarlo hasta el final. */
-  const contar = (nodo, hasta, milesSep, sufijo) => {
+  const contar = (nodo, hasta, pintar) => {
     const DURACION = 1600;
     let t0 = null;
     const paso = (t) => {
       if (t0 === null) t0 = t;
       const p = Math.min((t - t0) / DURACION, 1);
       const suavizado = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
-      const valor = Math.round(hasta * suavizado);
-      nodo.textContent = (milesSep ? valor.toLocaleString("es-PE") : String(valor)) + sufijo;
+      nodo.textContent = pintar(Math.round(hasta * suavizado));
       if (p < 1) requestAnimationFrame(paso);
     };
     requestAnimationFrame(paso);
   };
 
   /* ----------------------------------------------------------- las cifras
-     Cada una se enciende y cuenta cuando entra en pantalla. Se hace con un
-     observador y NO leyendo scrollY en cada evento: leer geometria dentro del
-     manejador de scroll obliga al navegador a recalcular el diseno sesenta
-     veces por segundo, que es como se consigue justo lo contrario de fluidez. */
+     EL VALOR FINAL ESTA ESCRITO EN EL HTML. Este script lo pone a cero al
+     cargar y lo cuenta cuando la cifra entra en pantalla: sin JavaScript se
+     leen los numeros de verdad, no tres ceros esperando una animacion.
+     Se hace con un observador y NO leyendo scrollY en cada evento: leer
+     geometria dentro del manejador de scroll obliga a recalcular el diseno
+     sesenta veces por segundo, que es lo contrario de fluidez. */
   const cifras = document.querySelectorAll(".cifra");
 
   const encender = (cifra) => {
@@ -113,18 +127,17 @@
     const nodo = cifra.querySelector(".n");
     if (!nodo) return;
     const hasta = Number(cifra.dataset.hasta || 0);
-    const sufijo = cifra.dataset.sufijo || "";
-    const miles = cifra.dataset.miles === "1";
     if (menosMovimiento) {
-      nodo.textContent = (miles ? hasta.toLocaleString("es-PE") : String(hasta)) + sufijo;
+      nodo.textContent = formatear(cifra, hasta);
     } else {
-      contar(nodo, hasta, miles, sufijo);
+      contar(nodo, hasta, (v) => formatear(cifra, v));
     }
   };
 
   if (menosMovimiento) {
     cifras.forEach(encender);
   } else {
+    cifras.forEach((c) => { const n = c.querySelector(".n"); if (n) n.textContent = formatear(c, 0); });
     const obsCifras = new IntersectionObserver((entradas) => {
       for (const e of entradas) {
         if (!e.isIntersecting) continue;
@@ -139,10 +152,12 @@
      El anillo se dibuja moviendo stroke-dashoffset, no redibujando el arco:
      una sola propiedad animable, sin recalcular la geometria del SVG.
 
-     NADA DE style.* DESDE AQUI. El valor final del anillo (.anillo.lleno) y el
-     ancho de cada barra (.bar-fill.pNN, activo bajo #bars.lleno) viven en la
-     hoja de estilos: el script solo anade una clase. Escribir el atributo de
-     estilo desde JS es lo que obligaria a admitir 'unsafe-inline' en la CSP. */
+     NADA DE style.* DESDE AQUI. El estado de reposo del anillo y de las barras
+     (71 de 100, .bar-fill.pNN) es el que pinta la hoja sin ayuda; este script
+     anade .pre al cargar (anillo vacio, barras a cero) y lo quita cuando el
+     bloque entra en pantalla. Asi, sin JavaScript, el puntaje se ve completo;
+     con el, se dibuja. Escribir el atributo de estilo desde JS es lo que
+     obligaria a admitir 'unsafe-inline' en la CSP. */
   const PUNTAJE = 71;
 
   const dial = document.getElementById("ring");
@@ -150,17 +165,20 @@
   const barras = document.getElementById("bars");
 
   const dibujarPuntaje = () => {
-    if (dial) dial.classList.add("lleno");
+    if (dial) { dial.classList.remove("pre"); dial.classList.add("lleno"); }
     if (dialval) {
       if (menosMovimiento) dialval.textContent = String(PUNTAJE);
-      else contar(dialval, PUNTAJE, false, "");
+      else contar(dialval, PUNTAJE, String);
     }
-    if (barras) barras.classList.add("lleno");
+    if (barras) { barras.classList.remove("pre"); barras.classList.add("lleno"); }
   };
 
   if (menosMovimiento) {
     dibujarPuntaje();
   } else if (barras) {
+    if (dial) dial.classList.add("pre");
+    if (dialval) dialval.textContent = "0";
+    barras.classList.add("pre");
     const obsPuntaje = new IntersectionObserver((entradas) => {
       for (const e of entradas) {
         if (!e.isIntersecting) continue;
@@ -185,6 +203,15 @@
   const cv = document.getElementById("territorio");
   if (!cv) return;
   const ctx = cv.getContext("2d", { alpha: true });
+
+  /* El color de la senal se lee del token --ac de licitapro.css: si la marca
+     cambia de verde, el territorio cambia con ella. Si el token no se puede
+     leer (hoja sin cargar), se usa el mismo valor que tiene hoy. */
+  const ACENTO = (() => {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue("--ac").trim();
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    return m ? m.slice(1).map((h) => parseInt(h, 16)).join(",") : "63,224,181";
+  })();
 
   // Silueta aproximada del Peru (lon, lat): norte, frontera oriental, sur, costa.
   const BORDE = [
@@ -232,16 +259,22 @@
     puntos.push({ x:(c[0] - LONC) / 6.4, y:-(c[1] - LATC) / 6.4, t:rnd() * 6.2832, ciudad:true });
   }
 
-  let W = 0, H = 0, dpr = 1;
+  let W = 0, H = 0, dpr = 1, LIMITE = 1;
+  /* El recorrido del territorio termina donde empiezan las etapas (#como):
+     ahi ya estorbaria a la lectura. Se mide al cargar y al redimensionar, no
+     en cada fotograma, para no leer geometria dentro del bucle de dibujo. */
+  const como = document.getElementById("como");
   const medir = () => {
     dpr = Math.min(devicePixelRatio || 1, 2);   // por encima de 2 no se nota y cuesta el doble
     W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    LIMITE = Math.max(H, como ? como.getBoundingClientRect().top + scrollY - H * 0.3 : H * 3);
   };
   medir();
   addEventListener("resize", medir, { passive: true });
+  addEventListener("load", medir);
 
   /* Paralaje con el raton: el centro se desplaza un poco hacia el lado
      contrario, y el volumen se lee mejor porque cambia el punto de vista. Solo
@@ -254,7 +287,7 @@
     }, { passive: true });
   }
 
-  const avance = () => Math.min(1, Math.max(0, scrollY / (innerHeight * 3.2)));
+  const avance = () => Math.min(1, Math.max(0, scrollY / LIMITE));
 
   // Se reutiliza entre fotogramas para no generar basura que el recolector
   // tenga que barrer sesenta veces por segundo.
@@ -327,7 +360,7 @@
         const d = Math.hypot(a.sx - b.sx, a.sy - b.sy);
         if (d > ALCANCE) continue;
         const alfa = (1 - d / ALCANCE) * 0.16 * Math.min(a.prof, b.prof);
-        ctx.strokeStyle = "rgba(52,224,180," + alfa.toFixed(3) + ")";
+        ctx.strokeStyle = "rgba(" + ACENTO + "," + alfa.toFixed(3) + ")";
         ctx.beginPath();
         ctx.moveTo(a.sx, a.sy);
         ctx.lineTo(b.sx, b.sy);
@@ -341,11 +374,11 @@
         const r = (1.9 + pulso * 2.5) * q.persp;
         ctx.beginPath();
         ctx.arc(q.sx, q.sy, r, 0, 6.2832);
-        ctx.fillStyle = "rgba(52,224,180," + ((0.45 + pulso * 0.5) * q.prof).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(" + ACENTO + "," + ((0.45 + pulso * 0.5) * q.prof).toFixed(3) + ")";
         ctx.fill();
         ctx.beginPath();
         ctx.arc(q.sx, q.sy, r * 3.4, 0, 6.2832);
-        ctx.fillStyle = "rgba(52,224,180," + (0.05 * pulso * q.prof).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(" + ACENTO + "," + (0.05 * pulso * q.prof).toFixed(3) + ")";
         ctx.fill();
       } else {
         ctx.fillStyle = "rgba(150,205,215," + (0.10 + q.prof * 0.34).toFixed(3) + ")";

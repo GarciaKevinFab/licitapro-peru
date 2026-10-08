@@ -1,38 +1,44 @@
 {# La cuenta de arriba (cabecera de pagina) sigue al filtro: cuando este
    fragmento llega por HTMX, este <p> reemplaza al de la pagina por su id
    (intercambio fuera de banda). En la carga inicial no se emite, porque ahi
-   lo escribe dashboard.html con la misma variable. #}
+   lo escribe dashboard.html con la misma variable.
+   La cifra es el TOTAL que pasa los filtros, no las filas de esta pagina:
+   "30 ordenadas por puntaje" en cada pagina no diria nada. #}
 {% if request.headers.get('HX-Request') %}
-  <p class="cab-sub" id="cuenta-lic" hx-swap-oob="true"><b>{{ licitaciones|length }}</b> ordenadas por puntaje</p>
+  <p class="cab-sub" id="cuenta-lic" hx-swap-oob="true"><b>{{ total }}</b> ordenadas por puntaje</p>
 {% endif %}
 {% if not licitaciones %}
   <div class="vacio">
-    <p><strong>Ninguna licitación coincide.</strong></p>
+    <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/></svg>
+    <b>Ninguna licitación coincide.</b>
     <p>Prueba quitando el filtro de región o bajando el puntaje mínimo. Si esperabas
        resultados y no hay ninguno, revisa que el scraping haya corrido hoy.</p>
+    <a class="btn sec" href="/panel">Quitar los filtros</a>
   </div>
 {% else %}
-<table>
-  <caption>{{ licitaciones|length }} licitaciones · ordenadas por puntaje</caption>
+<table class="datos apilada">
+  {# La caption se queda para los lectores de pantalla; a la vista, la cuenta
+     ya esta en la cabecera de la pagina y repetirla a 60 px es ruido. #}
+  <caption class="visualmente-oculto">{{ total }} licitaciones · ordenadas por puntaje · página {{ pagina }} de {{ total_paginas }}</caption>
   <thead>
     <tr>
       <th class="num">Puntaje</th>
       <th>Cierre</th>
-      <th>Tipo</th>
-      <th>Región</th>
       <th>Entidad y objeto</th>
+      <th>Región</th>
+      <th>Tipo</th>
       <th class="num">Monto</th>
-      <th>Bases</th>
+      <th><span class="visualmente-oculto">Bases</span></th>
     </tr>
   </thead>
   <tbody>
   {% for l in licitaciones %}
     <tr>
-      <td class="num">
+      <td class="num" data-eti="Puntaje">
         {% if l.score_viabilidad %}
           <div class="score">
             <span class="sv">{{ l.score_viabilidad|round|int }}</span>
-            {# El ancho se redondea a tramos de 5%: en una barra de 120 px la
+            {# El ancho se redondea a tramos de 5%: en una barra de 48 px la
    diferencia entre 63% y 65% no se ve, y asi el estilo puede vivir en
    una clase en vez de en un atributo style= que obligaria a admitir
    'unsafe-inline' en la politica de seguridad. #}
@@ -40,22 +46,24 @@
           </div>
         {% else %}<span class="nd">—</span>{% endif %}
       </td>
-      <td class="cierre">
+      <td class="cierre" data-eti="Cierre">
         {% if l.fecha_cierre %}
           <span class="fecha">{{ l.fecha_cierre.strftime('%d/%m') }}</span>
           {% if l.dias is not none %}
             {% if l.dias < 0 %}<span class="chip venc">vencida</span>
-            {% elif l.dias <= 2 %}<span class="chip urg">{{ l.dias }}d</span>
-            {% elif l.dias <= 7 %}<span class="chip pronto">{{ l.dias }}d</span>
-            {% else %}<span class="chip ok">{{ l.dias }}d</span>{% endif %}
+            {% elif l.dias <= 2 %}<span class="chip urg">{{ l.dias }} d</span>
+            {% elif l.dias <= 7 %}<span class="chip pronto">{{ l.dias }} d</span>
+            {% else %}<span class="chip ok">{{ l.dias }} d</span>{% endif %}
           {% endif %}
         {% else %}<span class="nd">sin fecha</span>{% endif %}
       </td>
-      <td class="tipo-c"><span class="tipo">{{ l.tipo or '—' }}</span></td>
-      <td class="reg{% if not l.departamento %} sin-dato{% endif %}">{{ l.departamento or '—' }}</td>
       <td class="obj">
         <span class="ent">{{ l.entidad }}</span>
-        <a class="desc" href="/licitacion/{{ l.id }}">{{ l.objeto }}</a>
+        {# El objeto oficial puede pasar de 400 caracteres; recortado a ~140
+           cabe en dos lineas y el completo viaja en el title para quien lo
+           quiera leer sin abrir la ficha. #}
+        {% set objeto = l.objeto or '' %}
+        <a class="desc" href="/licitacion/{{ l.id }}"{% if objeto|length > 140 %} title="{{ objeto }}"{% endif %}>{{ objeto|truncate(140, False, '…') }}</a>
         {% if l.banderas_nivel and l.banderas_nivel > 0 %}
           {# El nivel decide el color: un indicio debil no puede leerse igual
              que un postor unico, o la marca deja de significar nada. #}
@@ -67,29 +75,76 @@
           </span>
         {% endif %}
         {% if l.score_detalle %}
-          <details>
+          <details class="desglose">
             <summary>Por qué este puntaje</summary>
-            <dl class="desglose">
+            <div class="factores">
               {% for k, v in l.score_detalle.items() %}
-                <div><dt>{{ k|replace('_',' ') }}</dt><dd>{{ v|round|int }}</dd></div>
+                <span class="factor">{{ k|replace('_',' ') }} <b>{{ v|round|int }}</b></span>
               {% endfor %}
-            </dl>
+            </div>
           </details>
         {% endif %}
       </td>
-      <td class="num monto">
+      <td class="reg{% if not l.departamento %} nd{% endif %}" data-eti="Región">{{ l.departamento or '—' }}</td>
+      <td class="tipo-c" data-eti="Tipo"><span class="codigo tipo">{{ l.tipo or '—' }}</span></td>
+      <td class="num monto" data-eti="Monto">
         {% if l.monto_referencial %}S/ {{ '{:,.0f}'.format(l.monto_referencial) }}
         {% else %}<span class="nd">no publicado</span>{% endif %}
       </td>
-      <td class="bases">
+      <td class="bases acciones" data-eti="Bases">
         {% if l.bases_urls %}
-          <a href="{{ l.bases_urls[0] }}" target="_blank" rel="noopener">PDF</a>
+          <a class="btn chico fantasma" href="{{ l.bases_urls[0] }}" target="_blank" rel="noopener" title="Abrir las bases en PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
+            PDF
+          </a>
         {% elif l.url %}
-          <a href="{{ l.url }}" target="_blank" rel="noopener">ver</a>
+          <a class="btn chico fantasma" href="{{ l.url }}" target="_blank" rel="noopener" title="Abrir la ficha oficial">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>
+            Ver
+          </a>
         {% else %}<span class="nd">—</span>{% endif %}
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+{% endif %}
+
+{# Paginacion al pie. Cada enlace lleva los filtros vigentes (qs_filtros, ya
+   codificados en app.py) y su propio numero de pagina. Por HTMX pide solo el
+   fragmento y lo deja en #tabla; el href es el respaldo sin JS y lo que se
+   copia al compartir. Se pinta aunque haya una sola pagina para que el total
+   quede siempre a la vista; los enlaces de pagina solo salen cuando hay mas. #}
+{% if total %}
+<nav class="paginacion" aria-label="Páginas de licitaciones">
+  <span>{{ (pagina - 1) * por_pagina + 1 }}–{{ [pagina * por_pagina, total]|min }} de <b>{{ total }}</b></span>
+  {% if total_paginas > 1 %}
+  <div class="paginas">
+    {% if pagina > 1 %}
+      <a href="/panel?{{ qs_filtros }}&amp;pagina={{ pagina - 1 }}" hx-get="/parts/tabla?{{ qs_filtros }}&amp;pagina={{ pagina - 1 }}" hx-target="#tabla" hx-swap="innerHTML show:#tabla:top" aria-label="Página anterior">‹</a>
+    {% else %}
+      <a aria-disabled="true" href="/panel?{{ qs_filtros }}&amp;pagina=1" aria-label="Página anterior">‹</a>
+    {% endif %}
+    {# Hasta siete casillas: primera, ultima, la actual y sus vecinas; los
+       huecos se marcan con puntos suspensivos para no listar 17 numeros. #}
+    {% set ns = namespace(ultimo=0) %}
+    {% for n in range(1, total_paginas + 1) %}
+      {% if n == 1 or n == total_paginas or (n >= pagina - 2 and n <= pagina + 2) %}
+        {% if n - ns.ultimo > 1 %}<span class="tenue">…</span>{% endif %}
+        {% if n == pagina %}
+          <span class="actual" aria-current="page">{{ n }}</span>
+        {% else %}
+          <a href="/panel?{{ qs_filtros }}&amp;pagina={{ n }}" hx-get="/parts/tabla?{{ qs_filtros }}&amp;pagina={{ n }}" hx-target="#tabla" hx-swap="innerHTML show:#tabla:top">{{ n }}</a>
+        {% endif %}
+        {% set ns.ultimo = n %}
+      {% endif %}
+    {% endfor %}
+    {% if pagina < total_paginas %}
+      <a href="/panel?{{ qs_filtros }}&amp;pagina={{ pagina + 1 }}" hx-get="/parts/tabla?{{ qs_filtros }}&amp;pagina={{ pagina + 1 }}" hx-target="#tabla" hx-swap="innerHTML show:#tabla:top" aria-label="Página siguiente">›</a>
+    {% else %}
+      <a aria-disabled="true" href="/panel?{{ qs_filtros }}&amp;pagina={{ total_paginas }}" aria-label="Página siguiente">›</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</nav>
 {% endif %}

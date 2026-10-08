@@ -430,14 +430,24 @@ async def _resumen(usuario_id: int) -> dict:
     }
 
 
+POR_PAGINA = 30
+
+
 async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
                         score_min: int = 0, solo_vigentes: bool = True,
-                        con_banderas: bool = False) -> list[dict]:
+                        con_banderas: bool = False,
+                        pagina: int = 1) -> tuple[list[dict], int]:
     """Filtros de la interfaz aplicados SOBRE el conjunto ya scopeado.
 
     El scoping por inquilino ocurre primero y una sola vez, en
     licitaciones_para_usuario. Asi ningun filtro de la UI puede ampliar el
     conjunto mas alla de lo que le corresponde a la cuenta.
+
+    Devuelve (filas de la pagina pedida, total que pasa los filtros). Antes
+    volcaba las 200 primeras de golpe: en un telefono eran 200 tarjetas y en
+    escritorio una tabla que tardaba en pintarse. Ahora se pagina de 30 en 30
+    sobre el MISMO orden (el que trae licitaciones_para_usuario), asi que la
+    fila 31 de la pagina 2 es la que antes ocupaba la posicion 31.
     """
     from shared.config import normalizar
     filas = await licitaciones_para_usuario(usuario_id, limite=500,
@@ -457,7 +467,9 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
         # habria que abrir los procesos uno a uno, que es justo lo que las
         # banderas pretendian evitar.
         filas = [f for f in filas if (f.get("banderas_nivel") or 0) > 0]
-    filas = filas[:200]
+    total = len(filas)
+    pagina = max(1, pagina)
+    filas = filas[(pagina - 1) * POR_PAGINA: pagina * POR_PAGINA]
 
     salida = []
     for f in filas:
@@ -472,7 +484,25 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
                 detalle = None
         d["score_detalle"] = detalle or {}
         salida.append(d)
-    return salida
+    return salida, total
+
+
+def _contexto_paginado(q: str, region: str, score_min: int, vigentes: int,
+                       banderas: int, pagina: int, total: int) -> dict:
+    """Lo que la plantilla necesita para pintar la paginacion sin perder los
+    filtros: la cadena de consulta ya codificada (sin `pagina`, que anade cada
+    enlace) y los numeros. Se codifica aqui y no en Jinja porque un `q` con
+    `&` o `#` escrito a mano en la plantilla rompia el enlace."""
+    from urllib.parse import urlencode
+    total_paginas = max(1, -(-total // POR_PAGINA))
+    return {
+        "pagina": min(max(1, pagina), total_paginas),
+        "total_paginas": total_paginas,
+        "total": total,
+        "por_pagina": POR_PAGINA,
+        "qs_filtros": urlencode({"q": q, "region": region, "score_min": score_min,
+                                 "vigentes": vigentes, "banderas": banderas}),
+    }
 
 
 def _aviso_desde_estado(s: dict) -> dict | None:
@@ -632,43 +662,66 @@ async def _planes_publicos() -> list[dict]:
     return [dict(f) for f in filas]
 
 
+def _vigentes_efectivo(request: Request, vigentes: int | None) -> int:
+    """Que vale la casilla "Solo vigentes" cuando no viene en la peticion.
+
+    Una casilla DESMARCADA no viaja en el formulario, y el servidor tomaba 1
+    por defecto: desde la interfaz nunca se podian ver las vencidas, el
+    filtro parecia roto. Ahora el defecto depende de si el formulario se
+    envio: si llega cualquier otro filtro (q, region, score_min, banderas,
+    pagina) y la casilla no, es que el usuario la quito -> 0. Si no llega
+    nada -- entrar a /panel a secas --, se mantiene el defecto de vigentes.
+    """
+    if vigentes is not None:
+        return vigentes
+    otros = {"q", "region", "score_min", "banderas", "pagina"}
+    return 0 if otros & set(request.query_params.keys()) else 1
+
+
 @app.get("/panel", response_class=HTMLResponse)
 async def panel(request: Request, q: str = "", region: str = "",
-                score_min: int = 0, vigentes: int = 1,
-                banderas: int = 0):
+                score_min: int = 0, vigentes: int | None = None,
+                banderas: int = 0, pagina: int = 1):
     # El inquilino sale de la sesion firmada, nunca de la peticion: antes se
     # elegia por querystring y cualquiera podia pasar ?usuario=N.
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar?siguiente=/panel", status_code=303)
     uid = usuario["id"]
+    vigentes = _vigentes_efectivo(request, vigentes)
+    filas, total = await _licitaciones(uid, q, region, score_min, bool(vigentes),
+                                       bool(banderas), pagina)
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "resumen": await _resumen(uid),
-        "licitaciones": await _licitaciones(uid, q, region, score_min, bool(vigentes),
-                                            bool(banderas)),
+        "licitaciones": filas,
         "departamentos": DEPARTAMENTOS,
         "usuario": usuario,
         "q": q, "region": region, "score_min": score_min, "vigentes": vigentes,
         "banderas": banderas,
         "primeros_pasos": await _primeros_pasos(uid),
+        **_contexto_paginado(q, region, score_min, vigentes, banderas, pagina, total),
     })
 
 
 @app.get("/parts/tabla", response_class=HTMLResponse)
 async def parte_tabla(request: Request, q: str = "", region: str = "",
-                      score_min: int = 0, vigentes: int = 1,
-                      banderas: int = 0):
-    """Fragmento que HTMX inyecta al filtrar, sin recargar la pagina."""
+                      score_min: int = 0, vigentes: int | None = None,
+                      banderas: int = 0, pagina: int = 1):
+    """Fragmento que HTMX inyecta al filtrar o al cambiar de pagina, sin
+    recargar la pagina."""
     usuario = await usuario_actual(request)
     if not usuario:
         return HTMLResponse('<div class="vacio"><p>Tu sesión expiró. '
                             '<a href="/entrar">Vuelve a entrar</a>.</p></div>',
                             status_code=401)
+    vigentes = _vigentes_efectivo(request, vigentes)
+    filas, total = await _licitaciones(usuario["id"], q, region, score_min,
+                                       bool(vigentes), bool(banderas), pagina)
     return templates.TemplateResponse("_tabla.html", {
         "request": request,
-        "licitaciones": await _licitaciones(usuario["id"], q, region, score_min,
-                                            bool(vigentes), bool(banderas)),
+        "licitaciones": filas,
+        **_contexto_paginado(q, region, score_min, vigentes, banderas, pagina, total),
     })
 
 
@@ -783,6 +836,11 @@ async def salud():
         from shared import vigilancia
         horas = await vigilancia.horas_sin_cosecha()
         detalle["oece_horas"] = round(horas, 1) if horas is not None else None
+        # Dos relojes distintos, y el 2026-10-07 se vio por que hacen falta
+        # los dos: `oece_horas` decia 0.9 (el puente leia 800 releases cada 4
+        # horas) mientras la convocatoria mas reciente tenia cinco dias.
+        rezago = await vigilancia.horas_de_rezago()
+        detalle["oece_rezago_horas"] = round(rezago, 1) if rezago is not None else None
     except Exception as e:  # noqa: BLE001
         log.warning("Salud: no se pudo medir la frescura de OECE: %s", e)
 

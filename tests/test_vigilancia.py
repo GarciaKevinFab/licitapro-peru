@@ -29,19 +29,24 @@ from shared import vigilancia
 from tests.conftest import sin_base
 
 
-def _fingir(monkeypatch, *, racha: int, horas, hora_del_dia: int = 15):
-    """Sustituye las tres consultas por valores fijos."""
+def _fingir(monkeypatch, *, racha: int, horas, hora_del_dia: int = 15,
+            rezago=1.0):
+    """Sustituye las cuatro consultas por valores fijos."""
     async def _racha(fuente=vigilancia.FUENTE_PRINCIPAL):
         return racha
 
     async def _horas(fuente=vigilancia.FUENTE_PRINCIPAL):
         return horas
 
+    async def _rezago(fuente=vigilancia.FUENTE_PRINCIPAL):
+        return rezago
+
     async def _hora():
         return hora_del_dia
 
     monkeypatch.setattr(vigilancia, "racha_sin_novedades", _racha)
     monkeypatch.setattr(vigilancia, "horas_sin_cosecha", _horas)
+    monkeypatch.setattr(vigilancia, "horas_de_rezago", _rezago)
     monkeypatch.setattr(vigilancia, "_hora_de_lima", _hora)
 
 
@@ -125,6 +130,58 @@ async def test_sequia_con_la_fuente_viva(monkeypatch):
     assert estado["motivo"] == "sequia"
     assert estado["avisar"] is True
     assert "formato" in vigilancia.mensaje(estado)
+
+
+# ─── OECE publica viejo: el puente lee, pero lo que lee no avanza ────────
+#
+# La averia del 2026-10-07: 800 releases por pasada, racha corta, y la
+# convocatoria mas nueva de la base con cinco dias. Ni "muda" ni "seca" la
+# veian, y /salud decia 0.9 horas.
+
+async def test_el_rezago_se_avisa_al_cruzar_el_umbral(monkeypatch):
+    _fingir(monkeypatch, racha=2, horas=0.9,
+            rezago=vigilancia.UMBRAL_REZAGO_HORAS + 1)
+    estado = await vigilancia.revisar()
+    assert estado["rezagada"] is True
+    assert estado["motivo"] == "rezago"
+    assert estado["avisar"] is True
+    # El mensaje manda a mirar la API, no la PC: es el diagnostico contrario
+    # al del silencio y confundirlos hace perder la tarde.
+    assert "OECE" in vigilancia.mensaje(estado)
+    assert "date" in vigilancia.mensaje(estado)
+
+
+async def test_un_rezago_normal_de_la_api_no_es_averia(monkeypatch):
+    """OECE publica con uno o dos dias de retraso en condiciones normales."""
+    _fingir(monkeypatch, racha=2, horas=0.9, rezago=40)
+    estado = await vigilancia.revisar()
+    assert estado["rezagada"] is False
+    assert estado["avisar"] is False
+
+
+async def test_el_rezago_largo_no_repite_cada_hora_pero_recuerda_a_diario(monkeypatch):
+    _fingir(monkeypatch, racha=2, horas=0.9, rezago=130, hora_del_dia=15)
+    assert (await vigilancia.revisar())["avisar"] is False
+    _fingir(monkeypatch, racha=2, horas=0.9, rezago=130,
+            hora_del_dia=vigilancia.HORA_RECORDATORIO)
+    estado = await vigilancia.revisar()
+    assert estado["avisar"] is True
+    assert estado["motivo"] == "rezago"
+
+
+async def test_la_mudez_tapa_al_rezago(monkeypatch):
+    """Con el puente parado el dato envejece por fuerza: eso no es OECE."""
+    _fingir(monkeypatch, racha=2, horas=20, rezago=130,
+            hora_del_dia=vigilancia.HORA_RECORDATORIO)
+    estado = await vigilancia.revisar()
+    assert estado["motivo"] == "silencio"
+
+
+async def test_una_fuente_sin_filas_no_tiene_rezago(monkeypatch):
+    _fingir(monkeypatch, racha=0, horas=None, rezago=None)
+    estado = await vigilancia.revisar()
+    assert estado["rezagada"] is False
+    assert estado["avisar"] is False
 
 
 # ─── Instalacion nueva ───────────────────────────────────

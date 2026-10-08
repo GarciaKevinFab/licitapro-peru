@@ -315,7 +315,7 @@ async def get_contratos_activos(empresa_id: int | None = None):
 async def get_plazos_proximos(dias: int = 7):
     async with connection() as conn:
         return await conn.fetch(
-            """SELECT p.*, c.numero_contrato, l.objeto, l.entidad 
+            """SELECT p.*, c.numero_contrato, c.empresa_id, l.objeto, l.entidad
             FROM plazos p
             JOIN contratos c ON p.contrato_id = c.id
             JOIN licitaciones l ON c.licitacion_id = l.id

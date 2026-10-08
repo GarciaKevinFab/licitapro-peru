@@ -14,41 +14,54 @@
    El aviso de arriba dice que esto NO sustituye a INDECOPI. Decirlo es
    obligacion, y ademas es lo honesto: quien reclama tiene que saber que tiene
    otra puerta si esta no le sirve.
-   ========================================================================== */
-main{max-width:760px}
-.campos{display:flex;flex-direction:column;gap:16px}
-.dos{display:grid;gap:16px;grid-template-columns:1fr}
-@media (min-width:640px){ .dos{grid-template-columns:1fr 1fr} }
-textarea{min-height:110px}
-.marco{border:1px solid var(--line);border-radius:var(--r-card);padding:14px 16px;
-  background:var(--bg)}
-.marco legend{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:500;padding:0 6px}
-.opciones{display:flex;gap:18px;flex-wrap:wrap}
-.opcion{display:flex;align-items:center;gap:7px;font-size:14px}
-.opcion input{width:auto;margin:0}
-.aviso-legal{font-size:12.5px;color:var(--ink-3);line-height:1.65;margin:0}
 
-/* La hoja registrada: el numero es lo unico que importa de esa pantalla. */
-.hoja{text-align:center;padding:8px 0 4px}
-.hoja .num{font-family:"Barlow Condensed",sans-serif;font-weight:900;
-  font-size:clamp(2.6rem,7vw,3.8rem);letter-spacing:.01em;line-height:1;
-  color:var(--ac);margin:10px 0 6px}
-.hoja .sin-margen{margin:0}
-.hoja .plazo{font-size:14px;color:var(--ink-2)}
-.hoja .plazo b{font-variant-numeric:tabular-nums}
+   Campos, fieldsets, mensajes y botones vienen de licitapro.css; aqui solo lo
+   propio: la cabecera legal, las opciones en fila y la hoja registrada.
+   ========================================================================== */
+.cab-legal{margin-bottom:22px}
+.cab-legal .norma{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:8px 0 0;line-height:1.6}
+.definiciones{display:grid;gap:12px 18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));margin:0 0 4px}
+.definiciones div{padding:12px 14px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--bg-2);font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.definiciones b{display:block;color:var(--ink);margin-bottom:2px}
+.aviso-legal{font-size:13px;color:var(--ink-3);line-height:1.65;margin:0 0 18px}
+.aviso-legal b{color:var(--ink-2)}
+/* La hoja comun pinta TODOS los span directos de label.campo como rotulo;
+   la ayuda bajo el campo tiene que volver a ser texto normal. Anotado en
+   PENDIENTE-ganar.md para subirlo a licitapro.css. */
+label.campo > span.ayuda{font-family:var(--f-ui);font-size:12.5px;letter-spacing:0;text-transform:none;font-weight:400}
+fieldset .opciones{display:flex;gap:6px 22px;flex-wrap:wrap;align-items:center}
+fieldset .opciones .etiqueta{flex:1 1 100%}
+fieldset .opciones .check{min-height:34px}
+fieldset .col-15 > .check{margin-top:-4px}
+textarea{min-height:120px}
+
+/* La hoja registrada: el numero es lo unico que importa de esa pantalla. Va
+   en mono porque es un codigo que se dicta por telefono o se copia en un
+   formulario de INDECOPI, y ahi importa mas distinguir el 0 de la O que el
+   estilo. */
+.hoja{text-align:center;padding:12px 0 6px}
+.hoja .codigo{display:block;font-family:var(--f-mono);font-weight:500;font-size:clamp(2.2rem,7vw,3.4rem);
+  letter-spacing:.04em;line-height:1;color:var(--ac);margin:12px 0 14px;text-shadow:0 0 28px var(--ac-glow)}
+.hoja .plazo{font-size:14.5px;color:var(--ink-2);margin:0;line-height:1.6}
+.hoja .plazo b{color:var(--ink);font-variant-numeric:tabular-nums}
+.mensaje p{margin:0}
+
+/* La titularidad va dentro del cuerpo (el pie no la repite): misma letra
+   pequena que en el pie, separada por un filo. */
+main > .titularidad{margin:28px 0 0;padding-top:14px;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.6;color:var(--ink-3)}
+main > .titularidad b{color:var(--ink-2);font-weight:500}
 {% endblock %}
 
 {% block cuerpo %}
 {% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
-<main class="{% if not usuario %}pt-40{% endif %}">
+<main class="estrecho{% if not usuario %} pt-40{% endif %}">
 
 {% if hoja %}
   {# ---------- ya registrada ---------- #}
-  <div class="tarjeta">
+  <div class="tarjeta realzada">
     <div class="hoja">
-      <p class="sub sin-margen">Tu {{ hoja.tipo }} quedó registrado</p>
-      <div class="num">{{ hoja.codigo }}</div>
+      <span class="rotulo">Tu {{ hoja.tipo }} quedó registrado</span>
+      <span class="codigo">{{ hoja.codigo }}</span>
       <p class="plazo">
         Guarda este número: es el que necesitas si acudes a INDECOPI.<br>
         Tenemos hasta el <b>{{ hoja.limite.strftime('%d/%m/%Y') }}</b> para
@@ -56,129 +69,139 @@ textarea{min-height:110px}
       </p>
     </div>
   </div>
-  <div class="tarjeta">
-    <p class="aviso-legal">
+  <div class="mensaje info">
+    <p class="mb-0">
       Te enviamos también una copia por correo. <b>Si no te llega, tu hoja
       igualmente está registrada</b> con el número de arriba — el envío es un
       aviso, no el registro. Ante cualquier duda escríbenos y búscala por ese
       número.
     </p>
   </div>
-  <p class="ayuda"><a href="/">Volver al inicio</a></p>
+  <div class="fila">
+    <a class="btn sec" href="/">Volver al inicio</a>
+  </div>
 
 {% else %}
   {# ---------- el formulario ---------- #}
-  <div class="tarjeta">
-    <h2 class="portada">Libro de Reclamaciones</h2>
-    <p class="sub">Conforme a la Ley 29571, Código de Protección y Defensa del
-       Consumidor, y al D.S. 101-2022-PCM.</p>
-    <p class="aviso-legal">
-      <b>Reclamo</b>: no estás conforme con el servicio contratado.
-      <b>Queja</b>: no estás conforme con la atención recibida.<br>
-      Responderemos en un plazo máximo de <b>{{ dias_habiles }} días hábiles</b>.
-      Presentar un reclamo aquí <b>no impide</b> acudir a INDECOPI ni a la vía
-      que corresponda.
-    </p>
+  <div class="cab-pag cab-legal">
+    <div>
+      <h1>Libro de Reclamaciones</h1>
+      <p class="cab-sub">Conforme a la Ley 29571, Código de Protección y Defensa del
+         Consumidor, y al D.S. 101-2022-PCM.</p>
+      <p class="norma">Respuesta en un plazo máximo de {{ dias_habiles }} días hábiles</p>
+    </div>
   </div>
+
+  <div class="definiciones">
+    <div><b>Reclamo</b> No estás conforme con el servicio contratado.</div>
+    <div><b>Queja</b> No estás conforme con la atención recibida.</div>
+  </div>
+  <p class="aviso-legal mb-16">Presentar un reclamo aquí <b>no impide</b> acudir a
+     INDECOPI ni a la vía que corresponda.</p>
 
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
   <form method="post" action="/reclamaciones">
     <div class="tarjeta">
-      <h2>1. Quién reclama</h2>
-      <div class="campos">
-        <fieldset class="marco">
-          <legend>Tipo</legend>
-          <div class="opciones">
+      {# ---- 1. quien reclama ---- #}
+      <fieldset>
+        <legend>1 · Datos del consumidor</legend>
+        <div class="col-15">
+          <div class="opciones" role="radiogroup" aria-labelledby="eti-tipo">
+            <span class="etiqueta" id="eti-tipo">Tipo de hoja</span>
             {% for t in tipos %}
-              <label class="opcion">
+              <label class="check">
                 <input type="radio" name="tipo" value="{{ t }}" required
                        {% if v.tipo == t %}checked{% endif %}>
                 {{ t|capitalize }}</label>
             {% endfor %}
           </div>
-        </fieldset>
 
-        <label class="campo"><span>Nombre completo o razón social *</span>
-          <input type="text" name="nombre" required value="{{ v.nombre or '' }}"></label>
+          <label class="campo"><span>Nombre completo o razón social *</span>
+            <input type="text" name="nombre" required autocomplete="name" value="{{ v.nombre or '' }}"></label>
 
-        <div class="dos">
-          <label class="campo"><span>Tipo de documento</span>
-            <select name="documento_tipo">
-              {% for d in documentos %}
-                <option value="{{ d }}" {% if v.documento_tipo == d %}selected{% endif %}>{{ d }}</option>
-              {% endfor %}
-            </select></label>
-          <label class="campo"><span>Número de documento *</span>
-            <input type="text" name="documento_numero" required
-                   value="{{ v.documento_numero or '' }}"></label>
-        </div>
+          <div class="rejilla dos">
+            <label class="campo"><span>Tipo de documento</span>
+              <select name="documento_tipo">
+                {% for d in documentos %}
+                  <option value="{{ d }}" {% if v.documento_tipo == d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+              </select></label>
+            <label class="campo"><span>Número de documento *</span>
+              <input type="text" name="documento_numero" required inputmode="numeric"
+                     value="{{ v.documento_numero or '' }}"></label>
+          </div>
 
-        <div class="dos">
-          <label class="campo"><span>Correo *</span>
-            <input type="email" name="email" required value="{{ v.email or '' }}">
-            <span class="ayuda">Aquí te enviamos la copia y la respuesta.</span></label>
-          <label class="campo"><span>Teléfono</span>
-            <input type="tel" name="telefono" value="{{ v.telefono or '' }}"></label>
-        </div>
+          <div class="rejilla dos">
+            <label class="campo"><span>Correo *</span>
+              <input type="email" name="email" required autocomplete="email" value="{{ v.email or '' }}">
+              <span class="ayuda">Aquí te enviamos la copia y la respuesta.</span></label>
+            <label class="campo"><span>Teléfono</span>
+              <input type="tel" name="telefono" autocomplete="tel" value="{{ v.telefono or '' }}"></label>
+          </div>
 
-        <label class="campo"><span>Domicilio</span>
-          <input type="text" name="direccion" value="{{ v.direccion or '' }}"></label>
+          <label class="campo"><span>Domicilio</span>
+            <input type="text" name="direccion" autocomplete="street-address" value="{{ v.direccion or '' }}"></label>
 
-        {# La ley contempla al menor de edad reclamando por medio de su
-           apoderado. Es raro en un producto de licitaciones, pero omitirlo
-           dejaria la hoja incompleta el dia que llegue el caso. #}
-        <fieldset class="marco">
-          <legend>Menor de edad</legend>
-          <label class="opcion">
+          {# La ley contempla al menor de edad reclamando por medio de su
+             apoderado. Es raro en un producto de licitaciones, pero omitirlo
+             dejaria la hoja incompleta el dia que llegue el caso. #}
+          <label class="check">
             <input type="checkbox" name="es_menor_edad" value="1"
                    {% if menor %}checked{% endif %}>
             Soy menor de edad y reclamo a través de mi apoderado</label>
-          <label class="campo mt-12"><span>Nombre del apoderado</span>
-            <input type="text" name="apoderado" value="{{ v.apoderado or '' }}"></label>
-        </fieldset>
-      </div>
-    </div>
+          <label class="campo"><span>Nombre del apoderado</span>
+            <input type="text" name="apoderado" value="{{ v.apoderado or '' }}">
+            <span class="ayuda">Solo si eres menor de edad.</span></label>
+        </div>
+      </fieldset>
 
-    <div class="tarjeta">
-      <h2>2. Qué se contrató</h2>
-      <div class="campos">
-        <fieldset class="marco">
-          <legend>Bien contratado</legend>
-          <div class="opciones">
-            <label class="opcion">
+      {# ---- 2. que se contrato ---- #}
+      <fieldset>
+        <legend>2 · Bien contratado</legend>
+        <div class="col-15">
+          <div class="opciones" role="radiogroup" aria-labelledby="eti-bien">
+            <span class="etiqueta" id="eti-bien">Qué contrataste</span>
+            <label class="check">
               <input type="radio" name="bien_contratado" value="servicio"
                      {% if v.bien_contratado != 'producto' %}checked{% endif %}> Servicio</label>
-            <label class="opcion">
+            <label class="check">
               <input type="radio" name="bien_contratado" value="producto"
                      {% if v.bien_contratado == 'producto' %}checked{% endif %}> Producto</label>
           </div>
-        </fieldset>
-        <div class="dos">
-          <label class="campo"><span>Descripción</span>
-            <input type="text" name="descripcion_bien"
-                   value="{{ v.descripcion_bien or '' }}"
-                   placeholder="Suscripción LicitaPro, plan Pro"></label>
-          <label class="campo"><span>Monto reclamado (S/)</span>
-            <input type="text" name="monto_reclamado" inputmode="decimal"
-                   value="{{ v.monto_reclamado or '' }}"></label>
+          <div class="rejilla dos">
+            <label class="campo"><span>Descripción</span>
+              <input type="text" name="descripcion_bien"
+                     value="{{ v.descripcion_bien or '' }}"
+                     placeholder="Suscripción LicitaPro, plan Pro"></label>
+            <label class="campo"><span>Monto reclamado (S/)</span>
+              <input type="text" name="monto_reclamado" inputmode="decimal" placeholder="0.00"
+                     value="{{ v.monto_reclamado or '' }}"></label>
+          </div>
         </div>
-      </div>
-    </div>
+      </fieldset>
 
-    <div class="tarjeta">
-      <h2>3. Qué pasó y qué esperas</h2>
-      <div class="campos">
-        <label class="campo"><span>Detalle *</span>
+      {# ---- 3. que paso ---- #}
+      <fieldset>
+        <legend>3 · Detalle</legend>
+        <label class="campo"><span>Qué pasó *</span>
           <textarea name="detalle" required
                     placeholder="Cuéntanos qué ocurrió, con fechas si las tienes.">{{ v.detalle or '' }}</textarea></label>
-        <label class="campo"><span>Tu pedido *</span>
+      </fieldset>
+
+      {# ---- 4. que espera ---- #}
+      <fieldset>
+        <legend>4 · Pedido</legend>
+        <label class="campo"><span>Qué esperas que hagamos *</span>
           <textarea name="pedido" required
                     placeholder="¿Qué esperas que hagamos?">{{ v.pedido or '' }}</textarea></label>
+      </fieldset>
+
+      <div class="pie-tarjeta">
+        <p class="ayuda mb-0">Al registrar verás el número de tu hoja en
+           pantalla, y te llegará una copia por correo.</p>
+        <button type="submit" class="grande">Registrar la hoja</button>
       </div>
-      <button type="submit" class="w-total-alto mt-18">Registrar</button>
-      <p class="ayuda mt-12">Al registrar verás el número de tu hoja en
-         pantalla, y te llegará una copia por correo.</p>
     </div>
   </form>
 {% endif %}

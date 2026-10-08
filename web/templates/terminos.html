@@ -4,36 +4,72 @@
 {% set titularidad_en_cuerpo = true %}
 
 {% block estilos %}
+/* ============================================================================
+   PAGINA LEGAL (la misma hoja que privacidad.html)
+
+   Tipografia editorial: un titular en serif, el indice de secciones arriba
+   para llegar a la clausula que se busca, numeros de seccion en mono y
+   parrafos a 70 caracteres. El texto legal no se toca aqui: solo se viste.
+   Lo compartido con privacidad esta anotado en docs/diseno/PENDIENTE-ganar.md
+   para subirlo a licitapro.css.
+   ========================================================================== */
 .legal{max-width:70ch;margin:0 auto}
-.legal h1{font-family:Sora,sans-serif;font-size:1.7rem;font-weight:600;
-  letter-spacing:-.02em;margin:0 0 6px}
-.legal .fecha{font-size:12.5px;color:var(--ink-3);margin:0 0 26px}
-.legal h2{font-family:Sora,sans-serif;font-size:1.05rem;font-weight:600;
-  margin:30px 0 10px;letter-spacing:-.01em}
-.legal p{margin:0 0 12px;line-height:1.62}
-.legal ul{margin:0 0 12px;padding-left:20px;line-height:1.6}
-.legal li{margin-bottom:6px}
-.legal .titularidad{margin:0 0 26px;padding:13px 15px;background:var(--panel-2);
+.legal h1{font-size:clamp(30px,5vw,42px)}
+.legal .fecha{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 26px}
+.legal .intro{font-size:16px;color:var(--ink-2);line-height:1.6}
+.legal p{margin:0 0 13px;line-height:1.7;color:var(--ink-2)}
+.legal p b,.legal li b{color:var(--ink);font-weight:600}
+.legal ul{margin:0 0 14px;padding-left:20px;line-height:1.65;color:var(--ink-2)}
+.legal li{margin-bottom:7px}
+.legal h2{font-family:var(--f-display);font-size:21px;font-weight:600;letter-spacing:-.012em;
+  margin:38px 0 12px;display:flex;gap:12px;align-items:baseline;scroll-margin-top:80px;
+  font-variation-settings:"opsz" 48,"SOFT" 20}
+.legal h2 .n{font-family:var(--f-mono);font-size:12px;font-weight:500;color:var(--ac);letter-spacing:.06em;flex:none;min-width:2.4ch}
+.indice{margin:26px 0 30px;padding:16px 18px 12px;border:1px solid var(--line-soft);border-radius:var(--r-card);background:var(--panel)}
+.indice .rotulo{display:block;margin-bottom:6px}
+.indice ol{margin:0;padding:0;list-style:none;columns:2;column-gap:24px}
+.indice li{break-inside:avoid;margin:0}
+.indice a{display:flex;gap:10px;align-items:baseline;color:var(--ink-2);text-decoration:none;font-size:13.5px;padding:5px 0;min-height:32px}
+.indice a:hover{color:var(--ac)}
+.indice a .n{font-family:var(--f-mono);font-size:11px;color:var(--ink-4);min-width:2.2ch;flex:none}
+@media (max-width:640px){.indice ol{columns:1}}
+.legal .titularidad{margin:0 0 26px;padding:13px 16px;background:var(--panel);border:1px solid var(--line-soft);
   border-radius:var(--r);font-size:13px;line-height:1.6;color:var(--ink-2)}
 .legal .titularidad b{color:var(--ink);font-weight:600}
-.legal .pie-legal{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);
-  font-size:13px;color:var(--ink-3)}
+.legal .pie-legal{margin-top:40px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-3)}
+.legal .pie-legal a{text-decoration:none}
 {% endblock %}
 
 {% block cuerpo %}
 {% if usuario %}{% with activo='' %}{% include "_nav.html" %}{% endwith %}{% endif %}
-<main>
-<article class="legal tarjeta">
+<main class="estrecho">
+<article class="legal">
 
-  <h1>Términos del servicio</h1>
+  <h1 class="display">Términos del servicio</h1>
   <p class="fecha">Última actualización: {{ hoy }}</p>
 
-  <p>Al crear una cuenta en LicitaPro Perú aceptas estos términos. Si no estás
+  <p class="intro">Al crear una cuenta en LicitaPro Perú aceptas estos términos. Si no estás
      de acuerdo con alguno, no uses el servicio.</p>
 
   {% include "_titularidad.html" %}
 
-  <h2>1. Qué es LicitaPro</h2>
+  <nav class="indice" aria-label="Secciones">
+    <span class="rotulo">Contenido</span>
+    <ol>
+      <li><a href="#t-1"><span class="n">1</span>Qué es LicitaPro</a></li>
+      <li><a href="#t-2"><span class="n">2</span>De dónde salen los datos</a></li>
+      <li><a href="#t-3"><span class="n">3</span>Las señales no son acusaciones</a></li>
+      <li><a href="#t-4"><span class="n">4</span>Firma digital</a></li>
+      <li><a href="#t-5"><span class="n">5</span>Tu cuenta</a></li>
+      <li><a href="#t-6"><span class="n">6</span>Planes y pagos</a></li>
+      <li><a href="#t-7"><span class="n">7</span>Devoluciones</a></li>
+      <li><a href="#t-8"><span class="n">8</span>Hasta dónde respondemos</a></li>
+      <li><a href="#t-9"><span class="n">9</span>Cancelación</a></li>
+      <li><a href="#t-10"><span class="n">10</span>Cambios y ley aplicable</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t-1"><span class="n">1.</span> Qué es LicitaPro</h2>
   <p>Una herramienta que reúne las convocatorias que publica el Estado peruano,
      te avisa de las que encajan con tu perfil y te ayuda a preparar los
      documentos para presentarte.</p>
@@ -41,7 +77,7 @@
      entidad convocante.</b> Tampoco somos un estudio de abogados ni un asesor
      en contrataciones: no damos asesoría legal.</p>
 
-  <h2>2. De dónde salen los datos, y qué garantizamos</h2>
+  <h2 id="t-2"><span class="n">2.</span> De dónde salen los datos, y qué garantizamos</h2>
   <p>Las licitaciones vienen de fuentes oficiales y públicas, principalmente la
      API de Contrataciones Abiertas del OECE. Las mostramos tal como las publica
      la entidad.</p>
@@ -53,7 +89,7 @@
      garantizamos que esté disponible sin interrupciones ni que te avisemos de
      absolutamente todas las oportunidades que te podrían interesar.</p>
 
-  <h2>3. Las señales que marcamos no son acusaciones</h2>
+  <h2 id="t-3"><span class="n">3.</span> Las señales que marcamos no son acusaciones</h2>
   <p>Cuando indicamos que un proceso o una entidad tiene indicios que conviene
      revisar — un solo postor, poca competencia, un plazo de consultas más corto
      de lo habitual para su tipo — estamos mostrando <b>datos públicos
@@ -61,7 +97,7 @@
   <p>Un proceso con un único participante puede tenerlo porque nadie más fabrica
      lo que se pide. La decisión de presentarte o no es tuya.</p>
 
-  <h2>4. Firma digital</h2>
+  <h2 id="t-4"><span class="n">4.</span> Firma digital</h2>
   <p>Preparamos documentos en PDF listos para que los firmes con tu DNI
      electrónico. <b>La firma la haces tú, en tu equipo</b>, con el software de
      RENIEC y tu lector. No firmamos por ti, no podemos hacerlo y nunca te
@@ -70,7 +106,7 @@
      de un documento: no tiene la validez legal de una firma digital. Si la
      entidad exige firma digital, la escaneada no sirve.</p>
 
-  <h2>5. Tu cuenta</h2>
+  <h2 id="t-5"><span class="n">5.</span> Tu cuenta</h2>
   <ul>
     <li>Eres responsable de tu contraseña y de lo que se haga desde tu cuenta.</li>
     <li>Los datos que cargas — RUC, representante legal, experiencia — debes
@@ -79,7 +115,7 @@
         está permitido.</li>
   </ul>
 
-  <h2>6. Planes y pagos</h2>
+  <h2 id="t-6"><span class="n">6.</span> Planes y pagos</h2>
   <ul>
     <li>Toda cuenta empieza con <b>14 días del plan Pro</b>, sin coste.</li>
     <li>Al terminar la prueba no se cierra tu cuenta: pasa al <b>plan Gratis</b>,
@@ -108,7 +144,7 @@
         con antelación y nunca se aplica a un periodo ya pagado.</li>
   </ul>
 
-  <h2>7. Devoluciones</h2>
+  <h2 id="t-7"><span class="n">7.</span> Devoluciones</h2>
   <p>Esto es un servicio digital de suscripción, no un producto que se envíe,
      así que la devolución tiene una forma concreta:</p>
   <ul>
@@ -130,7 +166,7 @@
      usar el <a href="/reclamaciones">Libro de Reclamaciones</a> o acudir a
      Indecopi.</p>
 
-  <h2>8. Hasta dónde respondemos</h2>
+  <h2 id="t-8"><span class="n">8.</span> Hasta dónde respondemos</h2>
   <p>LicitaPro es una herramienta de apoyo. <b>No respondemos por el resultado de
      tus procesos:</b> no ganar una licitación, presentarte fuera de plazo,
      descartar una oportunidad o cualquier decisión comercial que tomes son
@@ -148,13 +184,13 @@
      reconoce a quien contrate como consumidor final: esos derechos no se pueden
      renunciar por contrato, y aquí no se pretende hacerlo.</p>
 
-  <h2>9. Cancelación</h2>
+  <h2 id="t-9"><span class="n">9.</span> Cancelación</h2>
   <p>Puedes cerrar tu cuenta cuando quieras desde Configuración, y se borra todo
      lo tuyo. Podemos suspender una cuenta que incumpla estos términos, que use
      el servicio para algo ilícito o que intente romper el aislamiento entre
      clientes; cuando sea posible avisaremos antes.</p>
 
-  <h2>10. Cambios y ley aplicable</h2>
+  <h2 id="t-10"><span class="n">10.</span> Cambios y ley aplicable</h2>
   <p>Si cambiamos estos términos te avisaremos por correo. Seguir usando el
      servicio después de un cambio significa que lo aceptas.</p>
   <p>Se rigen por la ley peruana. Para cualquier controversia que no se resuelva

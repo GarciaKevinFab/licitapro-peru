@@ -3,28 +3,25 @@
 {% set titulo_pagina = 'Informes' %}
 {% set sub_pagina = 'Lo que has presentado, ganado y cobrado.' %}
 {% block estilos %}
-main{max-width:980px}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;color:var(--ink-3);display:block}
-.cifras{display:flex;flex-wrap:wrap;gap:30px}
-.cifras div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:3px}
-.cifras div b{font-family:"JetBrains Mono",monospace;font-size:24px;font-weight:600;
-  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:30px 20px;text-align:center;color:var(--ink-2)}
-.nota-csv{margin:-8px 0 20px;max-width:70ch}
+/* Solo lo propio: cifras, tablas, pastillas y vacio salen de licitapro.css. */
+main{max-width:1100px}
+.nota-csv{margin:-10px 0 20px;max-width:70ch}
+/* Las cifras en soles llevan el "S/" en pequeno para que el numero mande. */
+.tarjetas .t .n small{font-family:var(--f-mono);font-size:14px;font-weight:500;color:var(--ink-3);margin-right:4px;vertical-align:middle}
+.vacio p{max-width:46ch;margin-left:auto;margin-right:auto}
+.cuadricula .tarjeta .vacio{padding:32px 18px}
 {% endblock %}
 {% block nav %}{% with activo='informes' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
   <div class="cab-acc">
-    <a class="btn sec" href="/informes/licitaciones.csv">Licitaciones que te encajan</a>
-    <a class="btn sec" href="/informes/cobros.csv">Facturado y cobrado</a>
+    <a class="btn sec" href="/informes/licitaciones.csv">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Licitaciones que te encajan
+    </a>
+    <a class="btn sec" href="/informes/cobros.csv">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Facturado y cobrado
+    </a>
   </div>
 {% endblock %}
 {% block cabecera_pagina %}
@@ -35,23 +32,43 @@ main{max-width:980px}
 {% endblock %}
 {% block contenido %}
 
+  {# ---------- cifras: el historial en cuatro numeros ---------- #}
+  <div class="tarjetas">
+    <div class="t"><span class="n">{{ r.propuestas }}</span><span class="l">Propuestas preparadas</span></div>
+    <div class="t{% if r.ganados %} dato{% endif %}"><span class="n">{{ r.ganados }}</span><span class="l">Buenas pro ganadas</span></div>
+    <div class="t"><span class="n"><small>S/</small>{{ '{:,.0f}'.format(r.adjudicado or 0) }}</span><span class="l">Monto adjudicado</span></div>
+    <div class="t{% if r.por_cobrar %} aviso-k{% endif %}"><span class="n"><small>S/</small>{{ '{:,.0f}'.format(r.por_cobrar or 0) }}</span><span class="l">Por cobrar</span></div>
+  </div>
+  {% if r.propuestas %}
+    <p class="ayuda mb-16">
+      Ganas {{ '{:.0f}'.format(r.ganados / r.propuestas * 100) }} de cada 100
+      propuestas que preparas. Si el número es bajo, casi siempre es el filtro
+      y no la oferta: te estás presentando donde no encajas.
+    </p>
+  {% endif %}
+
   {% if vencimientos %}
   <div class="tarjeta">
-    <h2>Vence pronto</h2>
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Vence pronto</h2>
+        <p class="sub">Documentos de tus empresas que caducan. Renuévalos antes de presentarte.</p>
+      </div>
+    </div>
     <div class="tabla-caja">
-      <table class="datos">
-        <thead><tr><th>Documento</th><th>Empresa</th><th>Vence</th><th></th></tr></thead>
+      <table class="datos apilada">
+        <thead><tr><th>Documento</th><th>Empresa</th><th class="num">Vence</th><th>Estado</th></tr></thead>
         <tbody>
           {% for v in vencimientos %}
             <tr>
-              <td>{{ v.tipo }}{% if v.descripcion %}<span class="ent">{{ v.descripcion }}</span>{% endif %}</td>
-              <td>{{ v.razon_social }}</td>
-              <td>{{ v.fecha.strftime('%d/%m/%Y') }}</td>
-              <td>
+              <td data-eti="Documento"><span><span class="desc">{{ v.tipo }}</span>{% if v.descripcion %}<span class="ent">{{ v.descripcion }}</span>{% endif %}</span></td>
+              <td data-eti="Empresa">{{ v.razon_social }}</td>
+              <td class="num fecha" data-eti="Vence">{{ v.fecha.strftime('%d/%m/%Y') }}</td>
+              <td data-eti="Estado">
                 {% if v.dias < 0 %}
-                  <span class="pill urg">vencido hace {{ -v.dias }} día(s)</span>
+                  <span class="pill urg">vencido hace {{ -v.dias }} día{% if v.dias != -1 %}s{% endif %}</span>
                 {% elif v.dias <= 15 %}
-                  <span class="pill pend">en {{ v.dias }} día(s)</span>
+                  <span class="pill pend">en {{ v.dias }} día{% if v.dias != 1 %}s{% endif %}</span>
                 {% else %}
                   <span class="pill neutro">en {{ v.dias }} días</span>
                 {% endif %}
@@ -62,7 +79,7 @@ main{max-width:980px}
                tanto es trabajo perdido. #}
             {% if v.inhabilita and v.dias < 0 %}
               <tr><td colspan="4">
-                <div class="mensaje mal">Con el RNP vencido no puedes contratar
+                <div class="mensaje mal mb-0">Con el RNP vencido no puedes contratar
                   con el Estado. Cualquier oferta que presentes es inadmisible
                   hasta que renueves.</div></td></tr>
             {% endif %}
@@ -73,76 +90,99 @@ main{max-width:980px}
   </div>
   {% endif %}
 
-  <div class="tarjeta">
-    <h2>Tu historial</h2>
-    <div class="cifras">
-      <div><span>Propuestas</span><b>{{ r.propuestas }}</b></div>
-      <div><span>Ganadas</span><b>{{ r.ganados }}</b></div>
-      <div><span>Adjudicado</span><b>S/ {{ '{:,.0f}'.format(r.adjudicado or 0) }}</b></div>
-      <div><span>Por cobrar</span><b>S/ {{ '{:,.0f}'.format(r.por_cobrar or 0) }}</b></div>
+  <div class="cuadricula">
+    {# ---------- con que entidades ganas ---------- #}
+    <div class="tarjeta">
+      <div class="cab-tarjeta">
+        <div>
+          <h2>Con qué entidades ganas</h2>
+          <p class="sub">Donde ya ganaste conocen tu trabajo. Es el sitio más barato
+             para volver a presentarte.</p>
+        </div>
+      </div>
+      {% if por_entidad %}
+        <div class="tabla-caja suelta">
+          <table class="datos">
+            <thead><tr><th>Entidad</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
+            <tbody>
+              {% for e in por_entidad %}
+                <tr>
+                  <td>{{ e.entidad }}</td>
+                  <td class="num">{{ e.ganados }}</td>
+                  <td class="num monto">S/ {{ '{:,.0f}'.format(e.monto) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="vacio">
+          <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 21h18M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5M9 11h.01M15 11h.01M12 11h.01"/>
+          </svg>
+          <b>Todavía no has registrado ninguna buena pro.</b>
+          <p>Cuando ganes, aquí verás con qué entidades te va mejor.</p>
+          <a class="btn sec" href="/contratos">Registrar una buena pro</a>
+        </div>
+      {% endif %}
     </div>
-    {% if r.propuestas %}
-      <p class="ayuda mt-14">
-        Ganas {{ '{:.0f}'.format(r.ganados / r.propuestas * 100) }} de cada 100
-        propuestas que preparas. Si el número es bajo, casi siempre es el filtro
-        y no la oferta: te estás presentando donde no encajas.
-      </p>
-    {% endif %}
-  </div>
 
-  <div class="tarjeta">
-    <h2>Con qué entidades ganas</h2>
-    {% if por_entidad %}
-      <div class="tabla-caja">
-        <table class="datos">
-          <thead><tr><th>Entidad</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
-          <tbody>
-            {% for e in por_entidad %}
-              <tr>
-                <td>{{ e.entidad }}</td>
-                <td class="num">{{ e.ganados }}</td>
-                <td class="num">S/ {{ '{:,.0f}'.format(e.monto) }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    {# ---------- por mes ---------- #}
+    <div class="tarjeta">
+      <div class="cab-tarjeta">
+        <div>
+          <h2>Por mes</h2>
+          <p class="sub">Adjudicaciones con fecha registrada, de la más reciente a la más antigua.</p>
+        </div>
       </div>
-      <p class="ayuda">Donde ya ganaste conocen tu trabajo. Es el sitio más barato
-         para volver a presentarte.</p>
-    {% else %}
-      <div class="vacio"><p>Todavía no has registrado ninguna buena pro.</p></div>
-    {% endif %}
-  </div>
-
-  <div class="tarjeta">
-    <h2>Por mes</h2>
-    {% if por_mes %}
-      <div class="tabla-caja">
-        <table class="datos">
-          <thead><tr><th>Mes</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
-          <tbody>
-            {% for m in por_mes %}
-              <tr>
-                <td>{{ m.mes.strftime('%m/%Y') }}</td>
-                <td class="num">{{ m.ganados }}</td>
-                <td class="num">S/ {{ '{:,.0f}'.format(m.monto) }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="vacio"><p>Sin adjudicaciones con fecha registrada.</p></div>
-    {% endif %}
+      {% if por_mes %}
+        <div class="tabla-caja suelta">
+          <table class="datos">
+            <thead><tr><th>Mes</th><th class="num">Ganadas</th><th class="num">Adjudicado</th></tr></thead>
+            <tbody>
+              {% for m in por_mes %}
+                <tr>
+                  <td class="fecha">{{ m.mes.strftime('%m/%Y') }}</td>
+                  <td class="num">{{ m.ganados }}</td>
+                  <td class="num monto">S/ {{ '{:,.0f}'.format(m.monto) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="vacio">
+          <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
+          </svg>
+          <b>Sin adjudicaciones con fecha registrada.</b>
+          <p>Cada buena pro que registres suma a su mes.</p>
+          <a class="btn sec" href="/panel">Ver licitaciones</a>
+        </div>
+      {% endif %}
+    </div>
   </div>
 
   {% if por_estado %}
-  <div class="tarjeta">
-    <h2>Tus propuestas</h2>
-    <div class="acciones">
-      {% for e in por_estado %}
-        <span class="pill neutro">{{ e.estado }}: {{ e.n }}</span>
-      {% endfor %}
+  <div class="tarjeta mt-16">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Tus propuestas por estado</h2>
+        <p class="sub">El número que dice si el filtro está bien puesto o estás compitiendo donde no toca.</p>
+      </div>
+    </div>
+    <div class="tabla-caja suelta">
+      <table class="datos">
+        <thead><tr><th>Estado</th><th class="num">Propuestas</th></tr></thead>
+        <tbody>
+          {% for e in por_estado %}
+            <tr>
+              <td><span class="pill {% if e.estado == 'ganada' %}ok{% elif e.estado in ('perdida', 'descartada') %}neutro{% else %}info{% endif %}">{{ e.estado | replace('_', ' ') }}</span></td>
+              <td class="num">{{ e.n }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endif %}

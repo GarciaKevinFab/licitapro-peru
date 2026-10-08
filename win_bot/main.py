@@ -12,14 +12,18 @@ load_dotenv()
 log = logging.getLogger("win_bot")
 
 from shared import fechas
-from shared.config import ADMIN_ID, format_fecha, format_monto
+from shared.config import format_fecha, format_monto
 from shared.db import (
     connection,
     get_contratos_activos,
     get_plazos_proximos,
     get_pool,
 )
-from shared.notificaciones import avisar_cobros_vencidos, detectar_adjudicaciones
+from shared.notificaciones import (
+    avisar_cobros_vencidos,
+    avisar_plazo_proximo,
+    detectar_adjudicaciones,
+)
 
 # Estos cuatro se USABAN sin importarse. `/factura`, `/conformidad`, `/entrega`
 # y `/pago` no fallaban al arrancar el bot -- Python resuelve los nombres al
@@ -76,28 +80,26 @@ async def _renovar_suscripciones():
 
 
 async def check_plazos_proximos(app):
-    """Alerta sobre plazos que vencen en los próximos 3 días."""
+    """Alerta al dueno de cada contrato de los plazos que vencen en 3 dias.
+
+    Antes mandaba TODOS los plazos a ADMIN_ID -- el dueno de la plataforma, no
+    del contrato -- y marcaba `alerta_enviada` aunque no hubiera a quien
+    mandarlo. Ahora el aviso va por los canales del cliente
+    (shared.notificaciones.avisar_plazo_proximo) y solo se da por enviado si
+    algun canal lo confirmo; si no, se reintenta en la siguiente pasada.
+    """
     plazos = await get_plazos_proximos(dias=3)
-    
+
     for plazo in plazos:
         if plazo["alerta_enviada"]:
             continue
-        
-        dias_faltan = (plazo["fecha_limite"] - fechas.hoy()).days
-        urgencia = "🔴" if dias_faltan <= 1 else "🟡" if dias_faltan <= 3 else "🟢"
-        
-        if ADMIN_ID:
-            await app.bot.send_message(
-                ADMIN_ID,
-                f"{urgencia} <b>PLAZO PRÓXIMO — {dias_faltan} día(s)</b>\n\n"
-                f"📋 {plazo['objeto'][:100]}\n"
-                f"🏛️ {plazo['entidad']}\n"
-                f"📎 {plazo['descripcion']}\n"
-                f"📅 Fecha límite: {format_fecha(plazo['fecha_limite'])}\n"
-                f"📄 Contrato: {plazo['numero_contrato'] or '—'}",
-                parse_mode="HTML",
-            )
-        
+        try:
+            enviado = await avisar_plazo_proximo(dict(plazo))
+        except Exception:
+            log.exception("No se pudo avisar el plazo %s", plazo["id"])
+            continue
+        if not enviado:
+            continue
         async with connection() as conn:
             await conn.execute(
                 "UPDATE plazos SET alerta_enviada=TRUE WHERE id=$1", plazo["id"]

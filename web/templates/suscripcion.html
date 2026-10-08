@@ -4,7 +4,7 @@
 {% set sub_pagina = 'Tu plan, cómo se renueva y el historial de cobros.' %}
 {% block estilos %}
 /* ---------- EXCEPCION AL VALOR COMUN ----------
-   _base.html alinea las celdas ARRIBA, que es lo correcto en las tablas donde
+   La hoja alinea las celdas ARRIBA, que es lo correcto en las tablas donde
    una celda envuelve a varias lineas (entidad + objeto): asi la fila no se
    descuadra.
 
@@ -17,39 +17,23 @@
    arriba y solo esta lo necesita al medio. Una base con excepciones anotadas
    es mejor que una base que no sirve para nadie. */
 table.datos td{vertical-align:middle}
-.plan li.sin{color:var(--ink-3)}
 
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
+/* La ficha y el comprobante, lado a lado en escritorio: lo que tienes y lo
+   ultimo que pagaste, de un vistazo. Debajo de 1100 px se apilan. */
+.arriba{display:grid;gap:18px;align-items:start}
+@media (min-width:1100px){ .arriba:has(.tk-caja){grid-template-columns:minmax(0,1fr) 400px} }
+.arriba > .tarjeta{margin-bottom:0}
+.datos-ficha dd .pill{vertical-align:baseline}
 
-main{max-width:900px}
-.planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:15px}
-.plan{border:1px solid var(--line);border-radius:var(--r-card);padding:20px;background:var(--bg);
-  display:flex;flex-direction:column;gap:6px}
-.plan.actual{border-color:var(--ac);background:var(--ac-soft)}
-.plan h3{font-family:Sora,sans-serif;font-size:1rem;margin:0}
-.plan .precio{font-family:Sora,sans-serif;font-weight:600;font-size:1.9rem;letter-spacing:-.03em;
-  font-variant-numeric:tabular-nums;margin:6px 0 2px}
-.plan .precio small{font-size:.85rem;font-weight:400;color:var(--ink-3);letter-spacing:0;
-  font-family:"DM Sans",sans-serif}
-.plan ul{margin:10px 0 14px;padding-left:18px;font-size:13px;color:var(--ink-2);flex:1}
-.plan li{margin-bottom:5px}
-.plan form{display:flex;gap:7px;flex-wrap:wrap}
-.plan select{max-width:120px}
-.estadobox{display:flex;flex-wrap:wrap;gap:22px;font-size:13.5px}
-.estadobox div span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:2px}
-.estadobox div b{font-family:"JetBrains Mono",monospace;font-weight:600}
+/* De cuatro a dos a una. `auto-fit` sigue mandando en ancho, pero entre 640 y
+   1100 px se fuerza 2x2: ahi el auto-fit daba tres columnas y dejaba a
+   "Empresa" solo en una segunda fila, que se lee como un plan de segunda. */
+@media (max-width:1100px){ .planes{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:640px){ .planes{grid-template-columns:1fr} }
+/* Periodo y boton en una fila dentro de la tarjeta del plan. */
+.plan .acciones form{display:flex;gap:8px}
+.plan .acciones form select{flex:1;min-width:0}
+.plan .acciones form button{width:auto;flex:none}
 
 /* ---------- EL COMPROBANTE QUE SE IMPRIME ----------
    El ultimo cobro sale por la ranura de algo con forma de impresora.
@@ -69,41 +53,40 @@ main{max-width:900px}
    steps() y no una curva suave: una termica alimenta el papel a tirones.
 
    Todo es CSS, sin una linea de JavaScript. */
-.tk-caja{max-width:420px}
-.tk-impresora{background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--r-card) var(--r-card) 3px 3px;padding:18px 20px;position:relative;z-index:2}
+.tk-impresora{background:var(--panel-2);border:1px solid var(--line);
+  border-radius:var(--r) var(--r) 3px 3px;padding:16px 18px;position:relative;z-index:2}
 .tk-marca{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px}
-.tk-marca>span:first-child{font-family:"JetBrains Mono",monospace;font-size:10.5px;
-  letter-spacing:.14em;text-transform:uppercase;color:var(--ac)}
+.tk-marca>span:first-child{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:-.01em}
 .tk-cabecera{display:flex;justify-content:space-between;align-items:baseline;gap:14px}
-.tk-cabecera strong{font-family:Sora,sans-serif;font-size:15px}
-.tk-cabecera small{display:block;font-family:"DM Sans",sans-serif;font-weight:400;
-  font-size:12px;color:var(--ink-3)}
-.tk-cabecera .cifra{font-family:Sora,sans-serif;font-weight:600;font-size:1.5rem;
-  letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tk-cabecera strong{font-weight:600;font-size:14px}
+.tk-cabecera small{display:block;font-family:var(--f-mono);font-weight:400;font-size:11.5px;color:var(--ink-3)}
+.tk-cabecera .cifra{font-family:var(--f-display);font-weight:500;font-size:24px;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* La ranura. Los margenes negativos la sacan hasta el borde de la caja. */
-.tk-ranura{margin:16px -8px -8px;height:6px;border-radius:3px;background:#0b1013;
+.tk-ranura{margin:16px -8px -8px;height:6px;border-radius:3px;background:var(--bg);
   box-shadow:inset 0 2px 4px rgba(0,0,0,.85)}
 .tk-salida{padding:0 22px}
-.tk-papel{animation:tk-imprimir 1.8s steps(22,end) .25s both}
+/* El papel es claro aunque la app sea oscura: es papel, no una tarjeta mas.
+   Sus tres colores son locales del ticket y no tokens del tema, a proposito:
+   el tema no debe poder volverlo gris. */
+.tk-papel{--papel:#F7F5EF;--tinta:#23282C;--gris:#6B7075;
+  animation:tk-imprimir 1.8s steps(22,end) .25s both}
 @keyframes tk-imprimir{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
-/* El papel es claro en los dos temas: es papel, no una tarjeta mas. */
-.tk{--papel:#F7F5EF;--tinta:#23282C;--gris:#6B7075;
-  background:var(--papel);color:var(--tinta);
-  font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.75;padding:18px 18px 14px}
+.tk{background:var(--papel);color:var(--tinta);
+  font-family:var(--f-mono);font-size:11.5px;line-height:1.75;padding:18px 18px 14px}
 /* El borde de papel arrancado. En su propio elemento para que la mascara de
    los dientes no recorte tambien el texto del ticket. */
-.tk-borde{height:9px;background:#F7F5EF;filter:drop-shadow(0 12px 22px rgba(0,0,0,.35));
+.tk-borde{height:9px;background:var(--papel);filter:drop-shadow(0 12px 22px rgba(0,0,0,.35));
   -webkit-mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg)
     bottom/11px 100% repeat-x;
   mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg)
     bottom/11px 100% repeat-x}
-.tk-titulo{text-align:center;letter-spacing:.2em;font-weight:600;font-size:11px;margin:0 0 3px}
+.tk-titulo{text-align:center;letter-spacing:.2em;font-weight:500;font-size:11px;margin:0 0 3px}
 .tk-sub{text-align:center;font-size:9.5px;color:var(--gris);margin:0 0 12px;line-height:1.5}
-.tk-linea{border-top:1px dashed #C9C5BA;margin:10px 0}
+.tk-linea{border-top:1px dashed color-mix(in srgb,var(--tinta) 25%,var(--papel));margin:10px 0}
 .tk-fila{display:flex;justify-content:space-between;gap:10px}
 .tk-fila span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
-.tk-fila.tk-total{font-weight:600;font-size:13px;padding-top:3px}
+.tk-fila.tk-total{font-weight:500;font-size:13px;padding-top:3px}
 .tk-barras{height:30px;margin:12px 0 5px;background:repeating-linear-gradient(90deg,
   var(--tinta) 0 2px,transparent 2px 4px,var(--tinta) 4px 5px,transparent 5px 9px,
   var(--tinta) 9px 12px,transparent 12px 13px,var(--tinta) 13px 14px,transparent 14px 18px)}
@@ -135,25 +118,37 @@ main{max-width:900px}
     </div>
   {% endif %}
 
-  <div class="tarjeta">
-    <h2>Tu suscripción</h2>
-    {% if s.existe %}
-      <div class="estadobox">
-        <div><span>Plan</span><b>{{ s.plan_nombre }}</b></div>
-        <div><span>Estado</span><b>
-          <span class="pill {% if s.estado_efectivo == 'activa' %}ok{% elif s.estado_efectivo in ('vencida','prueba') %}pend{% else %}urg{% endif %}">{{ s.estado_efectivo }}</span></b></div>
-        <div><span>Periodo</span><b>{{ s.periodo }}</b></div>
-        <div><span>Vence</span><b>{{ s.vence.strftime('%d/%m/%Y') if s.vence else '—' }}</b></div>
-        {% if s.dias_restantes is not none %}
-          <div><span>Días</span><b>{{ s.dias_restantes }}</b></div>
+  <div class="arriba mb-16">
+  <div class="tarjeta realzada">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>Tu suscripción</h2>
+        {% if s.existe %}
+          <p class="sub">{% if culqi_sxn %}Se renueva sola; cancelas cuando quieras.{% else %}Cada periodo se paga una vez; antes de que venza te avisamos por correo.{% endif %}</p>
         {% endif %}
       </div>
+      {% if s.existe %}
+        <span class="pill {% if s.estado_efectivo == 'activa' %}ok{% elif s.estado_efectivo in ('vencida','prueba') %}pend{% else %}urg{% endif %}">{{ s.estado_efectivo }}</span>
+      {% endif %}
+    </div>
+    {% if s.existe %}
+      <dl class="datos-ficha">
+        <div><dt>Plan</dt><dd class="grande">{{ s.plan_nombre }}</dd></div>
+        <div><dt>Periodo</dt><dd>{{ s.periodo }}</dd></div>
+        <div><dt>Vence</dt><dd class="num">{{ s.vence.strftime('%d/%m/%Y') if s.vence else '—' }}</dd></div>
+        {% if s.dias_restantes is not none %}
+          <div><dt>Días restantes</dt><dd class="num">{{ s.dias_restantes }}</dd></div>
+        {% endif %}
+        {% if culqi_sxn and s.tarjeta_ultimos %}
+          <div><dt>Tarjeta</dt><dd class="num">{{ s.tarjeta_marca or '' }} ····{{ s.tarjeta_ultimos }}</dd></div>
+        {% endif %}
+      </dl>
       {% if s.en_gracia %}
-        <div class="mensaje aviso mt-14">
+        <div class="mensaje aviso mt-16 mb-0">
           Tu pago no se completó. Conservas el acceso unos días más mientras lo resuelves.
         </div>
       {% elif s.estado_efectivo == 'suspendida' %}
-        <div class="mensaje mal mt-14">
+        <div class="mensaje mal mt-16 mb-0">
           Suscripción suspendida. Paga para recuperar el acceso.
         </div>
       {% endif %}
@@ -164,17 +159,19 @@ main{max-width:900px}
            suscripcion viva en Culqi seria pagar DOS VECES el mismo periodo, y
            el cliente no tiene forma de saberlo mirando la pantalla. Se
            sustituye por lo que de verdad pasa. #}
-        <p class="ayuda mt-14">Tu plan se renueva automáticamente cada
+        <p class="ayuda mt-16">Tu plan se renueva automáticamente cada
            {{ s.periodo }}{% if s.tarjeta_ultimos %} con la tarjeta
            {{ s.tarjeta_marca or '' }} ····{{ s.tarjeta_ultimos }}{% endif %}.
            No tienes que hacer nada.</p>
       {% endif %}
-      <div class="acciones mt-16">
-        {% if not culqi_sxn %}
-          <form method="post" action="/suscripcion/pagar">
-            <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
-          </form>
-        {% endif %}
+      <div class="pie-tarjeta">
+        <div class="btn-grupo">
+          {% if not culqi_sxn %}
+            <form method="post" action="/suscripcion/pagar">
+              <button type="submit">Pagar {{ s.periodo }} · S/ {{ '%.2f'|format(s.precio_anual if s.periodo=='anual' else s.precio_mensual) }}</button>
+            </form>
+          {% endif %}
+        </div>
         {% if s.estado_efectivo != 'cancelada' %}
           {# La confirmacion dice lo que de verdad va a pasar. Con una
              suscripcion viva en Culqi, cancelar es IRREVERSIBLE: Culqi no
@@ -182,59 +179,12 @@ main{max-width:900px}
              tarjeta. Decirlo despues no sirve de nada. #}
           <form method="post" action="/suscripcion/cancelar"
                 data-confirmar="{% if culqi_sxn %}¿Cancelar el cobro automático? Es irreversible: para volver tendrás que contratar de nuevo e introducir tu tarjeta otra vez. Conservas el acceso hasta el fin del periodo ya pagado.{% else %}¿Cancelar la suscripción? Conservas el acceso hasta el fin del periodo pagado.{% endif %}">
-            <button type="submit" class="peligro">Cancelar</button></form>
+            <button type="submit" class="peligro">Cancelar la suscripción</button></form>
         {% endif %}
       </div>
     {% else %}
-      <p class="sub">Todavía no tienes un plan asignado. Elige uno abajo.</p>
+      <p class="sub mb-0">Todavía no tienes un plan asignado. Elige uno abajo.</p>
     {% endif %}
-  </div>
-
-  <div class="tarjeta">
-    <h2>Planes</h2>
-    <p class="sub">Puedes cambiar cuando quieras. El anual sale más barato y evita
-       once comisiones fijas al año.</p>
-    <div class="planes">
-      {% for p in planes %}
-        <div class="plan {% if s.existe and s.plan_codigo == p.codigo %}actual{% endif %}">
-          <h3>{{ p.nombre }}</h3>
-          <div class="precio">S/ {{ '%.0f'|format(p.precio_mensual) }}<small> /mes</small></div>
-          {% if p.precio_anual %}
-            <div class="ayuda">o S/ {{ '%.0f'|format(p.precio_anual) }} al año</div>
-          {% endif %}
-          <ul>
-            <li>{{ p.max_empresas }} empresa(s)</li>
-            <li>{% if p.max_regiones %}{{ p.max_regiones }} regiones{% else %}Cobertura nacional{% endif %}</li>
-            {% if p.alertas %}
-              <li>Avisos por WhatsApp, Telegram y correo</li>
-            {% else %}
-              <li class="sin">Sin avisos: entras tú a mirar</li>
-            {% endif %}
-            <li>Expedientes automáticos</li>
-            {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
-          </ul>
-          {% if p.precio_mensual and p.precio_mensual > 0 %}
-            {# Con una suscripcion viva en Culqi, "Elegir" no cambia una fila:
-               cancela el cobro recurrente actual y crea otro, que cobra el
-               plan nuevo ya mismo. Eso hay que decirlo ANTES, no en el aviso
-               de despues. #}
-            <form method="post" action="/suscripcion/elegir"
-                  {% if culqi_sxn and s.plan_codigo != p.codigo %}
-                  data-confirmar="Cambiar al plan {{ p.nombre }} cancela tu cobro automático actual y crea uno nuevo, que se cobra ahora con la misma tarjeta. ¿Continuamos?"
-                  {% endif %}>
-              <input type="hidden" name="plan" value="{{ p.codigo }}">
-              <select name="periodo" aria-label="Periodo de pago del plan {{ p.nombre }}">
-                <option value="mensual">Mensual</option>
-                {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
-              </select>
-              <button type="submit" class="sec">Elegir</button>
-            </form>
-          {% else %}
-            <p class="ayuda">Es donde te quedas si no renuevas. Tus datos siguen aquí.</p>
-          {% endif %}
-        </div>
-      {% endfor %}
-    </div>
   </div>
 
   {# El comprobante del ultimo cobro. Solo aparece si de verdad hubo uno
@@ -248,6 +198,7 @@ main{max-width:900px}
   {% set emisor = identidad() %}
   <div class="tarjeta tk-caja">
     <h2>Tu último comprobante</h2>
+    <p class="sub">Guarda el número de orden para cualquier consulta.</p>
     <div class="tk-impresora">
       <div class="tk-marca">
         <span>LicitaPro</span>
@@ -298,25 +249,83 @@ main{max-width:900px}
     </div>
   </div>
   {% endif %}
+  </div>{# /.arriba #}
+
+  <div class="tarjeta">
+    <h2>Planes</h2>
+    <p class="sub">Puedes cambiar cuando quieras. El anual sale más barato y evita
+       once comisiones fijas al año.</p>
+    <div class="planes">
+      {% for p in planes %}
+        {% set actual = s.existe and s.plan_codigo == p.codigo %}
+        <div class="plan{% if actual %} destacado{% endif %}">
+          <span class="rotulo">{% if actual %}tu plan actual{% else %}{{ p.codigo }}{% endif %}</span>
+          <h3>{{ p.nombre }}</h3>
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            <div class="precio">S/ {{ '%.0f'|format(p.precio_mensual) }}<small>/mes</small></div>
+            {% if p.precio_anual %}
+              <p class="anual">o S/ {{ '%.0f'|format(p.precio_anual) }} al año</p>
+            {% endif %}
+          {% else %}
+            <div class="precio">S/ 0<small>siempre</small></div>
+            <p class="anual">Es donde te quedas si no renuevas</p>
+          {% endif %}
+          <ul>
+            <li>{{ p.max_empresas }} empresa{% if p.max_empresas != 1 %}s{% endif %}</li>
+            <li>{% if p.max_regiones %}{{ p.max_regiones }} regiones{% else %}Cobertura nacional{% endif %}</li>
+            {% if p.alertas %}
+              <li>Avisos por WhatsApp, Telegram y correo</li>
+            {% else %}
+              <li class="no">Sin avisos: entras tú a mirar</li>
+            {% endif %}
+            <li>Expedientes automáticos</li>
+            {% if p.analisis_ia %}<li>Análisis de bases con IA</li>{% endif %}
+          </ul>
+          {% if p.precio_mensual and p.precio_mensual > 0 %}
+            {# Con una suscripcion viva en Culqi, "Elegir" no cambia una fila:
+               cancela el cobro recurrente actual y crea otro, que cobra el
+               plan nuevo ya mismo. Eso hay que decirlo ANTES, no en el aviso
+               de despues. #}
+            <div class="acciones">
+              <form method="post" action="/suscripcion/elegir"
+                    {% if culqi_sxn and s.plan_codigo != p.codigo %}
+                    data-confirmar="Cambiar al plan {{ p.nombre }} cancela tu cobro automático actual y crea uno nuevo, que se cobra ahora con la misma tarjeta. ¿Continuamos?"
+                    {% endif %}>
+                <input type="hidden" name="plan" value="{{ p.codigo }}">
+                <select name="periodo" aria-label="Periodo de pago del plan {{ p.nombre }}">
+                  <option value="mensual">Mensual</option>
+                  {% if p.precio_anual %}<option value="anual">Anual</option>{% endif %}
+                </select>
+                <button type="submit" class="{% if not actual %}sec{% endif %}">Elegir</button>
+              </form>
+            </div>
+          {% else %}
+            <p class="nota">Tus datos siguen aquí aunque no pagues.</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
 
   {% if historial %}
   <div class="tarjeta">
     <h2>Historial de cobros</h2>
+    <p class="sub">Los últimos doce. La referencia es la de la pasarela que hizo el cobro.</p>
     <div class="tabla-caja">
-    <table class="datos">
-      <thead><tr><th class="num">Fecha</th><th class="num">Orden</th><th class="num">Monto</th>
+    <table class="datos apilada">
+      <thead><tr><th>Fecha</th><th>Orden</th><th class="num">Monto</th>
         <th class="num">Comisión</th><th>Estado</th></tr></thead>
       <tbody>
       {% for h in historial %}
         <tr>
-          <td class="num">{{ h.created_at.strftime('%d/%m/%Y') if h.created_at else '—' }}</td>
+          <td data-eti="Fecha" class="fecha">{{ h.created_at.strftime('%d/%m/%Y') if h.created_at else '—' }}</td>
           {# La referencia sale de la pasarela que hizo el cobro: los de Culqi
              no tienen numero de orden de Izipay y saldrian todos como "—",
              dejando el historial sin nada con que reclamar. #}
-          <td class="num">{{ h.izipay_order_number or h.culqi_charge_id or '—' }}</td>
-          <td class="num">S/ {{ '%.2f'|format(h.monto) }}</td>
-          <td class="num">−{{ '%.2f'|format(comision(h.monto|float)) }}</td>
-          <td><span class="pill {% if h.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ h.estado }}</span></td>
+          <td data-eti="Orden" class="codigo">{{ h.izipay_order_number or h.culqi_charge_id or '—' }}</td>
+          <td data-eti="Monto" class="num">S/ {{ '%.2f'|format(h.monto) }}</td>
+          <td data-eti="Comisión" class="num tenue">−{{ '%.2f'|format(comision(h.monto|float)) }}</td>
+          <td data-eti="Estado"><span class="pill {% if h.estado == 'pagado' %}ok{% else %}pend{% endif %}">{{ h.estado }}</span></td>
         </tr>
       {% endfor %}
       </tbody>

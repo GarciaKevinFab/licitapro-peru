@@ -64,6 +64,10 @@ CONSULTAS = [
     {"term": "solicitud de cotizacion"},
     {"term": "indagacion de mercado"},
     {"term": "8 uit"},
+    # "Invitacion a cotizar" es como lo llaman las EPS de agua (EMSAPUNO,
+    # SEDAM) y varias municipalidades. Medido el 2026-10-07: 54 publicaciones
+    # en 7 dias que ninguna de las consultas de arriba traia.
+    {"term": "invitacion a cotizar"},
 ]
 
 DIAS_VENTANA = 3      # se repesca lo de los ultimos dias; el id deduplica
@@ -78,7 +82,7 @@ _RE_HREF = re.compile(r'href="([^"]+)"')
 
 # Lo que ES una compra. Sobre titulo + extracto, sin tildes y en minusculas.
 _RE_COMPRA = re.compile(
-    r"cotizacion|cotizaciones|indagacion de mercado|solicitud de informacion"
+    r"cotizacion|cotizaciones|cotizar|indagacion de mercado|solicitud de informacion"
     r"|8\s*uit|adquisicion|requerimiento de bienes|requerimiento de servicio"
     r"|estudio de mercado")
 

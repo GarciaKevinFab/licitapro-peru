@@ -16,6 +16,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
 )
@@ -81,6 +82,8 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
         "request": request, "usuario": usuario, "empresas": empresas,
         "uso": uso, "departamentos": DEPARTAMENTOS,
         "aviso": aviso, "error": error,
+        # Para pintar el RNP como vigente / por vencer / vencido en la lista.
+        "hoy": fechas.hoy(),
     })
 
 
@@ -466,3 +469,29 @@ async def ver_imagen(request: Request, empresa_id: int, tipo: str):
     if not ruta:
         return PlainTextResponse("Sin imagen", status_code=404)
     return FileResponse(ruta, media_type="image/png")
+
+
+# ─── Autocompletar por RUC ───────────────────────────────
+
+@router.get("/empresas/ruc/{ruc}")
+async def datos_por_ruc(request: Request, ruc: str):
+    """Razon social, direccion y region de un RUC, para rellenar el alta.
+
+    Lo consume el formulario de empresa al teclear 11 digitos
+    (web/static/licitapro.js). Va detras del login para que el servicio no sea
+    un consultor de RUC abierto a internet a costa de la cuota de los
+    republicadores que usa shared/sunat.py. No escribe nada: lo que devuelve
+    pasa por el formulario y lo guarda el usuario.
+    """
+    from shared.sunat import consultar_ruc, ruc_valido
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return JSONResponse({"error": "sin sesion"}, status_code=401)
+    ruc = ruc.strip()
+    if not ruc_valido(ruc):
+        return JSONResponse({"error": "RUC no valido"}, status_code=400)
+    datos = await consultar_ruc(ruc)
+    if not datos:
+        return JSONResponse({"error": "RUC no encontrado"}, status_code=404)
+    return JSONResponse(datos)

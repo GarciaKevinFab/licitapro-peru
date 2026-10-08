@@ -141,6 +141,86 @@ Lo que falta para usarlo, en este orden:
 
 ---
 
+## 6.bis Fuentes y cobertura regional (revisado 2026-10-07)
+
+Lo que entra hoy, medido contra la base:
+
+| Fuente | Que trae | Desde donde | Estado |
+|---|---|---|---|
+| `ocds_oece` (API OCDS de SEACE) | Licitaciones de todo el pais | Puente peruano, cada 4 h | Lee bien, pero OECE lleva **5 dias sin publicar nada nuevo** en su API (ultima convocatoria del 02/10). El vigilante no lo veia: media la ultima lectura, no la fecha del dato. Ahora si (`horas_de_rezago`, aviso "rezago", `oece_rezago_horas` en `/salud`). |
+| `gore_portals` Madre de Dios | Compras <8 UIT del GORE | Puente | 83 nuevas en 48 h, 68 vigentes. |
+| `gore_portals` **Cusco** | Compras <8 UIT del GORE | — (apagado) | **No existe.** gob.pe enlaza `cotizaciones.regioncusco.gob.pe` (nota de 2021), pero el subdominio es un CNAME al servidor principal sin sitio configurado: desde Peru (puente, 2026-10-07) y desde el VPS da lo mismo, el login de Plesk. Queda en `GORE_COTIZACIONES_APAGADOS` con el motivo. Las compras menores del GORE Cusco entran por `oece_menores`. |
+| `gob_pe` | Solicitudes de cotizacion nacionales | VPS, cada hora | 13 nuevas en 48 h. |
+| **`oece_menores`** (herramienta del OECE para contratos menores, Ley 32069) | **Compras <8 UIT de las 25 regiones**: 2.445 vigentes el 2026-10-07 (Lima 714, Arequipa 281, La Libertad 195, Cusco 130, Junin 127, Puno 56, Madre de Dios 16, Tumbes 2); 356 entidades la usan | VPS, cada hora | **Nuevo.** API publica sin sesion (`prod6.seace.gob.pe/v1/s8uit-services/buscadorpublico`), se recorre por departamento. Sin monto (no lo publica) ni bases (404 sin sesion). Es la fuente nacional de compras menores que los portales regionales solo cubrian a trozos. |
+| `ima_cusco` | Compras <8 UIT del IMA (GORE Cusco) | VPS | Escrito y probado, **apagado**: la entidad no publica desde el 09/02/2026. |
+
+Revisado y descartado para las regiones de los clientes (Madre de Dios,
+Junin, Cusco, Puno): GORE Puno, GORE Junin y las municipalidades
+provinciales de Huancayo, San Roman (Juliaca), Puno y Cusco no tienen portal
+de cotizaciones. Peru Compras (catalogos) y los datos abiertos de OECE sirven
+para inteligencia de competidores y PAC, no para alertas.
+
+**Calidad de `departamento`.** El detector de OECE comparaba por subcadena y
+"ica" esta dentro de publICA/tecnICA/electrICA: el GORE Puno tenia 50
+procesos etiquetados como Ica. Corregido en `_departamento`; las filas
+guardadas se arreglan con `tools/reparar_departamentos.py --aplicar`, que
+ademas completa el departamento por RUC de la entidad (regla en
+`shared/departamentos.py`, que corre tambien al final de cada pasada).
+
+Segunda pasada el mismo dia, revisando las 25 regiones: 1) la entidad manda
+sobre el objeto (51 filas tenian la region de la obra y no la del comprador);
+2) las municipalidades y UGEL se ubican por la tabla oficial de ubigeos
+(`shared/ubigeo.py` + `shared/ubigeo.csv`, 1.893 distritos): "MUNICIPALIDAD
+PROVINCIAL DE ESPINAR" no nombra a Cusco y "SAN MARTIN DE PORRES" no es San
+Martin. Resultado del dia: 1.010 filas corregidas, 538 + 351 completadas; sin
+region quedan 1.500 de 8.300, y de esas ~1.050 son entidades nacionales
+(Ejercito, EsSalud, CENARES, ONPE...) que no tienen region y se muestran a
+todos a proposito.
+
+**Candidatas revisadas para cosechar (2026-10-07), ademas de las de la tabla:**
+
+- PNSR (Programa Nacional de Saneamiento Rural, Vivienda):
+  `aplicacionespnsr.vivienda.gob.pe/spsPNSR/consulta`, compras <8 UIT con
+  filtro por departamento. La tabla la carga `POST
+  Consulta/jsonListadoProcesos?dpto=&estado=1`, pero desde el VPS responde 500
+  tras un WAF (cookies HWWAF). Pendiente de probar desde el puente.
+- DIRESA Madre de Dios: `cotizaciones.diresamdd.gob.pe` es una app React cuya
+  API es `https://cotizador.snipmania.tech/api/v1/convocatorias/public` (JSON
+  limpio, responde al VPS). Tiene UNA convocatoria, de junio 2026, finalizada.
+  No se cosecha hasta que publiquen; son 60 lineas cuando toque.
+- gob.pe: se anadio la consulta "invitacion a cotizar" (54 publicaciones en 7
+  dias que no entraban: EMSAPUNO, SEDAM Huancayo, municipalidades).
+- Portales 8 UIT de SUNARP, MINSA, SENAMHI, Poder Judicial: bloquean al VPS
+  (Cloudflare) o cargan por JavaScript sin API visible. UNSAAC, UNCP, UNAMAD,
+  DIRESA Puno/Junin, SEDAM: no publican compras menores en su web.
+
+## 6.ter El flujo de despues de ganar (revisado 2026-10-07)
+
+Como funciona hoy, de punta a punta:
+
+1. **Alerta** de la licitacion (correo / Telegram / WhatsApp segun el usuario).
+2. **Propuesta**: `/postular` la abre ('iniciado'); el prep_bot o la web generan
+   el expediente ('listo'). No hay un paso "la presente": 'listo' es lo mas
+   cerca que se sabe.
+3. **Parece que ganaste**: `win_bot` cruza cada 30 min el nombre del
+   adjudicatario (API OCDS; el RUC no viene) con las empresas del usuario que
+   tengan propuesta 'listo'/'enviado', y avisa por sus canales. No crea el
+   contrato: lo confirma el usuario en `/contratos/ganar`.
+4. **Contrato**: timeline de plazos (firma, fianza, entrega...) y aviso 3 dias
+   antes de cada uno al dueno del contrato.
+5. **Cobro**: se registra la factura y la **fecha de conformidad**; la fecha
+   limite legal son 10 dias habiles desde la conformidad (feriados calculados).
+   Pasado el plazo (y la prorroga de 5 dias), aviso diario "ya puedes
+   reclamar"; el usuario marca "cobrado" cuando entra el dinero.
+
+Lo que falta para que esto sea redondo:
+
+- [ ] Una **carta de requerimiento de pago** a la entidad (hoy el aviso dice
+      "ya puedes reclamar" y ahi acaba; `/reclamaciones` es otra cosa).
+- [ ] Un boton "**la presente**" en la propuesta, para no depender de 'listo'.
+- [ ] Para contratos menores (<8 UIT) la API publica no trae ganador: el
+      "gane" lo marca el usuario a mano.
+
 ## 7. Frente a la competencia
 
 Las dos referencias en Peru son **LicitaLAB** y **LiciSoft**.

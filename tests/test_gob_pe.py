@@ -43,6 +43,7 @@ def test_una_fecha_rara_da_none_y_no_un_invento(texto):
     "Solicitud de información: ADQUISICIÓN DEL PRODUCTO FARMACÉUTICO X",
     "Indagación de mercado - servicio de vigilancia",
     "Contratación de bienes por montos menores a 8 UIT",
+    "Invitación a Cotizar - servicios varios septiembre 2026",  # EPS de agua
 ])
 def test_una_compra_se_reconoce(titulo):
     assert _es_compra(titulo, "") is True

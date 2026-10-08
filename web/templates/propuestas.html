@@ -2,22 +2,17 @@
 {% block titulo %}Propuestas · LicitaPro{% endblock %}
 {% set titulo_pagina = 'Propuestas' %}
 {% set sub_pagina = 'En preparación, ordenadas por fecha de cierre: primero lo que vence antes.' %}
+{% set og_titulo = 'Propuestas · LicitaPro Perú' %}
 {% block estilos %}
-.pill{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;padding:3px 8px;border-radius:var(--r-chip);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.pill.urg{background:var(--urg-soft);color:var(--urg)}
-.pill.pend{background:var(--warn-soft);color:var(--warn)}
-.pill.neutro{background:var(--panel-2);color:var(--ink-3)}
-.vacio{padding:34px 20px;text-align:center;color:var(--ink-2)}
-.vacio p{margin:0 auto 8px;max-width:56ch}
-.acciones{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.ent{font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);display:block}
-.aviso{text-decoration:none;font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;background:var(--warn-soft);color:var(--warn);
-  padding:3px 7px;border-radius:var(--r-chip)}
-.sesion button{padding:5px 11px;font-size:12px}
-.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:15px}
+table.datos td.obj{min-width:260px;max-width:560px}
+table.datos .pend-n{font-weight:600}
+@media (max-width:640px){
+  table.apilada td{justify-content:flex-start;gap:10px;align-items:center}
+  table.apilada td[data-eti]::before{margin-right:auto}
+  table.apilada td.obj{display:block;padding:8px 14px}
+  table.apilada td.acciones{justify-content:flex-end}
+  table.apilada td.acciones .btn{width:100%}
+}
 {% endblock %}
 {% block nav %}{% with activo='propuestas' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
@@ -26,32 +21,39 @@
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
-  <div class="tarjeta">
-    {% if not propuestas %}
-      <div class="vacio">
-        <p><strong>Todavía no has abierto ninguna propuesta.</strong></p>
-        <p>Entra a una licitación desde el listado y pulsa Postular.</p>
-        <a class="btn" href="/panel">Ver licitaciones</a>
-      </div>
-    {% else %}
-      <div class="tabla-caja">
-      <table class="datos">
-        <thead><tr><th>Licitación</th><th>Empresa</th><th>Estado</th>
-          <th class="num">Pendientes</th><th class="num">Cierre</th><th></th></tr></thead>
-        <tbody>
-        {% for p in propuestas %}
-          <tr>
-            <td><span class="ent">{{ p.entidad or '—' }}</span>{{ (p.objeto or 'Sin licitación asociada')[:70] }}</td>
-            <td>{{ p.razon_social }}</td>
-            <td><span class="pill {% if p.estado in ('ganada','listo') %}ok{% else %}neutro{% endif %}">{{ p.estado }}</span></td>
-            <td class="num">{% if p.pendientes %}<span class="pill pend">{{ p.pendientes }}</span>{% else %}0{% endif %}</td>
-            <td class="num">{{ p.fecha_cierre.strftime('%d/%m') if p.fecha_cierre else '—' }}</td>
-            <td><a class="btn sec" href="/propuestas/{{ p.id }}">Abrir</a></td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    {% endif %}
-  </div>
+  {% if not propuestas %}
+    <div class="vacio">
+      <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+      <b>Todavía no has abierto ninguna propuesta.</b>
+      <p>Entra a una licitación desde el listado y pulsa Postular. El expediente
+         se abre con los datos de tu empresa y te pregunta solo lo que falte.</p>
+      <a class="btn" href="/panel">Ver licitaciones</a>
+    </div>
+  {% else %}
+    <div class="tabla-caja">
+    <table class="datos apilada">
+      <thead><tr><th>Licitación</th><th>Empresa</th><th>Estado</th>
+        <th class="num">Pendientes</th><th class="num">Cierre</th><th><span class="visualmente-oculto">Abrir</span></th></tr></thead>
+      <tbody>
+      {% for p in propuestas %}
+        <tr>
+          <td class="obj">
+            <span class="ent">{{ p.entidad or '—' }}</span>
+            {% set objeto = p.objeto or 'Sin licitación asociada' %}
+            <a class="desc" href="/propuestas/{{ p.id }}"{% if objeto|length > 110 %} title="{{ objeto }}"{% endif %}>{{ objeto|truncate(110, False, '…') }}</a>
+          </td>
+          <td data-eti="Empresa">{{ p.razon_social }}</td>
+          {# El estado lo escriben los bots (iniciado, listo, enviado, ganada,
+             adjudicado). Solo tres colores: lo ganado en verde, lo listo en
+             acento, lo demas neutro; el resto de matices no ayuda a decidir. #}
+          <td data-eti="Estado"><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></td>
+          <td class="num" data-eti="Pendientes">{% if p.pendientes %}<span class="pill pend pend-n">{{ p.pendientes }}</span>{% else %}<span class="nd">0</span>{% endif %}</td>
+          <td class="num fecha" data-eti="Cierre">{{ p.fecha_cierre.strftime('%d/%m') if p.fecha_cierre else '—' }}</td>
+          <td class="acciones"><a class="btn sec chico" href="/propuestas/{{ p.id }}">Abrir</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% endif %}
 {% endblock %}

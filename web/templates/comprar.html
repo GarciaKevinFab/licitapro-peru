@@ -20,62 +20,102 @@
      rellena una contrasena antes de saber cuanto le van a cobrar. En pantalla
      ancha el grid lo manda a la derecha, que es donde se busca.
    ========================================================================== */
-main{max-width:920px}
 .checkout{display:grid;gap:18px;align-items:start}
 @media (min-width:860px){
-  .checkout{grid-template-columns:1fr minmax(300px,340px)}
+  .checkout{grid-template-columns:minmax(0,1fr) 320px}
   /* Se invierte solo aqui: en movil el orden del documento ya es el correcto. */
-  .resumen{order:2}
+  .resumen{order:2;position:sticky;top:24px}
   .formulario{order:1}
 }
+.checkout > .tarjeta{margin-bottom:0}
 
 /* ---------- resumen del pedido ---------- */
-.lineas{display:flex;flex-direction:column;margin:14px 0 0}
-.lineas div{display:flex;justify-content:space-between;gap:14px;
-  padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
-.lineas div:last-child{border-bottom:none}
-.lineas b{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
-  font-weight:500;white-space:nowrap}
-.lineas .total{border-top:1px solid var(--line);margin-top:4px;padding-top:12px;
-  font-size:1.05rem;font-weight:600}
-.lineas .total b{font-family:Sora,sans-serif;font-size:1.45rem;letter-spacing:-.03em}
 .articulo{font-size:13.5px;color:var(--ink-2);line-height:1.6;margin:0}
 .articulo b{color:var(--ink);font-weight:600}
-.incluye{list-style:none;margin:12px 0 0;padding:0;display:flex;
-  flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink-3)}
-.incluye li{padding-left:16px;position:relative}
-.incluye li::before{content:"";position:absolute;left:0;top:.5em;width:8px;height:4px;
-  border-left:1.5px solid var(--ac);border-bottom:1.5px solid var(--ac);
-  transform:rotate(-45deg)}
-.cambiar{font-size:12px;margin-top:16px}
+.incluye{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink-3)}
+.incluye li{display:flex;gap:8px;align-items:flex-start}
+.incluye li::before{content:"";flex:none;width:14px;height:14px;margin-top:2px;border-radius:50%;
+  background:var(--ac-soft) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233FE0B5' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='m5 12 5 5L20 7'/></svg>") center/9px no-repeat}
+/* Las lineas del importe: concepto a la izquierda, cifra mono a la derecha,
+   y el total mas grande y en la serif, como las cifras clave del panel. */
+.lineas{display:flex;flex-direction:column;margin:16px 0 0;border-top:1px solid var(--line-soft)}
+.lineas div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px;color:var(--ink-2)}
+.lineas div:last-child{border-bottom:none}
+.lineas b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink);white-space:nowrap}
+.lineas .total{border-top:1px solid var(--line);margin-top:4px;padding-top:12px;font-size:15px;font-weight:600;color:var(--ink);align-items:baseline}
+.lineas .total b{font-family:var(--f-display);font-size:28px;letter-spacing:-.02em;font-weight:500}
+.cambiar{font-size:12.5px;margin:16px 0 0}
 
 /* ---------- formulario ---------- */
-.campos{display:flex;flex-direction:column;gap:14px;margin-top:16px}
 .pagar{margin-top:20px}
-.pagar button{width:100%;min-height:46px;padding:12px 16px;font-size:1rem;font-weight:600}
-.legal{font-size:11.5px;color:var(--ink-3);line-height:1.6;margin:12px 0 0}
-.medios{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
-.medios span{font-family:"JetBrains Mono",monospace;font-size:10px;
-  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
-  border:1px solid var(--line);border-radius:var(--r-chip);padding:3px 8px}
-.comercio{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin:16px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft)}
+.pagar button{width:100%}
+.legal{font-size:12px;color:var(--ink-3);line-height:1.6;margin:14px 0 0}
+.legal b{color:var(--ink-2)}
+.seguro{display:flex;gap:9px;align-items:flex-start;margin-top:14px;padding:10px 12px;border-radius:var(--r);
+  background:var(--panel-2);border:1px solid var(--line-soft);font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.seguro svg{width:16px;height:16px;flex:none;color:var(--ac);margin-top:2px}
+.medios{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.comercio{font-size:12px;color:var(--ink-3);line-height:1.65;margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line-soft)}
 .comercio b{color:var(--ink-2);font-weight:500}
-.titularidad{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin:8px 0 0}
-.titularidad b{color:var(--ink-2);font-weight:500}
+.tarjeta .titularidad{font-size:12px;color:var(--ink-3);line-height:1.65;margin:8px 0 0}
+.tarjeta .titularidad b{color:var(--ink-2);font-weight:500}
+/* La marca de la cabecera publica. La hoja comun solo la estila bajo
+   `body > header`, pero dentro de <div class="app"> la cabecera es
+   header.cab-antigua y el logo salia a tamano natural. Pendiente de pasar a
+   la hoja: docs/diseno/PENDIENTE-cuenta.md. */
+header.cab-antigua .brand{font-family:var(--f-display);font-weight:600;font-size:17px;display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;padding-block:13px}
+header.cab-antigua .brand .ico{width:19px;height:19px;color:var(--ac)}
+header.cab-antigua .brand .pe{color:var(--ink-3);font-weight:400;font-style:italic}
+@media (max-width:640px){
+  header.cab-antigua{padding:0 14px}
+  header.cab-antigua nav.menu{order:3;width:100%;flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  header.cab-antigua .sesion{margin-left:auto;border-left:0;padding-left:0}
+}
+.sesion .btn{min-height:32px;padding:4px 12px;font-size:12.5px}
+@media (max-width:640px){ .sesion .btn{min-height:44px} }
 {% endblock %}
 
 {% block cuerpo %}
-{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}{% endif %}
-<main class="{% if not usuario %}pt-40{% endif %}">
+{% if usuario %}{% with activo='suscripcion' %}{% include "_nav.html" %}{% endwith %}
+{% else %}
+  {# La misma cabecera publica que /precios: marca y vuelta atras. Un checkout
+     sin marca ni salida es lo que hace dudar a quien va a poner su tarjeta. #}
+  <header class="cab-antigua">
+    <a class="brand" href="/">
+      <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="currentColor" opacity=".4">
+          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+        </g>
+        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+      </svg>
+      LicitaPro <span class="pe">Perú</span>
+    </a>
+    <nav class="menu" aria-label="Sitio">
+      <a href="/precios" class="activo" aria-current="page">Planes</a>
+    </nav>
+    <span class="sesion">
+      <a class="btn sec" href="/entrar?siguiente=%2Fcomprar%2F{{ plan.codigo }}%3Fperiodo%3D{{ periodo }}">Entrar</a>
+    </span>
+  </header>
+{% endif %}
+<main class="estrecho">
+
+  <div class="cab-pag">
+    <div>
+      <p class="miga"><a href="/precios">Planes</a> <span>/</span> <span>Contratar</span></p>
+      <h1>Plan {{ plan.nombre }}</h1>
+      <p class="cab-sub">Facturación {{ periodo }}. Pagas, y entras a tu panel con el plan activo.</p>
+    </div>
+  </div>
 
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
   <div class="checkout">
 
     {# ---------- lo que se compra ---------- #}
-    <div class="tarjeta resumen">
-      <h2 class="portada">Resumen del pedido</h2>
+    <div class="tarjeta realzada resumen">
+      <h2>Resumen del pedido</h2>
       <p class="sub">Suscripción a LicitaPro Perú</p>
 
       <p class="articulo">
@@ -150,7 +190,7 @@ main{max-width:920px}
         <input type="hidden" name="periodo" value="{{ periodo }}">
 
         {% if not usuario %}
-          <div class="campos">
+          <div class="col-15">
             <label class="campo"><span>Nombre o razón social</span>
               <input type="text" name="nombre" autocomplete="organization"></label>
             <label class="campo"><span>Correo</span>
@@ -166,9 +206,15 @@ main{max-width:920px}
         {% endif %}
 
         <div class="pagar">
-          <button type="submit">Pagar S/ {{ '%.2f'|format(importe.total) }}</button>
+          <button type="submit" class="grande">Pagar S/ {{ '%.2f'|format(importe.total) }}</button>
         </div>
       </form>
+
+      <p class="seguro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span>No te pedimos el PIN. No guardamos el número de tu tarjeta: lo escribes
+          en el formulario de la pasarela y solo ella lo ve.</span>
+      </p>
 
       {# EL TEXTO SALE DE LO QUE LA PASARELA HACE HOY, NO DE LO QUE QUEREMOS
 
@@ -189,22 +235,23 @@ main{max-width:920px}
         {% else %}
           El cobro lo procesa <b>Izipay</b>: los datos de tu tarjeta viajan
           directos a la pasarela y LicitaPro nunca los ve ni los guarda. Este
-          es un pago único: cubre el periodo que elegiste y no queda ningún
-          cobro programado. Antes de que venza te avisamos por correo para que
-          renueves si quieres seguir.
+          es un pago único, de una sola vez: cubre el periodo que elegiste y no
+          deja cobros programados. Antes de que venza te avisamos por correo
+          para que renueves si quieres seguir.
         {% endif %}
       </p>
 
       <div class="medios">
-        <span>Visa</span><span>Mastercard</span><span>Amex</span>
-        <span>Diners</span><span>PEN</span>
+        <span class="pill neutro">Visa</span><span class="pill neutro">Mastercard</span>
+        <span class="pill neutro">Amex</span><span class="pill neutro">Diners</span>
+        <span class="pill neutro">PEN</span>
       </div>
 
       {% if comercio %}
         <p class="comercio">
           Cobra:
           {% if comercio.razon_social %}<b>{{ comercio.razon_social }}</b>{% endif %}
-          {% if comercio.ruc %} · RUC {{ comercio.ruc }}{% endif %}<br>
+          {% if comercio.ruc %} · <span class="mono">RUC {{ comercio.ruc }}</span>{% endif %}<br>
           {% if comercio.direccion %}{{ comercio.direccion }}<br>{% endif %}
           {% if comercio.email %}<!--email_off--><a href="mailto:{{ comercio.email }}">{{ comercio.email }}</a><!--/email_off-->{% endif %}
           {% if comercio.telefono %} · <a href="tel:{{ comercio.telefono_uri }}">{{ comercio.telefono }}</a>{% endif %}

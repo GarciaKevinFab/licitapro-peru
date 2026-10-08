@@ -4,116 +4,135 @@
 {% set sub_pagina = 'Cada cuenta es un inquilino con sus empresas, propuestas y contratos. Desde aquí se da de alta, se pone el plan a mano, se entra a mirar y se elimina.' %}
 {% block estilos %}
 {% include "_admin_estilos.html" %}
-.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px}
-.filtros label.campo{flex:1 1 150px}
-.filtros label.campo.busca{flex:2 1 260px}
-.filtros .botones{display:flex;gap:8px}
-.filtros button{min-height:36px}
-.cuenta b{display:block;font-weight:600}
-.cuenta span{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere}
-.cuenta .pill{margin-top:4px}
-.plan b{display:block}
-.plan .nota{margin-top:3px}
-/* Seis acciones en dos lineas de tres: con la columna al 1% se apilaban en
-   vertical y cada fila medía doscientos pixeles. */
-table.datos td.acciones-c{width:262px}
-table.datos td.acciones-c .acciones{max-width:250px}
-table.datos th.num,table.datos td.num{padding-right:18px}
-.resultado{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+/* El nombre de la cuenta es el dato principal de la fila: en negrita, con el
+   correo debajo en tenue. Un correo largo se parte antes que ensanchar la tabla. */
+.cuentas td.cuenta b{display:block;font-weight:600;color:var(--ink)}
+.cuentas td.cuenta b a{color:inherit}
+.cuentas td.cuenta .correo{font-size:12.5px;color:var(--ink-3);overflow-wrap:anywhere;display:block}
+.cuentas td.cuenta .pill{margin-top:5px}
+.cuentas td.susc b{display:block;font-weight:500;color:var(--ink)}
+.cuentas td.susc .pill{margin:3px 0 3px}
+.cuentas td.actividad .fecha{display:block;white-space:nowrap}
+/* Cinco acciones en dos lineas: con la columna al 1% se apilaban en
+   vertical y cada fila medía doscientos pixeles. Por debajo de ~1000 px la
+   tabla se desliza dentro de .tabla-caja en vez de aplastar las columnas. */
+.cuentas{min-width:960px}
+.cuentas td.acciones-c{min-width:250px}
+.cuentas td.acciones-c .acciones{max-width:250px}
+/* La hoja pone las acciones de fila al 60% hasta que se pasa el raton; aqui
+   son la mitad de lo que el dueno viene a hacer, asi que se ven siempre. */
+.cuentas tbody tr .acciones{opacity:1}
 
-/* En el telefono cada fila es una tarjeta: la cabecera se esconde para los
-   lectores de pantalla y cada celda lleva su rotulo delante (data-eti).
-   Es el mismo tratamiento que la tabla de licitaciones del panel. */
 @media (max-width:640px){
-  .filtros label.campo,.filtros label.campo.busca{flex:1 1 100%}
-  .filtros .botones{width:100%}
-  .filtros .botones button,.filtros .botones .btn{flex:1 1 auto;min-height:44px}
-  .tabla-caja table.datos.cuentas{min-width:0}
-  .cuentas thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  .cuentas tbody tr{display:flex;flex-wrap:wrap;gap:10px 18px;padding:14px 2px 12px;
-    border-bottom:1px solid var(--line-soft)}
-  .cuentas tbody tr:last-child{border-bottom:none}
-  .cuentas tbody tr:hover{background:transparent}
-  .cuentas tbody tr td:first-child,.cuentas tbody tr:hover td:first-child{box-shadow:none}
-  .cuentas td{display:block;padding:0;border:0;flex:1 1 40%;min-width:0}
-  .cuentas td.cuenta,.cuentas td.acciones-c{flex:1 1 100%;width:auto}
-  .cuentas td.acciones-c .acciones{max-width:none}
-  .cuentas td[data-eti]::before{content:attr(data-eti);display:block;font-size:11px;
-    letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
-  .cuentas .acciones{gap:8px}
-  .cuentas .acciones .btn,.cuentas .acciones button{flex:1 1 30%}
+  /* Los filtros se apilan y los botones ocupan la fila. */
+  .filtros .campo{flex:1 1 100%}
+  .filtros .acciones{width:100%;margin-left:0}
+  .filtros .acciones button,.filtros .acciones .btn{flex:1 1 auto}
+  /* En la tabla apilada cada celda es "rotulo a la izquierda, valor a la
+     derecha". Tres celdas no caben en ese molde -- la cuenta, el plan con sus
+     tres lineas y los seis botones -- y se pintan en bloque con el rotulo encima. */
+  .tabla-caja .cuentas{min-width:0}
+  .cuentas td.cuenta,.cuentas td.susc,.cuentas td.acciones-c{display:block;width:auto}
+  .cuentas td.susc[data-eti]::before{display:block;margin-bottom:4px}
+  .cuentas td.cuenta{padding-bottom:6px}
+  .cuentas td.acciones-c{padding-top:10px}
+  .cuentas td.acciones-c .acciones{max-width:none;gap:8px}
+  .cuentas td.acciones-c .acciones .btn,.cuentas td.acciones-c .acciones button{flex:1 1 30%}
 }
 {% endblock %}
 {% block nav %}{% with activo='admin' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
   <div class="cab-acc">
-    <a class="btn sec" href="/admin/ia">Gasto de IA</a>
-    <a class="btn" href="/admin/clientes/nueva">Nueva cuenta</a>
+    <a class="btn sec" href="/admin/ia">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>
+      Gasto de IA
+    </a>
+    <a class="btn" href="/admin/clientes/nueva">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Nueva cuenta
+    </a>
   </div>
 {% endblock %}
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
 
+  {# Las cifras son sobre TODAS las cuentas, no sobre el filtro: es el estado
+     del negocio, y el filtro es solo una lupa sobre la tabla de abajo. #}
   <div class="tarjetas" aria-label="Resumen de cuentas">
     <div class="t"><div class="n">{{ cifras.total }}</div><div class="l">cuentas</div></div>
-    <div class="t"><div class="n">{{ cifras.activas }}</div><div class="l">activas</div></div>
+    <div class="t"><div class="n">{{ cifras.activas }}</div><div class="l">con acceso</div></div>
     <div class="t"><div class="n">{{ cifras.prueba }}</div><div class="l">en prueba</div></div>
     <div class="t"><div class="n">{{ cifras.pagando }}</div><div class="l">pagando</div></div>
-    <div class="t"><div class="n">S/ {{ '{:,.0f}'.format(cifras.ingresos) }}</div><div class="l">ingresos del mes</div></div>
+    <div class="t dato"><div class="n">S/ {{ '{:,.0f}'.format(cifras.ingresos) }}</div><div class="l">ingresos del mes</div></div>
   </div>
 
-  <div class="tarjeta">
-    <form class="filtros" method="get" action="/admin/clientes" role="search">
-      <label class="campo busca"><span>Buscar</span>
-        <input type="search" name="q" value="{{ q }}" placeholder="correo o nombre" autocomplete="off"></label>
-      <label class="campo"><span>Plan</span>
-        <select name="plan">
-          <option value="">Todos</option>
-          {% for p in planes %}
-            <option value="{{ p.codigo }}" {% if p.codigo == plan %}selected{% endif %}>{{ p.nombre }}</option>
-          {% endfor %}
-        </select></label>
-      <label class="campo"><span>Estado</span>
-        <select name="estado">
-          <option value="">Todos</option>
-          {% for e in estados %}
-            <option value="{{ e }}" {% if e == estado %}selected{% endif %}>{{ e | replace('_', ' ') }}</option>
-          {% endfor %}
-        </select></label>
-      <div class="botones">
-        <button type="submit">Filtrar</button>
-        {% if q or plan or estado %}<a class="btn sec" href="/admin/clientes">Limpiar</a>{% endif %}
+  <form class="filtros" method="get" action="/admin/clientes" role="search">
+    <div class="campo crece">
+      <label for="f-q">Buscar</label>
+      <div class="buscador">
+        <input id="f-q" type="search" name="q" value="{{ q }}" placeholder="Correo o nombre" autocomplete="off">
       </div>
-    </form>
+    </div>
+    <div class="campo">
+      <label for="f-plan">Plan</label>
+      <select id="f-plan" name="plan">
+        <option value="">Todos</option>
+        {% for p in planes %}
+          <option value="{{ p.codigo }}" {% if p.codigo == plan %}selected{% endif %}>{{ p.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="f-estado">Estado</label>
+      <select id="f-estado" name="estado">
+        <option value="">Todos</option>
+        {% for e in estados %}
+          <option value="{{ e }}" {% if e == estado %}selected{% endif %}>{{ e | replace('_', ' ') }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="acciones">
+      <button type="submit" class="sec">Filtrar</button>
+      {% if q or plan or estado %}<a class="btn fantasma" href="/admin/clientes">Limpiar</a>{% endif %}
+    </div>
+  </form>
 
-    <p class="resultado"><b>{{ cuentas | length }}</b> cuenta(s){% if q or plan or estado %} con este filtro{% endif %}.
-       Estados: <b>activa</b> paga y con acceso · <b>prueba</b> los 14 días · <b>vencida</b> en gracia, sigue entrando ·
-       <b>suspendida</b> cae al plan gratis · <b>cancelada</b> por el cliente.</p>
+  <div class="tarjeta">
+    <div class="cab-tarjeta">
+      <div>
+        <h2>{{ cuentas | length }} cuenta{{ '' if cuentas | length == 1 else 's' }}{% if q or plan or estado %} con este filtro{% endif %}</h2>
+        <p class="sub">Estados: <b>activa</b> paga y con acceso · <b>prueba</b> los 14 días · <b>vencida</b> en gracia, sigue entrando ·
+          <b>suspendida</b> cae al plan gratis · <b>cancelada</b> por el cliente.</p>
+      </div>
+    </div>
 
     {% if not cuentas %}
       <div class="vacio">
-        <p><strong>{% if q or plan or estado %}Ninguna cuenta coincide.{% else %}Todavía no hay cuentas.{% endif %}</strong></p>
-        {% if q or plan or estado %}<p><a href="/admin/clientes">Quitar el filtro</a></p>{% endif %}
+        <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8.5 11h5"/></svg>
+        <b>{% if q or plan or estado %}Ninguna cuenta coincide{% else %}Todavía no hay cuentas{% endif %}</b>
+        <p>{% if q or plan or estado %}Prueba con otro texto o quita el filtro para ver la lista entera.{% else %}La primera la das de alta tú, o nace sola cuando alguien se registra.{% endif %}</p>
+        {% if q or plan or estado %}<a class="btn sec" href="/admin/clientes">Quitar el filtro</a>{% else %}<a class="btn" href="/admin/clientes/nueva">Nueva cuenta</a>{% endif %}
       </div>
     {% else %}
     <div class="tabla-caja">
-    <table class="datos cuentas">
+    <table class="datos apilada cuentas">
       <thead><tr>
         <th>Cuenta</th><th>Plan</th><th>Vence</th>
         <th class="num">Empresas</th><th class="num">Propuestas</th>
-        {% if con_acceso %}<th>Último acceso</th>{% endif %}
-        <th>Creada</th><th>Acciones</th>
+        <th>Actividad</th><th>Acciones</th>
       </tr></thead>
       <tbody>
       {% for c in cuentas %}
         <tr>
           <td class="cuenta">
-            <b>{{ c.nombre or c.email }}</b>
-            <span>{{ c.email }}</span>
+            {# El nombre ES el enlace a la ficha; por eso ya no hay boton "Ver". #}
+            <b><a href="/admin/clientes/{{ c.id }}">{{ c.nombre or c.email }}</a></b>
+            <span class="correo">{{ c.email }}</span>
             {% if not c.activo %}<span class="pill urg">desactivada</span>{% endif %}
           </td>
-          <td class="plan" data-eti="Plan">
+          {# No se llama `plan` porque .plan es la tarjeta de precios de la hoja. #}
+          <td class="susc" data-eti="Plan">
             {% if c.plan_codigo %}
               <b>{{ c.plan_nombre }}</b>
               {% set cl = 'ok' if c.estado_efectivo in ('activa','prueba') else ('pend' if c.estado_efectivo == 'vencida' else 'urg') %}
@@ -123,31 +142,35 @@ table.datos th.num,table.datos td.num{padding-right:18px}
               <span class="pill neutro">sin suscripción</span>
             {% endif %}
           </td>
-          <td class="fecha" data-eti="Vence">{% if c.vence %}{{ c.vence.strftime('%d/%m/%Y') }}{% if c.vence.date() < hoy %} <span class="pill urg">pasó</span>{% endif %}{% else %}—{% endif %}</td>
-          <td class="num" data-eti="Empresas">{{ c.empresas }}</td>
-          <td class="num" data-eti="Propuestas">{{ c.propuestas }}</td>
-          {% if con_acceso %}
-          <td class="fecha" data-eti="Último acceso">{% if c.ultimo_acceso %}{{ c.ultimo_acceso.strftime('%d/%m/%Y') }}<span class="ent">{{ c.ultimo_acceso.strftime('%H:%M') }}</span>{% else %}nunca{% endif %}</td>
-          {% endif %}
-          <td class="fecha" data-eti="Creada">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else '—' }}</td>
+          {# Cada celda apilable lleva UN solo hijo: en movil el td es flex y
+             un texto suelto junto a una pastilla se repartirian por la fila. #}
+          <td class="fecha" data-eti="Vence"><span>{% if c.vence %}{{ c.vence.strftime('%d/%m/%Y') }}{% if c.vence.date() < hoy %} <span class="pill urg">pasó</span>{% endif %}{% else %}<span class="nd">—</span>{% endif %}</span></td>
+          <td class="num" data-eti="Empresas"><span>{{ c.empresas }}</span></td>
+          <td class="num" data-eti="Propuestas"><span>{{ c.propuestas }}</span></td>
+          {# Ultimo acceso y alta en una sola columna: dos columnas de fecha
+             no cabian junto a las acciones sin deslizar la tabla a 1440. #}
+          <td class="actividad" data-eti="Actividad"><span>
+            {% if con_acceso %}<span class="fecha">{% if c.ultimo_acceso %}{{ c.ultimo_acceso.strftime('%d/%m/%Y %H:%M') }}{% else %}<span class="nd">nunca entró</span>{% endif %}</span>{% endif %}
+            <span class="nota">creada {{ c.created_at.strftime('%d/%m/%Y') if c.created_at else '—' }}</span></span></td>
           <td class="acciones-c">
             <div class="acciones">
-              <a class="btn sec" href="/admin/clientes/{{ c.id }}">Ver</a>
-              <a class="btn sec" href="/admin/clientes/{{ c.id }}/editar">Editar</a>
-              <a class="btn sec" href="/admin/clientes/{{ c.id }}#plan">Plan</a>
+              <a class="btn sec chico" href="/admin/clientes/{{ c.id }}/editar">Editar</a>
+              <a class="btn sec chico" href="/admin/clientes/{{ c.id }}#plan">Plan</a>
               {% if c.email|lower != usuario.email|lower %}
               {% if c.activo %}
               <form method="post" action="/admin/clientes/{{ c.id }}/entrar" data-cargando="Entrando…">
-                <button type="submit" class="sec">Entrar como</button>
+                <button type="submit" class="sec chico">Entrar como</button>
               </form>
               {% endif %}
               <form method="post" action="/admin/clientes/{{ c.id }}/activo">
                 <input type="hidden" name="activo" value="{{ '0' if c.activo else '1' }}">
-                <button type="submit" class="sec">{{ 'Desactivar' if c.activo else 'Activar' }}</button>
+                <button type="submit" class="fantasma chico">{{ 'Desactivar' if c.activo else 'Activar' }}</button>
               </form>
-              <button type="button" class="peligro" data-dialogo="dlg-eliminar"
+              <button type="button" class="peligro chico" data-dialogo="dlg-eliminar"
                       data-accion="/admin/clientes/{{ c.id }}/eliminar" data-correo="{{ c.email }}"
                       data-resumen="{{ c.empresas }} empresa(s) y {{ c.propuestas }} propuesta(s)">Eliminar</button>
+              {% else %}
+              <span class="nota">Tu cuenta</span>
               {% endif %}
             </div>
           </td>

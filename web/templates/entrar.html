@@ -7,10 +7,11 @@
 {# ============================================================================
    ACCESO — entrar y crear cuenta
 
-   Pantalla partida como el acceso de CargoXprez, con la identidad de la
-   portada de LicitaPro. El panel de marca y los estilos son compartidos con
-   /recuperar (_acceso_panel.html, _acceso_estilos.html): las tres puertas del
-   producto son la misma puerta.
+   Pantalla partida sobre los tokens y componentes de licitapro.css (la
+   tarjeta, los campos, el boton y los mensajes son los del sistema). El panel
+   de marca y la composicion son compartidos con /recuperar
+   (_acceso_panel.html, _acceso_estilos.html): las tres puertas del producto
+   son la misma puerta.
 
    Lo que NO cambia respecto a la version anterior: los name= de los campos,
    las action= de los formularios, los mensajes de error del servidor, el
@@ -35,10 +36,10 @@
           </svg>
           LicitaPro <span class="pe">Perú</span>
         </span>
-        <span class="linea-m">Licitaciones del Estado peruano</span>
+        <span class="linea-m rotulo">Licitaciones del Estado peruano</span>
       </a>
 
-      <div class="tarjeta-acc">
+      <div class="tarjeta tarjeta-acc">
         {% if modo == 'registro' %}
           <h1>Crea tu cuenta</h1>
           <p class="lead">14 días del plan Pro. Sin tarjeta.</p>

@@ -1,11 +1,8 @@
-{# Cabecera del panel. La incluyen las 17 plantillas de la aplicacion, asi que
-   `activo`, `usuario` y request.state.susc_aviso son contrato: cambiarlos aqui
-   obliga a tocarlas todas. #}
-{# El dueno esta DENTRO de la cuenta de un cliente ("entrar como" desde
-   /admin/clientes). La franja va encima de todo, fija, en ambar, y con la
-   salida al lado: se entra a mirar una incidencia, se deja la pestana
-   abierta, y dos horas despues se guarda algo creyendo estar en la cuenta
-   propia. De nada sirve avisar si volver cuesta buscar. #}
+{# Shell de navegacion del panel: barra lateral fija (escritorio) o cajon
+   deslizante (movil), mas la barra superior que solo se ve en movil.
+   La incluyen todas las plantillas de la aplicacion, asi que `activo`,
+   `usuario` y request.state.susc_aviso son contrato.
+   Sin JS en linea: el boton del menu lo maneja licitapro.js por data-*. #}
 {% if request.session.get('admin_original') %}
 <div class="dentro-de" role="status">
   <span>Estás dentro de la cuenta de <strong>{{ usuario.email }}</strong> como administrador.
@@ -15,50 +12,94 @@
   </form>
 </div>
 {% endif %}
-<header>
+{% set es_admin = request.app.state.admin_email and usuario.email and usuario.email|lower == request.app.state.admin_email %}
+{% set susc_aviso = request.state.susc_aviso | default(none) %}
+<aside class="barra-lateral" id="barra-lateral" aria-label="Navegación principal">
   <a class="brand" href="/panel">
     <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
-        <g fill="currentColor" opacity=".4">
-          <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
-        </g>
-        <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
-        <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
-      </svg>
+      <g fill="currentColor" opacity=".4">
+        <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+      </g>
+      <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+      <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+    </svg>
     LicitaPro <span class="pe">Perú</span>
   </a>
 
-  <nav class="menu">
-    <a href="/panel" {% if activo == 'licitaciones' %}class="activo" aria-current="page"{% endif %}>Licitaciones</a>
-    <a href="/propuestas" {% if activo == 'propuestas' %}class="activo" aria-current="page"{% endif %}>Propuestas</a>
-    <a href="/contratos" {% if activo == 'contratos' %}class="activo" aria-current="page"{% endif %}>Contratos</a>
-    <a href="/informes" {% if activo == 'informes' %}class="activo" aria-current="page"{% endif %}>Informes</a>
-    <a href="/empresas" {% if activo == 'empresas' %}class="activo" aria-current="page"{% endif %}>Empresas</a>
-    <a href="/configuracion" {% if activo == 'config' %}class="activo" aria-current="page"{% endif %}>Configuración</a>
-    <a href="/suscripcion" {% if activo == 'suscripcion' %}class="activo" aria-current="page"{% endif %}>Suscripción</a>
-    {# Solo el dueno del producto ve Admin: el correo sale de LICITAPRO_ADMIN_EMAIL
-       via app.state.admin_email. Para todos los demas el enlace no existe. #}
-    {% if request.app.state.admin_email and usuario.email and usuario.email|lower == request.app.state.admin_email %}
-    <a href="/admin/clientes" {% if activo == 'admin' %}class="activo" aria-current="page"{% endif %}>Admin</a>
+  <nav class="nav-grupo" aria-label="Radar">
+    <span class="rotulo">Radar</span>
+    <a class="nav-item{% if activo == 'licitaciones' %} activo{% endif %}" href="/panel" {% if activo == 'licitaciones' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2M21 12h-2M12 21v-2M3 12h2"/></svg>
+      Licitaciones
+    </a>
+    <a class="nav-item{% if activo == 'propuestas' %} activo{% endif %}" href="/propuestas" {% if activo == 'propuestas' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+      Propuestas
+    </a>
+  </nav>
+
+  <nav class="nav-grupo" aria-label="Ganar y cobrar">
+    <span class="rotulo">Ganar y cobrar</span>
+    <a class="nav-item{% if activo == 'contratos' %} activo{% endif %}" href="/contratos" {% if activo == 'contratos' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+      Contratos
+    </a>
+    <a class="nav-item{% if activo == 'informes' %} activo{% endif %}" href="/informes" {% if activo == 'informes' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>
+      Informes
+    </a>
+  </nav>
+
+  <nav class="nav-grupo" aria-label="Cuenta">
+    <span class="rotulo">Cuenta</span>
+    <a class="nav-item{% if activo == 'empresas' %} activo{% endif %}" href="/empresas" {% if activo == 'empresas' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6M9 10h.01M15 10h.01M9 14h.01M15 14h.01"/></svg>
+      Empresas
+    </a>
+    <a class="nav-item{% if activo == 'config' %} activo{% endif %}" href="/configuracion" {% if activo == 'config' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      Configuración
+    </a>
+    <a class="nav-item{% if activo == 'suscripcion' %} activo{% endif %}" href="/suscripcion" {% if activo == 'suscripcion' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>
+      Suscripción
+    </a>
+    {% if es_admin %}
+    <a class="nav-item{% if activo == 'admin' %} activo{% endif %}" href="/admin/clientes" {% if activo == 'admin' %}aria-current="page"{% endif %}>
+      <svg class="nav-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
+      Admin
+    </a>
     {% endif %}
   </nav>
 
-  <span class="sesion">
-    {% set susc_aviso = request.state.susc_aviso | default(none) %}
-    {% if susc_aviso %}
-      <a class="aviso {{ susc_aviso.clase }}" href="/suscripcion">{{ susc_aviso.texto }}</a>
+  <div class="barra-pie">
+    {% if susc_aviso or not usuario.telegram_chat_id %}
+    <div class="avisos">
+      {% if susc_aviso %}<a class="aviso {{ susc_aviso.clase }}" href="/suscripcion">{{ susc_aviso.texto }}</a>{% endif %}
+      {% if not usuario.telegram_chat_id %}<a class="aviso" href="/configuracion">conecta Telegram</a>{% endif %}
+    </div>
     {% endif %}
-    {% if not usuario.telegram_chat_id %}
-      <a class="aviso" href="/configuracion">conecta Telegram</a>
-    {% endif %}
+    <div class="usuario-tarjeta">
+      <span class="yo" aria-hidden="true">{{ (usuario.nombre or usuario.email)[0] }}</span>
+      <span class="quien"><b title="{{ usuario.email }}">{{ usuario.nombre or usuario.email }}</b><small>{{ usuario.email }}</small></span>
+      <form class="en-linea" method="post" action="/salir">
+        <button type="submit" class="sec">Salir</button>
+      </form>
+    </div>
+  </div>
+</aside>
+<div class="telon" data-cerrar-menu hidden></div>
 
-    {# La inicial ancla la mirada y ocupa mucho menos que el correo entero, que
-       en pantallas medianas partia la barra en dos lineas. El correo completo
-       sigue accesible en el title. #}
-    <span class="yo" title="{{ usuario.email }}" aria-hidden="true">{{ (usuario.nombre or usuario.email)[0] }}</span>
-    <span class="quien">{{ usuario.nombre or usuario.email }}</span>
-
-    <form class="en-linea" method="post" action="/salir">
-      <button type="submit" class="sec">Salir</button>
-    </form>
-  </span>
-</header>
+<div class="topbar">
+  <a class="brand" href="/panel">
+    <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+      <g fill="currentColor" opacity=".4"><circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/></g>
+      <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+      <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+    </svg>
+    LicitaPro <span class="pe">Perú</span>
+  </a>
+  <button type="button" class="boton-menu" data-abrir-menu aria-controls="barra-lateral" aria-expanded="false" aria-label="Abrir el menú">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+</div>
