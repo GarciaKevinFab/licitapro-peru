@@ -94,9 +94,9 @@ def _representante(texto: str) -> dict:
     nombre: list[str] = []
     for linea in texto[m.end():].splitlines()[:4]:
         limpia = linea.strip()
-        if (not limpia or limpia.startswith("-") or normalizar(limpia) in _DEPTOS
-                or not re.fullmatch(r"[A-ZÑÁÉÍÓÚÜ' .]+", limpia)
-                or limpia.startswith("Direcci")):
+        if (not limpia or limpia.startswith(("-", "Direcci"))
+                or normalizar(limpia) in _DEPTOS
+                or not re.fullmatch(r"[A-ZÑÁÉÍÓÚÜ' .]+", limpia)):
             break
         nombre.append(limpia)
     cargo = re.search(r"^([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ .]+?)\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}",
@@ -196,6 +196,6 @@ def leer_ficha_ruc(contenido: bytes) -> dict:
         lector = PdfReader(io.BytesIO(contenido))
         paginas = lector.pages[:MAX_PAGINAS]
         texto = "\n".join((p.extract_text() or "") for p in paginas)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise FichaInvalida("No se pudo leer el PDF. ¿Está dañado o protegido?") from e
     return parsear_texto(texto)

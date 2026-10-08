@@ -29,7 +29,7 @@ from __future__ import annotations
 import io
 import logging
 import re
-from datetime import date, datetime
+from datetime import date
 
 log = logging.getLogger("shared.constancia_rnp")
 
@@ -56,8 +56,10 @@ _RE_FECHA = r"(\d{2}/\d{2}/\d{4})"
 def _fecha(texto: str | None) -> date | None:
     if not texto:
         return None
+    # date() y no datetime.strptime: es un dia del calendario, no un instante.
     try:
-        return datetime.strptime(texto, "%d/%m/%Y").date()
+        dia, mes, anio = (int(x) for x in texto.split("/"))
+        return date(anio, mes, dia)
     except ValueError:
         return None
 
@@ -133,13 +135,13 @@ def leer_constancia_rnp(contenido: bytes) -> dict:
         raise ConstanciaInvalida("El PDF pesa demasiado (máximo 5 MB).")
     try:
         texto = _texto_pdf(contenido)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise ConstanciaInvalida("No se pudo leer el PDF. ¿Está dañado o protegido?") from e
     if "REGISTRO NACIONAL" in texto.upper():
         return parsear_texto(texto)
     try:
         texto = _texto_ocr(contenido)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("OCR de constancia RNP fallido: %s", e)
         raise ConstanciaInvalida(
             "No se pudo leer el texto de la constancia. Escribe los datos a mano.") from e
