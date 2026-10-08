@@ -1699,7 +1699,17 @@ def format_scraping_report(results: dict) -> str:
             status = "Sin nuevas"
         else:
             status = f"{count} nuevas"
-        lines.append(f"  {label}: {status}")
+        # LA ETIQUETA TAMBIEN SE ESCAPA, Y NO SOLO EL DETALLE
+        #
+        #   "OECE contratos menores (<8 UIT, 25 regiones)" lleva un "<8" que el
+        #   parse_mode HTML de Telegram lee como etiqueta de apertura, y rechaza
+        #   el mensaje ENTERO: "unsupported start tag "8"". Desde que esa fuente
+        #   entro en la pasada, el parte no llego ni una vez -- y con el, la
+        #   alerta de rezago de OCDS que debia avisar a las 72 h.
+        #
+        #   El detalle ya se escapaba (lleva URLs con &). La etiqueta parecia
+        #   texto nuestro y por tanto seguro, que es justo como se cuela esto.
+        lines.append(f"  {html.escape(label)}: {html.escape(status)}")
         if detalle:
             # El detalle trae URLs, y una URL con & rompe el parse_mode HTML
             # de Telegram: el mensaje no llega y el fallo se ve como silencio,
