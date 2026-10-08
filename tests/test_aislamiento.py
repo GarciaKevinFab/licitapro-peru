@@ -400,13 +400,13 @@ async def test_la_politica_prohibe_lo_embebido(cliente):
     assert "object-src 'none'" in csp
 
 
-async def test_form_action_deja_salir_a_telegram_y_a_nada_mas(cliente):
-    """El boton "Conectar Telegram" es un POST que redirige a t.me. Chrome
-    aplica form-action a esa redireccion: sin t.me el boton no hacia nada."""
+async def test_form_action_no_deja_salir_a_ningun_otro_origen(cliente):
+    """Ningun formulario sale del sitio. "Conectar Telegram" redirigia a t.me
+    tras el POST y obligo a abrir una excepcion; ahora vuelve a /configuracion."""
     r = await cliente.get("/entrar")
     csp = r.headers["Content-Security-Policy"]
     valor = next(d for d in csp.split("; ") if d.startswith("form-action"))
-    assert valor.split()[1:] == ["'self'", "https://t.me"], valor
+    assert valor.split()[1:] == ["'self'"], valor
 
 
 async def test_el_nonce_cambia_en_cada_peticion(cliente):

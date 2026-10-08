@@ -633,6 +633,18 @@ async def set_token_telegram(usuario_id: int, token: str, expira) -> None:
         )
 
 
+async def token_telegram_vigente(usuario_id: int) -> str | None:
+    """El codigo pendiente de canjear, si aun vale. Misma condicion que aplica
+    vincular_telegram, para no mostrar un codigo que el bot va a rechazar."""
+    async with connection() as conn:
+        return await conn.fetchval(
+            """SELECT telegram_token FROM usuarios
+                WHERE id = $1 AND telegram_token IS NOT NULL
+                  AND telegram_token_expira > NOW()""",
+            usuario_id,
+        )
+
+
 async def vincular_telegram(token: str, chat_id: int):
     """Canjea el token por el vinculo. Devuelve el usuario o None.
 
