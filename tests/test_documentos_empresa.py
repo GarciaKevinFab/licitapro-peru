@@ -192,16 +192,21 @@ async def test_una_constancia_de_otro_ruc_no_se_aplica(usuario, empresa, cliente
 
 @sin_base
 @pytest.mark.asyncio
-async def test_no_se_puede_leer_documentos_sobre_la_empresa_de_otro(usuario, cliente):
-    from shared.db import connection
-    async with connection() as c:
-        ajena = await c.fetchval(
-            "SELECT id FROM empresas WHERE usuario_id IS DISTINCT FROM $1 LIMIT 1",
-            usuario["id"])
-    if not ajena:
-        pytest.skip("no hay empresas de otra cuenta en la base de pruebas")
-    await _entrar(cliente, usuario)
-    r = await cliente.post("/empresas/leer-documentos", data={"empresa_id": str(ajena)},
-                           files={"ficha": ("f.pdf", b"%PDF-1.4 x", "application/pdf")})
-    assert r.status_code == 303
-    assert "no+es+tuya" in r.headers["location"]
+async def test_no_se_puede_leer_documentos_sobre_la_empresa_de_otro(empresa, cliente, marca):
+    """La empresa es de `usuario`; entra otra cuenta y prueba con su id."""
+    from shared.db import borrar_cuenta, connection, crear_usuario
+    from shared.seguridad import hashear_password
+
+    email = f"intruso-{marca}@ejemplo.pe"
+    intruso = await crear_usuario(email, hashear_password("ClaveDePrueba123!"), "Intruso")
+    try:
+        await _entrar(cliente, {"email": email, "password": "ClaveDePrueba123!"})
+        r = await cliente.post("/empresas/leer-documentos", data={"empresa_id": str(empresa)},
+                               files={"ficha": ("f.pdf", b"%PDF-1.4 x", "application/pdf")})
+        assert r.status_code == 303
+        assert "no+es+tuya" in r.headers["location"]
+        async with connection() as c:
+            assert await c.fetchval("SELECT usuario_id FROM empresas WHERE id=$1",
+                                    empresa) != intruso["id"]
+    finally:
+        await borrar_cuenta(intruso["id"])
