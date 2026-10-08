@@ -205,6 +205,38 @@ def test_el_detalle_va_escapado_para_que_telegram_no_lo_rechace():
     assert "?a=1&b=<2>" not in parte
 
 
+def test_las_etiquetas_de_fuente_tambien_van_escapadas():
+    """El 2026-10-07 la prueba de arriba seguia en verde y el parte no llegaba.
+
+    Entro una fuente llamada "OECE contratos menores (<8 UIT, 25 regiones)" y
+    Telegram leyo ese "<8" como una etiqueta: rechazo el mensaje ENTERO con
+    'unsupported start tag "8"'. El detalle se escapaba; la etiqueta no, porque
+    era texto nuestro y parecia seguro. Desde entonces no llego ni un parte, y
+    con ellos se perdio la alerta de rezago de OCDS (116 h sin datos nuevos).
+
+    Se comprueba la REGLA, no el texto: se mete cada fuente que nombra el parte
+    y se exige que, quitando las etiquetas que Telegram admite, no quede ni un
+    "<" ni un "&" sin escapar. Asi el proximo nombre con simbolos tambien cae.
+    """
+    import re
+
+    fuentes = ["ocds_oece", "gob_pe", "ima_cusco", "oece_menores", "seace_3.0",
+               "gore_portals", "peru_compras", "poder_judicial", "essalud",
+               "sbs", "transparencia_mef", "municipalidades", "ocds_conosce",
+               "conosce_contratos", "datos_abiertos", "desconocida_<x>&y"]
+    parte = format_scraping_report({
+        "timestamp": "2026-10-08T06:00:00",
+        "total_nuevas": 71,
+        "por_fuente": {f: n for f, n in zip(fuentes, [3, 0, -1, 64, -2] * 4)},
+        "errores": ["uno"],
+        "diagnosticos": {"gob_pe": "CAIDA a.pe/?a=1&b=2 <html>"},
+    })
+    resto = re.sub(r"</?(b|i|code)>", "", parte)
+    assert "<" not in resto, "un '<' sin escapar: Telegram rechazaria el parte"
+    assert not re.search(r"&(?!(amp|lt|gt|quot|#\d+);)", parte), "un & suelto"
+    assert "OECE contratos menores (&lt;8 UIT, 25 regiones)" in parte
+
+
 # ─── El parser no puede ser un requisito duro ────────────
 
 def test_la_sopa_funciona_sin_lxml(monkeypatch):
@@ -256,7 +288,10 @@ def test_la_sopa_prefiere_lxml_cuando_esta():
 
     usados = []
     real = orchestrator.BeautifulSoup
-    monkeypatch_parser = lambda t, p: (usados.append(p), real(t, p))[1]
+    def monkeypatch_parser(t, p):
+        usados.append(p)
+        return real(t, p)
+
     orchestrator.BeautifulSoup = monkeypatch_parser
     try:
         orchestrator._sopa("<table><tr><td>x</td></tr></table>")
