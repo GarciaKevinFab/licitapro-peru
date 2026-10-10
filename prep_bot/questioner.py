@@ -5,6 +5,8 @@ Después de 10-15 licitaciones, el bot ya sabe TODO.
 """
 import logging
 
+from prep_bot.autofill.validator import NO_EXIGIDOS_EN_MENORES
+from shared.cotizacion import es_cotizacion_menor
 from shared.db import connection, get_empresa, kb_get, kb_set
 
 log = logging.getLogger("prep.questioner")
@@ -40,10 +42,18 @@ async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requis
     empresa = await get_empresa(empresa_id)
     preguntas_creadas = []
     campos_completos = 0
-    total_campos = len(CAMPOS_EMPRESA)
 
     async with connection() as conn:
-        for cat, clave, pregunta_text, campo_empresa in CAMPOS_EMPRESA:
+        tipo = await conn.fetchval(
+            """SELECT l.tipo FROM propuestas p JOIN licitaciones l ON l.id = p.licitacion_id
+                WHERE p.id=$1""", propuesta_id)
+        # Lo que una contratacion menor no pide no se pregunta: el usuario de
+        # una cotizacion de abarrotes no tiene por que buscar su partida
+        # registral para algo que la entidad no va a mirar.
+        campos = [c for c in CAMPOS_EMPRESA
+                  if not (es_cotizacion_menor(tipo) and c[1] in NO_EXIGIDOS_EN_MENORES)]
+        total_campos = len(campos)
+        for cat, clave, pregunta_text, campo_empresa in campos:
             # 1. Buscar en KB
             valor = await kb_get(empresa_id, cat, clave)
             if valor:

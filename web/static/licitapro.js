@@ -367,3 +367,43 @@
     }
   });
 })();
+
+/* Cotizacion por items: subtotal de cada fila y total, mientras se escribe.
+ *
+ * El servidor recalcula todo al guardar y es el que vale; esto solo evita
+ * tener que guardar para ver cuanto suma. Se redondea cada fila a centimos
+ * antes de sumar, igual que el servidor y que la cotizacion impresa: sumar
+ * sin redondear da a veces un centimo distinto del que sale en el PDF.
+ */
+(function () {
+  "use strict";
+  var fmt = function (n) {
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  var recalcular = function (form) {
+    var suma = 0;
+    form.querySelectorAll("[data-item]").forEach(function (fila) {
+      var entrada = fila.querySelector("[data-precio]");
+      var celda = fila.querySelector("[data-subtotal]");
+      var crudo = (entrada.value || "").trim().replace(",", ".");
+      var precio = parseFloat(crudo);
+      var cantidad = parseFloat(fila.dataset.cantidad);
+      if (crudo === "" || isNaN(precio) || isNaN(cantidad)) {
+        celda.textContent = "\u2014";
+        fila.classList.toggle("sin-precio", crudo === "");
+        return;
+      }
+      var sub = Math.round(cantidad * precio * 100) / 100;
+      suma += sub;
+      celda.textContent = fmt(sub);
+      fila.classList.remove("sin-precio");
+    });
+    var total = form.querySelector("[data-total]");
+    if (total) total.textContent = fmt(Math.round(suma * 100) / 100);
+  };
+  document.addEventListener("input", function (ev) {
+    if (!ev.target.matches("[data-precio]")) return;
+    var form = ev.target.closest("[data-cotizacion]");
+    if (form) recalcular(form);
+  });
+})();

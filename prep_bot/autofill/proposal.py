@@ -171,6 +171,7 @@ LICITACIÓN:
 - Objeto: {licitacion['objeto']}
 - Entidad: {licitacion['entidad']}
 - Monto ref: {format_monto(licitacion.get('monto_referencial', 0)) if licitacion.get('monto_referencial') else 'No especificado'}
+- Items solicitados: {licitacion.get('descripcion') or 'No publicados'}
 
 EMPRESA:
 - {empresa['razon_social']} (RUC {empresa['ruc']})

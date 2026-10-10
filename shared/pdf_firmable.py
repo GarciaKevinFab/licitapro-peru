@@ -25,6 +25,7 @@ Por eso estos documentos salen en PDF y no en DOCX: ReFirma firma PDF.
 import logging
 import os
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -80,13 +81,15 @@ def _estilos():
 
 def _cabecera(empresa: dict, imagenes: dict, est: dict) -> list:
     """Logo a la izquierda, datos de la empresa a la derecha."""
-    datos = [f"<b>{empresa.get('razon_social') or ''}</b>"]
+    # Escapado: reportlab lee "&" y "<" como marcado, y "K & A SISTEMAS
+    # S.A.C." rompia el documento entero.
+    datos = [f"<b>{escape(empresa.get('razon_social') or '')}</b>"]
     if empresa.get("ruc"):
-        datos.append(f"RUC {empresa['ruc']}")
+        datos.append(f"RUC {escape(str(empresa['ruc']))}")
     if empresa.get("direccion"):
-        datos.append(empresa["direccion"])
-    contacto = " · ".join(x for x in (empresa.get("telefono"),
-                                      empresa.get("email")) if x)
+        datos.append(escape(empresa["direccion"]))
+    contacto = " · ".join(escape(str(x)) for x in (empresa.get("telefono"),
+                                                   empresa.get("email")) if x)
     if contacto:
         datos.append(contacto)
     bloque = Paragraph("<br/>".join(datos), est["pie"])
@@ -143,9 +146,9 @@ def _bloque_firma(empresa: dict, imagenes: dict, est: dict, con_dnie: bool) -> l
         # Sin imagen y sin DNIe: se deja el hueco para firmar a mano.
         elementos.append(Spacer(1, ALTO_FIRMA))
 
-    pie = [f"<b>{nombre}</b>", cargo]
+    pie = [f"<b>{escape(nombre)}</b>", escape(cargo)]
     if dni:
-        pie.append(f"DNI {dni}")
+        pie.append(f"DNI {escape(str(dni))}")
     elementos += [
         Table([[""]], colWidths=[7 * cm], style=TableStyle(
             [("LINEABOVE", (0, 0), (-1, -1), 0.8, colors.HexColor("#12181C"))])),
@@ -195,8 +198,10 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     partes.append(Paragraph(titulo, est["titulo"]))
     if subtitulo:
         partes.append(Paragraph(subtitulo, est["sub"]))
+    # Un texto es un parrafo; cualquier otra cosa (la tabla de una cotizacion)
+    # es ya un elemento de reportlab y entra tal cual.
     for p in parrafos:
-        partes.append(Paragraph(p, est["cuerpo"]))
+        partes.append(Paragraph(p, est["cuerpo"]) if isinstance(p, str) else p)
 
     partes += [Spacer(1, 12), Paragraph(
         f"{empresa.get('departamento') or 'Lima'}, "
