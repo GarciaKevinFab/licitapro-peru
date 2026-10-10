@@ -65,6 +65,46 @@
   .pregunta{animation:none;transition:none}
   .pregunta:not(.lista):hover{transform:none}
 }
+
+/* ---------- COTIZACION POR ITEMS ----------
+   La misma tabla que manda la entidad. En movil cada fila se vuelve una
+   ficha con sus rotulos: ocho columnas no caben en 375 px y una tabla que se
+   desplaza de lado esconde justo las dos que hay que llenar.
+
+   Se decide por el ancho de LA TARJETA y no de la ventana: con la barra
+   lateral abierta, una ventana de 800 px deja ~500 px de contenido y la
+   tabla cortaba las columnas de precio sin llegar al punto de quiebre. */
+#cotizacion{container-type:inline-size;container-name:cot}
+.cot input[type=text]{min-height:36px;padding:6px 9px;font-size:13.5px}
+.cot .c-marca input{width:100%;min-width:120px}
+.cot .c-precio input{width:96px;text-align:right;font-variant-numeric:tabular-nums}
+.cot td.num,.cot tfoot td{font-variant-numeric:tabular-nums;white-space:nowrap}
+.cot tfoot td{padding:12px 14px;border-top:1px solid var(--line)}
+.cot tfoot b{font-family:var(--f-mono);font-size:15px}
+.cot .quitar{min-height:0;padding:4px 8px;font-size:12px}
+.cot tr.sin-precio .c-precio input{border-color:var(--warn,var(--ac))}
+.condiciones{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;margin:16px 0}
+.agregar-item{margin-top:16px}
+.agregar-item summary{cursor:pointer;font-weight:500;color:var(--ink-2)}
+.agregar-item form{margin-top:10px}
+.agregar-item .w-desc{flex:1 1 260px}
+.agregar-item .w-corto{flex:0 1 110px}
+@container cot (max-width:720px){
+  /* La hoja global fija min-width:560px a las tablas en movil para que se
+     desplacen de lado; esta se apila en fichas y tiene que caber. */
+  .tabla-caja table.datos.cot{min-width:0}
+  .cot thead{display:none}
+  .cot,.cot tbody,.cot tr,.cot td,.cot tfoot{display:block;width:100%}
+  .cot tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+  .cot tbody td{border:0;padding:0}
+  .cot td.c-desc{grid-column:1 / -1;font-weight:500}
+  .cot td.c-n{display:none}
+  .cot td[data-rotulo]::before{content:attr(data-rotulo);display:block;font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+  table.datos.cot td.num{text-align:left}
+  .cot .c-precio input{width:100%}
+  .cot tfoot tr{display:flex;justify-content:space-between}
+  .cot tfoot td.vacia{display:none}
+}
 {% endblock %}
 {% block cuerpo %}
 {% with activo='propuestas' %}{% include "_nav.html" %}{% endwith %}
@@ -100,14 +140,14 @@
       <div><dt>Estado</dt><dd><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></dd></div>
       <div><dt>Cierre</dt><dd class="num"><b>{{ p.fecha_cierre.strftime('%d/%m/%Y') if p.fecha_cierre else '—' }}</b></dd></div>
       <div><dt>Referencial</dt><dd class="num"><b>{% if p.monto_referencial %}S/ {{ '{:,.0f}'.format(p.monto_referencial) }}{% else %}—{% endif %}</b></dd></div>
-      <div><dt>Tu oferta</dt><dd class="num"><b>{% if p.precio_ofertado %}S/ {{ '{:,.0f}'.format(p.precio_ofertado) }}{% else %}<span class="sin">sin fijar</span>{% endif %}</b></dd></div>
+      <div><dt>Tu oferta</dt><dd class="num"><b>{% if p.precio_ofertado %}S/ {{ '{:,.2f}'.format(p.precio_ofertado) }}{% else %}<span class="sin">sin fijar</span>{% endif %}</b></dd></div>
     </dl>
   </div>
 
   {# El camino entero, de un vistazo. Cada paso enlaza con su tarjeta de mas
      abajo; el actual es el primero que no esta hecho. #}
   {% set paso_preguntas = not pendientes %}
-  {% set paso_precio = p.precio_ofertado %}
+  {% set paso_precio = (items and not (items | selectattr('precio_unitario', 'none') | list)) if items else p.precio_ofertado %}
   {% set paso_docs = p.propuesta_tecnica_path or p.propuesta_economica_path %}
   {% set paso_zip = p.expediente_zip_path %}
   {% set ns = namespace(actual=false) %}
@@ -116,6 +156,7 @@
     <ul class="pasos">
       {% for hecho, titulo, detalle, ancla, accion in [
           (paso_preguntas, 'Responder lo que falta', 'Lo que contestas queda guardado para las siguientes propuestas.', '#preguntas', 'Responder'),
+          (paso_precio, 'Llenar la cotización', 'Marca y precio unitario de cada ítem.', '#cotizacion', 'Llenar') if (items or menor) else
           (paso_precio, 'Fijar el precio', 'Con el histórico de adjudicaciones parecidas como referencia.', '#precio', 'Fijar precio'),
           (paso_docs, 'Generar los documentos', 'Anexos y declaraciones con los datos de la empresa.', '#expediente', 'Generar'),
           (paso_zip, 'Armar el expediente', 'El ZIP listo para subir a SEACE.', '#expediente', 'Armar ZIP'),
@@ -177,6 +218,95 @@
     {% endfor %}
   </div>
 
+
+  {% if items or menor %}
+  {% set sin_precio = items | selectattr('precio_unitario', 'none') | list %}
+  <div class="tarjeta" id="cotizacion">
+    <div class="cab-tarjeta">
+      <h2>Cotización por ítems</h2>
+      {% if items and sin_precio %}<span class="pill pend">{{ sin_precio | length }} sin precio</span>{% endif %}
+    </div>
+    {% if items %}
+      <p class="sub">La misma tabla de la solicitud de cotización. Pon la marca y el
+         precio unitario <b>con IGV</b>; el total se calcula solo y pasa a ser tu oferta.</p>
+      <form method="post" action="/propuestas/{{ p.id }}/items" data-cotizacion>
+        <div class="tabla-caja suelta">
+          <table class="datos cot">
+            <thead><tr>
+              <th class="num">N°</th><th>Descripción</th><th class="num">Cant.</th><th>Und.</th>
+              <th>Marca</th><th class="num">P. unit. (S/)</th><th class="num">Total (S/)</th><th></th>
+            </tr></thead>
+            <tbody>
+            {% for it in items %}
+              <tr data-item data-cantidad="{{ it.cantidad }}" class="{% if it.precio_unitario is none %}sin-precio{% endif %}">
+                <td class="num c-n">{{ loop.index }}</td>
+                <td class="c-desc">{{ it.descripcion }}</td>
+                <td class="num" data-rotulo="Cantidad">{{ cantidad_legible(it.cantidad) }}</td>
+                <td data-rotulo="Unidad">{{ it.unidad or '—' }}</td>
+                <td class="c-marca" data-rotulo="Marca">
+                  <input type="text" name="marca_{{ it.id }}" value="{{ it.marca or '' }}" maxlength="120"
+                         aria-label="Marca del ítem {{ loop.index }}" placeholder="Marca"></td>
+                <td class="c-precio" data-rotulo="Precio unitario">
+                  <input type="text" name="precio_{{ it.id }}" inputmode="decimal" data-precio
+                         value="{{ precio_legible(it.precio_unitario).replace(',', '') if it.precio_unitario is not none else '' }}"
+                         aria-label="Precio unitario del ítem {{ loop.index }}" placeholder="0.00"></td>
+                <td class="num" data-rotulo="Total" data-subtotal>{{ monto(it.subtotal) if it.subtotal is not none else '—' }}</td>
+                <td><button type="submit" class="fantasma quitar" formnovalidate
+                            formaction="/propuestas/{{ p.id }}/items/{{ it.id }}/borrar"
+                            aria-label="Quitar el ítem {{ loop.index }}">Quitar</button></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot><tr>
+              <td colspan="6" class="num">Total con IGV</td>
+              <td class="num"><b data-total>{{ monto(total_items) }}</b></td>
+              <td class="vacia"></td>
+            </tr></tfoot>
+          </table>
+        </div>
+
+        <div class="condiciones">
+          <label class="campo"><span>Plazo de entrega</span>
+            <input type="text" name="plazo_entrega" value="{{ condiciones.plazo_entrega }}" placeholder="Ej.: 03 días calendario"></label>
+          <label class="campo"><span>Validez de la cotización</span>
+            <input type="text" name="validez" value="{{ condiciones.validez }}"></label>
+          <label class="campo"><span>Garantía</span>
+            <input type="text" name="garantia" value="{{ condiciones.garantia }}" placeholder="Ej.: 12 meses contra defectos"></label>
+          <label class="campo"><span>Forma de pago</span>
+            <input type="text" name="forma_pago" value="{{ condiciones.forma_pago }}"></label>
+        </div>
+        <button type="submit">Guardar cotización</button>
+      </form>
+    {% else %}
+      <p class="sub">Esta solicitud no publicó sus ítems. Agrégalos tal como vienen
+         en la SC y luego pon marca y precio a cada uno.</p>
+    {% endif %}
+
+    <details class="agregar-item"{% if not items %} open{% endif %}>
+      <summary>Agregar un ítem</summary>
+      <form method="post" action="/propuestas/{{ p.id }}/items/nuevo" class="fila">
+        <label class="campo w-desc"><span>Descripción</span>
+          <input type="text" name="descripcion" required maxlength="500"></label>
+        <label class="campo w-corto"><span>Cantidad</span>
+          <input type="text" name="cantidad" required inputmode="decimal"></label>
+        <label class="campo w-corto"><span>Unidad</span>
+          <input type="text" name="unidad" maxlength="30" placeholder="KG, UND"></label>
+        <button type="submit" class="sec">Agregar</button>
+      </form>
+    </details>
+
+    {% if items %}
+    <div class="btn-grupo mt-14">
+      <a class="btn sec" href="/propuestas/{{ p.id }}/cotizacion?modo=dnie">Descargar para firmar con DNIe</a>
+      <a class="btn fantasma" href="/propuestas/{{ p.id }}/cotizacion?modo=escaneada">Con firma escaneada</a>
+    </div>
+    <p class="ayuda mt-14">Sale en PDF con la tabla llena, las condiciones, tu RUC, tu
+       domicilio fiscal y tus datos de contacto, que es lo que pide la SC.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not items %}
   <div class="tarjeta" id="precio">
     <h2>Precio</h2>
     {% if precio %}
@@ -209,6 +339,7 @@
       <button type="submit" class="sec">Guardar precio</button>
     </form>
   </div>
+  {% endif %}
 
   <div class="tarjeta" id="expediente">
     <h2>Expediente</h2>
@@ -243,8 +374,13 @@
       {% endif %}
     {% endif %}
 
+    {% if menor %}
+    <p class="sub">Arma el ZIP con la cotización, la declaración jurada y el pacto de
+       integridad, listos para firmar y enviar por donde indique la SC.</p>
+    {% else %}
     <p class="sub">Genera los anexos y declaraciones con los datos de la empresa, y arma
        el ZIP para subir a SEACE.</p>
+    {% endif %}
     {# Una sola accion principal: descargar si el ZIP ya existe; si no,
        armarlo. Generar documentos es el paso previo y va en secundario. #}
     <div class="btn-grupo">
@@ -264,8 +400,14 @@
 
   <div class="tarjeta" id="firma">
     <h2>Declaración jurada para firmar</h2>
+    {% if formato_dj == 'goremad' %}
+    <p class="sub">En el formato que exige el Gobierno Regional de Madre de Dios
+       (Declaración Jurada Única y Obligatoria), con los datos de tu empresa y tu
+       CCI ya puestos.</p>
+    {% else %}
     <p class="sub">La Declaración Jurada de Datos del Postor, en PDF y con los
        datos de tu empresa ya puestos.</p>
+    {% endif %}
 
     <div class="dos-firmas">
       <div class="via">

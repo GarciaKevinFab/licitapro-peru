@@ -16,10 +16,10 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from shared import ia
+from shared import cotizacion, ia
 from shared.banderas import describir
-from shared.db import connection, empresa_es_de, empresas_de, responder_pregunta
-from shared.pdf_firmable import generar_pdf
+from shared.db import connection, empresa_es_de, empresas_de, kb_get, responder_pregunta
+from shared.documentos_menores import formato_dj, generar_cotizacion, generar_dj
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.propuestas")
@@ -37,7 +37,7 @@ async def _propuesta_del_usuario(propuesta_id: int, usuario_id: int):
             """SELECT p.*, e.razon_social, e.id AS emp_id,
                       l.objeto, l.entidad, l.fecha_cierre, l.monto_referencial,
                       l.tipo, l.departamento, l.bases_urls, l.url AS lic_url,
-                      l.score_viabilidad
+                      l.score_viabilidad, l.nomenclatura, l.descripcion
                  FROM propuestas p
                  JOIN empresas e ON e.id = p.empresa_id
                  LEFT JOIN licitaciones l ON l.id = p.licitacion_id
@@ -223,6 +223,10 @@ async def postular(request: Request, licitacion_id: str = Form(...),
         await generar_preguntas_propuesta(propuesta_id, empresa_id)
     except Exception:
         log.exception("No se pudieron generar preguntas para %s", propuesta_id)
+    try:
+        await cotizacion.sembrar(propuesta_id)
+    except Exception:
+        log.exception("No se pudieron copiar los items a la propuesta %s", propuesta_id)
 
     return RedirectResponse(f"/propuestas/{propuesta_id}", status_code=303)
 
@@ -265,10 +269,16 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
 
+    # Las propuestas abiertas antes de existir la cotizacion por items reciben
+    # sus items la primera vez que se abren. `sembrar` lo hace una sola vez.
+    await cotizacion.sembrar(propuesta_id)
+
     async with connection() as conn:
         preguntas = await conn.fetch(
             """SELECT * FROM preguntas WHERE propuesta_id=$1
                ORDER BY respondida, id""", propuesta_id)
+    items = await cotizacion.items_de(propuesta_id)
+    menor = cotizacion.es_cotizacion_menor(prop["tipo"])
 
     # Que falta para que el expediente sea presentable, y cuanto se ha pagado
     # por trabajos parecidos. Los dos modulos existian desde el principio y no
@@ -281,7 +291,16 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "preguntas": preguntas,
         "pendientes": [q for q in preguntas if not q["respondida"]],
         "validacion": validacion,
-        "precio": await _precio_de_mercado(prop),
+        # El rango de mercado compara procesos enteros por palabras del objeto.
+        # Para una cotizacion por items no dice nada: en la SC 5884-2026 ponia
+        # una mediana de S/ 96 mil junto a una oferta de S/ 12 mil.
+        "precio": None if (items or menor) else await _precio_de_mercado(prop),
+        "items": items, "menor": menor,
+        "total_items": cotizacion.total(items),
+        "condiciones": await cotizacion.condiciones_de(propuesta_id),
+        "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,
+        "precio_legible": cotizacion.precio_legible,
+        "formato_dj": formato_dj(dict(prop)),
         "aviso": aviso, "error": error,
     })
 
@@ -407,8 +426,13 @@ async def _propuesta_tecnica(usuario_id: int, prop) -> str:
 
     try:
         datos = await obtener_datos_empresa_completos(prop["emp_id"])
+        # `nomenclatura` va para que la portada diga COT-5884-2026-GOREMAD y no
+        # el id interno; `descripcion` lleva los items, sin los cuales la IA
+        # escribia sobre "alimentos" sin saber cuales.
         licitacion = {"id": prop["licitacion_id"], "objeto": prop["objeto"],
                       "entidad": prop["entidad"], "tipo": prop["tipo"],
+                      "nomenclatura": prop["nomenclatura"],
+                      "descripcion": prop["descripcion"],
                       "monto_referencial": prop["monto_referencial"]}
         if con_ia:
             if await generar_propuesta_tecnica(
@@ -546,50 +570,119 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             f"/propuestas/{propuesta_id}?error=No+se+encontro+la+empresa",
             status_code=303)
 
-    emp = dict(empresa)
-    parrafos = [
-        (f"El que suscribe, {emp.get('representante_legal') or '________________'}, "
-        f"identificado con DNI N.º {emp.get('dni_representante') or '________'}, "
-        f"en calidad de {emp.get('cargo_representante') or 'representante legal'} "
-        f"de {emp.get('razon_social')}, con RUC N.º {emp.get('ruc') or '___________'} "
-        f"y domicilio en {emp.get('direccion') or '________________________'}, "
-        f"DECLARO BAJO JURAMENTO lo siguiente:"),
-
-        ("1. Que los datos consignados en el presente documento son veraces y "
-        "corresponden a la situación actual de mi representada."),
-
-        ("2. Que no me encuentro incurso en ninguno de los impedimentos para "
-        "contratar con el Estado establecidos en la Ley General de "
-        "Contrataciones Públicas."),
-
-        ("3. Que conozco, acepto y me someto a las bases, condiciones y "
-        "procedimientos del proceso de selección."),
-
-        ("4. Que me comprometo a mantener vigente mi oferta durante el plazo "
-        "señalado en las bases y a suscribir el contrato en caso de resultar "
-        "adjudicado."),
-
-        f"Proceso: {prop.get('objeto') or ''}",
-        f"Entidad convocante: {prop.get('entidad') or ''}",
-    ]
-
+    # El formato lo decide la entidad: el GOREMAD exige el suyo, con la CCI.
     con_dnie = (modo or "dnie").lower() != "escaneada"
     nombre = f"declaracion-jurada-{propuesta_id}.pdf"
     try:
-        ruta = await generar_pdf(
-            nombre_archivo=nombre,
-            titulo="DECLARACIÓN JURADA DE DATOS DEL POSTOR",
-            subtitulo=prop.get("entidad") or "",
-            parrafos=parrafos,
-            empresa=emp,
-            con_dnie=con_dnie,
-        )
+        ruta = await generar_dj(dict(prop), dict(empresa),
+                                await kb_get(prop["emp_id"], "financiero", "cci"),
+                                con_dnie)
     except Exception:
         log.exception("No se pudo generar la declaracion jurada de la propuesta %s",
-                  propuesta_id)
+                      propuesta_id)
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error="
             + quote_plus("No se pudo generar el documento. Inténtalo de nuevo."),
             status_code=303)
 
     return FileResponse(ruta, filename=nombre, media_type="application/pdf")
+
+
+# ─── Cotizacion por items ────────────────────────────────
+
+def _volver(propuesta_id: int, **query) -> RedirectResponse:
+    clave, texto = next(iter(query.items()))
+    return RedirectResponse(
+        f"/propuestas/{propuesta_id}?{clave}={quote_plus(texto)}#cotizacion",
+        status_code=303)
+
+
+@router.post("/propuestas/{propuesta_id}/items")
+async def guardar_items(request: Request, propuesta_id: int):
+    """Marca y precio unitario de cada item, y las condiciones del pie.
+
+    Los campos llegan como marca_<id> y precio_<id>. Se recorren los items de
+    ESTA propuesta, no los del formulario: un id ajeno metido a mano no
+    corresponde a ningun item y se ignora.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+
+    form = await request.form()
+    cambios = {}
+    for n, it in enumerate(await cotizacion.items_de(propuesta_id), 1):
+        crudo = form.get(f"precio_{it['id']}", "")
+        precio = cotizacion.a_decimal(crudo)
+        if str(crudo).strip() and precio is None:
+            return _volver(propuesta_id,
+                           error=f"El precio del ítem {n} no es un número válido")
+        cambios[it["id"]] = (form.get(f"marca_{it['id']}", ""), precio)
+
+    suma = await cotizacion.guardar(propuesta_id, cambios, dict(form))
+    return _volver(propuesta_id,
+                   aviso=f"Cotización guardada. Total S/ {cotizacion.monto(suma)}")
+
+
+@router.post("/propuestas/{propuesta_id}/items/nuevo")
+async def agregar_item(request: Request, propuesta_id: int,
+                       descripcion: str = Form(...), cantidad: str = Form(...),
+                       unidad: str = Form("")):
+    """Para las fuentes que no publican items: se cargan a mano desde la SC."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    cant = cotizacion.a_decimal(cantidad)
+    if not descripcion.strip() or not cant:
+        return _volver(propuesta_id,
+                       error="El ítem necesita descripción y una cantidad mayor que cero")
+    await cotizacion.agregar(propuesta_id, descripcion, cant, unidad)
+    return _volver(propuesta_id, aviso="Ítem agregado")
+
+
+@router.post("/propuestas/{propuesta_id}/items/{item_id}/borrar")
+async def quitar_item(request: Request, propuesta_id: int, item_id: int):
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    await cotizacion.quitar(propuesta_id, item_id)
+    return _volver(propuesta_id, aviso="Ítem quitado")
+
+
+@router.get("/propuestas/{propuesta_id}/cotizacion")
+async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = "dnie"):
+    """La cotizacion en PDF, con la misma tabla que mando la entidad ya llena."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if not prop:
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+
+    items = await cotizacion.items_de(propuesta_id)
+    if not items:
+        return _volver(propuesta_id, error="La cotización no tiene ítems todavía")
+    async with connection() as conn:
+        empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
+    try:
+        ruta = await generar_cotizacion(
+            dict(prop), dict(empresa), items,
+            await cotizacion.condiciones_de(propuesta_id),
+            await kb_get(prop["emp_id"], "financiero", "cci"),
+            con_dnie=(modo or "dnie").lower() != "escaneada")
+    except Exception:
+        log.exception("No se pudo generar la cotizacion de la propuesta %s", propuesta_id)
+        return _volver(propuesta_id,
+                       error="No se pudo generar la cotización. Inténtalo de nuevo.")
+    return FileResponse(ruta, filename=f"cotizacion-{propuesta_id}.pdf",
+                        media_type="application/pdf")
