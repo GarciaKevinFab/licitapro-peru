@@ -247,8 +247,13 @@ NOISE_PATTERNS = [
 ]
 
 
-def _apply_filters(entidad, objeto, monto, depto, filters) -> bool:
-    """True = passes filters (should be processed)."""
+def _apply_filters(entidad, objeto, monto, depto, filters, detalle: str = "") -> bool:
+    """True = passes filters (should be processed).
+
+    `detalle` (los items de la ficha) entra solo en el match de keywords, no
+    en el filtro de ruido: NOISE_PATTERNS busca subcadenas como "inicio" o
+    "agenda", que en un item ("FECHA DE INICIO...") tumbarian la fila.
+    """
     regiones = filters["regiones"]
     keywords = filters["keywords"]
     monto_min = filters["monto_min"]
@@ -266,13 +271,14 @@ def _apply_filters(entidad, objeto, monto, depto, filters) -> bool:
         return False
     if monto and (monto < monto_min or monto > monto_max):
         return False
-    if keywords and not _match_keywords(f"{objeto} {entidad}", keywords):
+    texto = f"{objeto} {entidad} {detalle}"
+    if keywords and not _match_keywords(texto, keywords):
         return False
     # Exclusiones del usuario. Van DESPUES del match positivo: sirven para
     # matar falsos positivos por homonimia -- "servidores" matchea tanto un
     # servidor informatico como los servidores publicos de una entidad.
     excluir = filters.get("keywords_excluir") or []
-    return not (excluir and _match_keywords(f"{objeto} {entidad}", excluir))
+    return not (excluir and _match_keywords(texto, excluir))
 
 
 # ==================== Sonda de fuentes ====================
@@ -736,6 +742,84 @@ GORE_COTIZACIONES_APAGADOS = {
 GORE_GENERIC_PORTALS = {}
 
 
+# LOS ITEMS SOLO ESTAN EN LA FICHA DE CADA SOLICITUD
+#
+#   El listado trae el CONCEPTO ("ADQUISICION DE ALIMENTOS NO PERECIBLE - PARA
+#   LA GERENCIA REGIONAL DE GESTION DEL RIESGO DE DESASTRES"), que va a
+#   `objeto`. Lo que se compra de verdad -- sal, atun, leche, arroz, aceite --
+#   solo aparece en /solicitud/<id>. Sin leer la ficha, quien vigila "aceite"
+#   no veia la SC 5884-2026 (2026-10-09), que pedia 54 litros.
+#
+#   Monto no hay: ni el listado ni la ficha lo publican. Se deja NULL.
+_DETALLE_MAX = 3000
+
+
+def _cantidad(texto: str) -> str:
+    """'54.00' -> '54', '2.50' -> '2.5'. Lo que no es numero pasa tal cual."""
+    try:
+        return f"{float(texto):g}"
+    except ValueError:
+        return texto
+
+
+def _detalle_cotizacion(html: str) -> str | None:
+    """Items de la ficha de una solicitud, uno por linea. None si no hay.
+
+    "SAL DE MESA (54 KLG)", y si el item trae caracteristicas, detras entre
+    corchetes. Se recorta a _DETALLE_MAX: una SC con 200 items no tiene que
+    llenar la fila, y para encontrarla basta con que esten las palabras.
+    """
+    soup = _sopa(html)
+    lineas = []
+    for li in soup.select("#lista_items > li"):
+        nombre = li.find("small")
+        if not nombre or not nombre.get_text(strip=True):
+            continue
+        datos = {}
+        for caja in li.select("div.d-inline-block"):
+            etiqueta = caja.find("span")
+            if etiqueta:
+                clave = etiqueta.get_text(strip=True).rstrip(":").upper()
+                etiqueta.extract()
+                datos[clave] = caja.get_text(" ", strip=True)
+        linea = nombre.get_text(" ", strip=True)
+        medida = " ".join(x for x in (_cantidad(datos.get("CANTIDAD", "")),
+                                      datos.get("MEDIDA", "")) if x)
+        if medida:
+            linea += f" ({medida})"
+        caracteristicas = []
+        for tr in li.select("table tbody tr"):
+            celdas = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
+            texto = " ".join(c for c in celdas if c)
+            if texto:
+                caracteristicas.append(texto)
+        if caracteristicas:
+            linea += f" [{' | '.join(caracteristicas)}]"
+        lineas.append(linea)
+    if not lineas:
+        return None
+    return "\n".join(lineas)[:_DETALLE_MAX]
+
+
+async def _leer_detalle(client: httpx.AsyncClient, url: str) -> str | None:
+    """Pide la ficha y devuelve sus items. Un fallo aqui no es un fallo del portal.
+
+    Va con el cliente directo y no con la Sonda: la sonda diagnostica si el
+    portal rinde, y una ficha que no carga no quita la fila del listado, que
+    ya se guarda con su concepto. `refrescar_licitacion` conserva el detalle
+    anterior si este viene None.
+    """
+    try:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            log.info("ficha %s: HTTP %s", _corto(url), resp.status_code)
+            return None
+        return _detalle_cotizacion(resp.text)
+    except Exception as e:  # noqa: BLE001
+        log.info("ficha %s: %s", _corto(url), e)
+        return None
+
+
 async def _scrape_gore_cotizaciones_app(
     client: httpx.AsyncClient, region: str, portal_info: dict, filters: dict,
     sonda: "Sonda",
@@ -809,7 +893,12 @@ async def _scrape_gore_cotizaciones_app(
 
             # Apply filters
             monto = None  # MDD cotizaciones don't show monto in listing
-            if not _apply_filters(entidad, objeto, monto, region, filters):
+            descripcion = None
+            if href and "/solicitud/" in href:
+                descripcion = await _leer_detalle(client, href)
+                await asyncio.sleep(0.5)
+            if not _apply_filters(entidad, objeto, monto, region, filters,
+                                  detalle=descripcion or ""):
                 continue
 
             lid = _gen_id("gore", f"{anio}-{numero}", region)
@@ -821,6 +910,7 @@ async def _scrape_gore_cotizaciones_app(
                 "entidad": entidad,
                 "entidad_tipo": "gore",
                 "objeto": objeto[:500],
+                "descripcion": descripcion,
                 "monto_referencial": monto,
                 "departamento": region,
                 "fecha_publicacion": fecha_pub,

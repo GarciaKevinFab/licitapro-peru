@@ -459,7 +459,8 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
         aguja = normalizar(q)
         filas = [f for f in filas
                  if aguja in normalizar(f["objeto"] or "")
-                 or aguja in normalizar(f["entidad"] or "")]
+                 or aguja in normalizar(f["entidad"] or "")
+                 or aguja in normalizar(f["descripcion"] or "")]
     if region:
         filas = [f for f in filas if f["departamento"] == region]
     if score_min:

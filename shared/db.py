@@ -367,9 +367,9 @@ async def refrescar_licitacion(data: dict) -> bool:
              estado, departamento, url, bases_urls,
              numero_postores, proveedor_ganador, proveedor_ruc,
              monto_adjudicado, plazo_consultas_dias, banderas, banderas_nivel,
-             categoria)
+             categoria, descripcion)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                    $17,$18,$19,$20,$21,$22::jsonb,$23,$24)
+                    $17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25)
             ON CONFLICT (id) DO UPDATE SET
                 estado            = EXCLUDED.estado,
                 -- El tipo se refresca a proposito: al corregir el mapeo de
@@ -393,6 +393,10 @@ async def refrescar_licitacion(data: dict) -> bool:
                 banderas          = EXCLUDED.banderas,
                 banderas_nivel    = EXCLUDED.banderas_nivel,
                 categoria         = COALESCE(EXCLUDED.categoria, licitaciones.categoria),
+                -- Los items de la ficha (gore_portals). Con COALESCE: una
+                -- pasada en que la ficha no cargo no borra lo que ya se leyo.
+                descripcion       = COALESCE(EXCLUDED.descripcion,
+                                             licitaciones.descripcion),
                 updated_at        = NOW()""",
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"], data.get("entidad_tipo"),
@@ -405,7 +409,7 @@ async def refrescar_licitacion(data: dict) -> bool:
             data.get("proveedor_ruc"), data.get("monto_adjudicado"),
             data.get("plazo_consultas_dias"),
             json.dumps(data.get("banderas") or []), data.get("banderas_nivel", 0),
-            data.get("categoria"),
+            data.get("categoria"), data.get("descripcion"),
         )
         return fila is None
 
@@ -547,7 +551,11 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
     excluir = list(config["keywords_excluir"] or [])
     salida = []
     for f in filas:
-        texto = f"{f['objeto']} {f['entidad']} {f['nomenclatura'] or ''}"
+        # `descripcion` lleva los items cuando la fuente los publica aparte
+        # del concepto (cotizaciones de GOREMAD): "arroz" esta en los items,
+        # no en "ADQUISICION DE ALIMENTOS NO PERECIBLE".
+        texto = (f"{f['objeto']} {f['entidad']} {f['nomenclatura'] or ''} "
+                 f"{f['descripcion'] or ''}")
         if keywords and not match_keywords(texto, keywords):
             continue
         if excluir and match_keywords(texto, excluir):
