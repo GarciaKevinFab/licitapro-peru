@@ -54,7 +54,7 @@ def _texto_pdf(contenido: bytes) -> str:
 def test_los_items_de_la_ficha_se_leen_con_cantidad_y_unidad():
     items = cotizacion.items_de_texto(DESCRIPCION)
     assert len(items) == 9
-    assert items[0] == {"descripcion": "SAL DE MESA", "cantidad": Decimal("54"), "unidad": "KLG"}
+    assert items[0] == {"descripcion": "SAL DE MESA", "cantidad": Decimal(54), "unidad": "KLG"}
     assert items[7]["descripcion"] == "ARROZ EXTRA" and items[7]["cantidad"] == 399
     # Las caracteristicas entre corchetes no se pegan a la descripcion.
     assert items[3]["descripcion"] == "LENTEJA CALIDAD 1 - EXTRA"
@@ -64,13 +64,13 @@ def test_un_nombre_con_parentesis_propios_y_una_linea_sin_cantidad():
     items = cotizacion.items_de_texto(
         "PAPEL BOND (A4) (10 MILLAR)\nALGO SIN CANTIDAD\nCABLE (2.5 M) [CALIBRE 12]")
     assert [(i["descripcion"], i["cantidad"], i["unidad"]) for i in items] == [
-        ("PAPEL BOND (A4)", Decimal("10"), "MILLAR"),
+        ("PAPEL BOND (A4)", Decimal(10), "MILLAR"),
         ("CABLE", Decimal("2.5"), "M"),
     ]
 
 
 @pytest.mark.parametrize("crudo, esperado", [
-    ("4", Decimal("4")), ("4,50", Decimal("4.50")), (" 8.5 ", Decimal("8.5")),
+    ("4", Decimal(4)), ("4,50", Decimal("4.50")), (" 8.5 ", Decimal("8.5")),
     ("", None), ("abc", None), ("-1", None), ("NaN", None), ("Infinity", None),
 ])
 def test_los_precios_del_formulario(crudo, esperado):
@@ -287,7 +287,7 @@ async def test_los_items_de_otra_propuesta_no_se_tocan(cliente, usuario, empresa
             otra = await c.fetchval(
                 "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
                 "VALUES ($1, $2, 'iniciado') RETURNING id", lic, empresa)
-        await cotizacion.guardar(otra, {ajeno: ("Marca intrusa", Decimal("1"))}, {})
+        await cotizacion.guardar(otra, {ajeno: ("Marca intrusa", Decimal(1))}, {})
         assert (await cotizacion.items_de(mia))[0]["marca"] is None
 
         # Y sembrar dos veces no duplica: la segunda no hace nada.

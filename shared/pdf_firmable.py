@@ -35,6 +35,7 @@ from reportlab.platypus import (
     Image as ImagenPDF,
 )
 from reportlab.platypus import (
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -70,9 +71,11 @@ def _estilos():
         "cuerpo": ParagraphStyle(
             "cuerpo", parent=hojas["Normal"], fontSize=10, leading=15,
             spaceAfter=9, alignment=4),   # 4 = justificado
+        # Gris oscuro y 8.5 pt: con #7A8A93 a 7.5 pt la cabecera (razon social,
+        # RUC, domicilio) salia casi invisible en el visor del navegador.
         "pie": ParagraphStyle(
-            "pie", parent=hojas["Normal"], fontSize=7.5, leading=10,
-            textColor=colors.HexColor("#7A8A93")),
+            "pie", parent=hojas["Normal"], fontSize=8.5, leading=11.5,
+            textColor=colors.HexColor("#33424A")),
         "etiqueta": ParagraphStyle(
             "etiqueta", parent=hojas["Normal"], fontSize=8, leading=11,
             alignment=1, textColor=colors.HexColor("#46555E")),
@@ -203,10 +206,13 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     for p in parrafos:
         partes.append(Paragraph(p, est["cuerpo"]) if isinstance(p, str) else p)
 
-    partes += [Spacer(1, 12), Paragraph(
+    # Fecha y firma en un solo bloque: si no caben al pie de la ultima pagina,
+    # pasan juntas a la siguiente. Antes la firma podia quedar sola en una hoja
+    # en blanco, separada del documento que firma.
+    partes.append(KeepTogether([Spacer(1, 12), Paragraph(
         f"{empresa.get('departamento') or 'Lima'}, "
         f"{hoy.day} de {_MES[hoy.month]} de {hoy.year}", est["cuerpo"])]
-    partes += _bloque_firma(empresa, imagenes, est, con_dnie)
+        + _bloque_firma(empresa, imagenes, est, con_dnie)))
 
     doc.build(partes)
     log.info("PDF generado: %s (dnie=%s)", ruta, con_dnie)

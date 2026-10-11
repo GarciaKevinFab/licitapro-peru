@@ -75,6 +75,12 @@
    lateral abierta, una ventana de 800 px deja ~500 px de contenido y la
    tabla cortaba las columnas de precio sin llegar al punto de quiebre. */
 #cotizacion{container-type:inline-size;container-name:cot}
+/* Formatos de la entidad: una fila por documento, con su estado y su subida. */
+.formatos h3{font-size:14px;margin:0 0 4px}
+.fila-formato{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:9px 0;border-top:1px solid var(--line-soft)}
+.fila-formato>span:first-child{min-width:170px;font-weight:600}
+.fila-formato form.fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;min-width:0}
+.fila-formato input[type=file]{font-size:12px;max-width:100%;min-width:0;color:var(--ink-2)}
 .cot input[type=text]{min-height:36px;padding:6px 9px;font-size:13.5px}
 .cot .c-marca input{width:100%;min-width:120px}
 .cot .c-precio input{width:96px;text-align:right;font-variant-numeric:tabular-nums}
@@ -295,13 +301,47 @@
       </form>
     </details>
 
+    {# Los formatos de la entidad: la SC y la DJ tal como llegaron. Con ellos la
+       descarga sale en SU formato, ya llena; sin ellos, en el nuestro. #}
+    <div class="formatos mt-14">
+      <h3>Formatos de la entidad</h3>
+      <p class="ayuda">Sube la solicitud de cotización y la declaración jurada tal como te
+         las mandó la entidad (PDF) y te las devolvemos llenas, con su mismo formato.</p>
+      {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada')) %}
+      <div class="fila-formato">
+        <span>{{ nombre }}</span>
+        {% if formatos and formatos[tipo] %}
+          <span class="pill ok">cargada</span>
+          <form method="post" action="/propuestas/{{ p.id }}/formato/{{ tipo }}/borrar">
+            <button type="submit" class="fantasma">Quitar</button>
+          </form>
+        {% else %}
+          <span class="pill neutro">sin cargar</span>
+        {% endif %}
+        <form method="post" action="/propuestas/{{ p.id }}/formato" enctype="multipart/form-data"
+              class="fila" data-cargando="Subiendo…">
+          <input type="hidden" name="tipo" value="{{ tipo }}">
+          <input type="file" name="archivo" accept="application/pdf,.pdf" required
+                 aria-label="PDF de la {{ nombre | lower }}">
+          <button type="submit" class="sec">{% if formatos and formatos[tipo] %}Reemplazar{% else %}Subir{% endif %}</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+
     {% if items %}
     <div class="btn-grupo mt-14">
       <a class="btn sec" href="/propuestas/{{ p.id }}/cotizacion?modo=dnie">Descargar para firmar con DNIe</a>
       <a class="btn fantasma" href="/propuestas/{{ p.id }}/cotizacion?modo=escaneada">Con firma escaneada</a>
+      {% if formatos and formatos.sc %}
+      <a class="btn fantasma" href="/propuestas/{{ p.id }}/cotizacion?propio=1">En nuestro formato</a>
+      {% endif %}
     </div>
-    <p class="ayuda mt-14">Sale en PDF con la tabla llena, las condiciones, tu RUC, tu
-       domicilio fiscal y tus datos de contacto, que es lo que pide la SC.</p>
+    <p class="ayuda mt-14">
+      {% if formatos and formatos.sc %}Sale en la solicitud de la entidad: marca y precios en
+         sus columnas, el total en números y en letras, tus datos y las condiciones.
+      {% else %}Sale en PDF con la tabla llena, las condiciones, tu RUC, tu domicilio fiscal y
+         tus datos de contacto. Si subes la solicitud de la entidad, sale en su formato.{% endif %}</p>
     {% endif %}
   </div>
   {% endif %}

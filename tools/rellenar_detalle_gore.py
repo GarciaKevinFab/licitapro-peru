@@ -34,10 +34,10 @@ import sys
 # en sys.path. Mismo arreglo que reparar_departamentos.py.
 sys.path.insert(0, os.getcwd())
 
-import httpx  # noqa: E402
+import httpx
 
-from radar_bot.scrapers.orchestrator import HEADERS, _leer_detalle  # noqa: E402
-from shared.db import connection  # noqa: E402
+from radar_bot.scrapers.orchestrator import HEADERS, _leer_detalle
+from shared.db import connection
 
 
 async def _rellenar(aplicar: bool, solo_vigentes: bool, limite: int | None) -> None:
