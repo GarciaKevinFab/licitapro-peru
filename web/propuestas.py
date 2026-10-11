@@ -13,10 +13,10 @@ import logging
 import os
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from shared import cotizacion, ia
+from shared import cotizacion, ia, llenar_formatos
 from shared.banderas import describir
 from shared.db import connection, empresa_es_de, empresas_de, kb_get, responder_pregunta
 from shared.documentos_menores import formato_dj, generar_cotizacion, generar_dj
@@ -296,6 +296,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         # una mediana de S/ 96 mil junto a una oferta de S/ 12 mil.
         "precio": None if (items or menor) else await _precio_de_mercado(prop),
         "items": items, "menor": menor,
+        "formatos": llenar_formatos.guardados(propuesta_id),
         "total_items": cotizacion.total(items),
         "condiciones": await cotizacion.condiciones_de(propuesta_id),
         "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,
@@ -534,7 +535,7 @@ async def fijar_precio(request: Request, propuesta_id: int, precio: float = Form
 
 @router.get("/propuestas/{propuesta_id}/declaracion-jurada")
 async def declaracion_jurada(request: Request, propuesta_id: int,
-                             modo: str = "dnie"):
+                             modo: str = "dnie", propio: int = 0):
     """Genera la Declaracion Jurada de Datos del Postor en PDF.
 
     Sale en PDF y no en DOCX porque ReFirma, el programa de RENIEC, firma PDF:
@@ -570,13 +571,24 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             f"/propuestas/{propuesta_id}?error=No+se+encontro+la+empresa",
             status_code=303)
 
+    cci = await kb_get(prop["emp_id"], "financiero", "cci")
+    # Si el usuario subio la DJ de la entidad, sale ESA llena. Si no se puede
+    # llenar, se le dice por que y puede pedir la propia con ?propio=1.
+    if not propio and llenar_formatos.guardados(propuesta_id)["dj"]:
+        try:
+            ruta = _dj_llena(propuesta_id, dict(empresa), cci)
+        except llenar_formatos.FormatoNoReconocido as e:
+            return _volver(propuesta_id, error=(
+                f"No pudimos llenar tu declaración jurada: {e} Puedes descargar la nuestra "
+                "o subir otra vez el formato."))
+        return FileResponse(ruta, filename=f"declaracion-jurada-{propuesta_id}.pdf",
+                            media_type="application/pdf")
+
     # El formato lo decide la entidad: el GOREMAD exige el suyo, con la CCI.
     con_dnie = (modo or "dnie").lower() != "escaneada"
     nombre = f"declaracion-jurada-{propuesta_id}.pdf"
     try:
-        ruta = await generar_dj(dict(prop), dict(empresa),
-                                await kb_get(prop["emp_id"], "financiero", "cci"),
-                                con_dnie)
+        ruta = await generar_dj(dict(prop), dict(empresa), cci, con_dnie)
     except Exception:
         log.exception("No se pudo generar la declaracion jurada de la propuesta %s",
                       propuesta_id)
@@ -659,7 +671,8 @@ async def quitar_item(request: Request, propuesta_id: int, item_id: int):
 
 
 @router.get("/propuestas/{propuesta_id}/cotizacion")
-async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = "dnie"):
+async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = "dnie",
+                               propio: int = 0):
     """La cotizacion en PDF, con la misma tabla que mando la entidad ya llena."""
     usuario = await usuario_actual(request)
     if not usuario:
@@ -674,10 +687,19 @@ async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = 
         return _volver(propuesta_id, error="La cotización no tiene ítems todavía")
     async with connection() as conn:
         empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
+    condiciones = await cotizacion.condiciones_de(propuesta_id)
+    if not propio and llenar_formatos.guardados(propuesta_id)["sc"]:
+        try:
+            ruta = _sc_llena(propuesta_id, dict(empresa), items, condiciones)
+        except llenar_formatos.FormatoNoReconocido as e:
+            return _volver(propuesta_id, error=(
+                f"No pudimos llenar tu solicitud de cotización: {e} Puedes descargar la "
+                "nuestra o subir otra vez el formato."))
+        return FileResponse(ruta, filename=f"cotizacion-{propuesta_id}.pdf",
+                            media_type="application/pdf")
     try:
         ruta = await generar_cotizacion(
-            dict(prop), dict(empresa), items,
-            await cotizacion.condiciones_de(propuesta_id),
+            dict(prop), dict(empresa), items, condiciones,
             await kb_get(prop["emp_id"], "financiero", "cci"),
             con_dnie=(modo or "dnie").lower() != "escaneada")
     except Exception:
@@ -686,3 +708,69 @@ async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = 
                        error="No se pudo generar la cotización. Inténtalo de nuevo.")
     return FileResponse(ruta, filename=f"cotizacion-{propuesta_id}.pdf",
                         media_type="application/pdf")
+
+
+# ─── Formatos de la entidad (SC y DJ en su propio PDF) ───
+
+def _salida(nombre: str) -> str:
+    from shared.pdf_firmable import SALIDA
+    SALIDA.mkdir(parents=True, exist_ok=True)
+    return str(SALIDA / nombre)
+
+
+def _sc_llena(propuesta_id: int, empresa: dict, items: list[dict], condiciones: dict) -> str:
+    """La SC que subio el usuario, con marca y precios en sus columnas."""
+    suma = cotizacion.total(items)
+    pdf = llenar_formatos.llenar_solicitud(
+        llenar_formatos.ruta(propuesta_id, "sc").read_bytes(), empresa, items, condiciones,
+        cotizacion.monto_en_letras(suma), suma)
+    destino = _salida(f"cotizacion-formato-{propuesta_id}.pdf")
+    with open(destino, "wb") as f:
+        f.write(pdf)
+    return destino
+
+
+def _dj_llena(propuesta_id: int, empresa: dict, cci: str | None) -> str:
+    from shared import fechas
+    hoy = fechas.hoy()
+    pdf = llenar_formatos.llenar_declaracion_jurada(
+        llenar_formatos.ruta(propuesta_id, "dj").read_bytes(), empresa, cci,
+        f"{hoy.day:02d}", f"{hoy.month:02d}")
+    destino = _salida(f"declaracion-jurada-formato-{propuesta_id}.pdf")
+    with open(destino, "wb") as f:
+        f.write(pdf)
+    return destino
+
+
+@router.post("/propuestas/{propuesta_id}/formato")
+async def subir_formato(request: Request, propuesta_id: int, tipo: str = Form(...),
+                        archivo: UploadFile = File(...)):  # noqa: B008
+    """Sube la SC o la DJ tal como la mando la entidad, para devolverla llena."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    if tipo not in llenar_formatos.TIPOS:
+        return _volver(propuesta_id, error="Tipo de formato desconocido")
+    contenido = await archivo.read(llenar_formatos.MAX_BYTES + 1)
+    try:
+        llenar_formatos.guardar(propuesta_id, tipo, contenido)
+    except llenar_formatos.FormatoNoReconocido as e:
+        return _volver(propuesta_id, error=str(e))
+    return _volver(propuesta_id, aviso=(
+        f"{llenar_formatos.TIPOS[tipo]} cargada: al descargarla sale con su formato, ya llena."))
+
+
+@router.post("/propuestas/{propuesta_id}/formato/{tipo}/borrar")
+async def borrar_formato(request: Request, propuesta_id: int, tipo: str):
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    if tipo in llenar_formatos.TIPOS:
+        llenar_formatos.borrar(propuesta_id, tipo)
+    return _volver(propuesta_id, aviso="Formato quitado: se usará el nuestro.")

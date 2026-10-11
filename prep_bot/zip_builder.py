@@ -75,7 +75,10 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
 
         # 2. Declaración jurada
         log.info("Generando declaración jurada...")
-        if formato_dj(licitacion):
+        dj_llena = _formato_lleno(propuesta_id, "dj", empresa=dict(empresa), cci=cci)
+        if dj_llena:
+            documentos_generados.append(("02_Declaracion_Jurada.pdf", dj_llena))
+        elif formato_dj(licitacion):
             path = await generar_dj(licitacion, dict(empresa), cci, con_dnie=True)
             documentos_generados.append(("02_Declaracion_Jurada.pdf", path))
         else:
@@ -97,9 +100,12 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         precio = prop.get("precio_ofertado") or prop.get("monto_referencial") or 0
         if items:
             log.info("Generando cotización por ítems...")
-            path = await generar_cotizacion(
-                licitacion, dict(empresa), items,
-                await cotizacion.condiciones_de(propuesta_id), cci, con_dnie=True)
+            condiciones = await cotizacion.condiciones_de(propuesta_id)
+            path = _formato_lleno(propuesta_id, "sc", empresa=dict(empresa), items=items,
+                                  condiciones=condiciones)
+            if not path:
+                path = await generar_cotizacion(
+                    licitacion, dict(empresa), items, condiciones, cci, con_dnie=True)
             documentos_generados.append(("05_Cotizacion.pdf", path))
         elif precio:
             log.info("Generando propuesta económica...")
@@ -238,3 +244,30 @@ async def listar_expedientes() -> list[dict]:
             })
 
     return sorted(expedientes, key=lambda x: x["fecha"], reverse=True)
+
+
+def _formato_lleno(propuesta_id: int, tipo: str, empresa: dict, cci: str | None = None,
+                   items: list | None = None, condiciones: dict | None = None) -> str | None:
+    """El formato de la entidad que subio el usuario, ya lleno; None si no hay o no
+    se pudo llenar (entonces va el nuestro, y queda en el log por que)."""
+    from shared import fechas, llenar_formatos
+    origen = llenar_formatos.ruta(propuesta_id, tipo)
+    if not origen.exists():
+        return None
+    try:
+        if tipo == "sc":
+            suma = cotizacion.total(items)
+            pdf = llenar_formatos.llenar_solicitud(
+                origen.read_bytes(), empresa, items, condiciones,
+                cotizacion.monto_en_letras(suma), suma)
+        else:
+            hoy = fechas.hoy()
+            pdf = llenar_formatos.llenar_declaracion_jurada(
+                origen.read_bytes(), empresa, cci, f"{hoy.day:02d}", f"{hoy.month:02d}")
+    except llenar_formatos.FormatoNoReconocido as e:
+        log.warning("Formato %s de la propuesta %s no se pudo llenar: %s", tipo, propuesta_id, e)
+        return None
+    destino = os.path.join(TEMPLATES_DIR, "output", f"{tipo}-formato-{propuesta_id}.pdf")
+    with open(destino, "wb") as f:
+        f.write(pdf)
+    return destino

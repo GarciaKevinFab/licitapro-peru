@@ -34,6 +34,9 @@ pypdf==5.1.0
 # pagina y Tesseract (paquete del sistema, ver Dockerfile) la lee.
 pypdfium2==4.30.0
 pytesseract==0.3.13
+# Posicion de palabras y lineas para llenar los formatos de la entidad
+# (shared/llenar_formatos.py). MIT, sobre pdfminer.six.
+pdfplumber==0.11.4
 alembic==1.19.1
 bcrypt==5.0.0
 itsdangerous==2.2.0

@@ -182,44 +182,41 @@ async def guardar(propuesta_id: int, cambios: dict[int, tuple[str, Decimal | Non
     id llega de un formulario y no puede tocar items de otra propuesta.
     """
     limpias = {k: (condiciones.get(k) or "").strip()[:300] for k in CONDICIONES_INICIALES}
-    async with connection() as conn:
-        async with conn.transaction():
-            for item_id, (marca, precio) in cambios.items():
-                await conn.execute(
-                    """UPDATE propuesta_items SET marca=$3, precio_unitario=$4, updated_at=NOW()
-                        WHERE id=$1 AND propuesta_id=$2""",
-                    item_id, propuesta_id, (marca or "").strip()[:120] or None, precio)
+    async with connection() as conn, conn.transaction():
+        for item_id, (marca, precio) in cambios.items():
             await conn.execute(
-                "UPDATE propuestas SET cotizacion_condiciones=$2::jsonb WHERE id=$1",
-                propuesta_id, json.dumps(limpias))
-            return await _recalcular(conn, propuesta_id)
+                """UPDATE propuesta_items SET marca=$3, precio_unitario=$4, updated_at=NOW()
+                        WHERE id=$1 AND propuesta_id=$2""",
+                item_id, propuesta_id, (marca or "").strip()[:120] or None, precio)
+        await conn.execute(
+            "UPDATE propuestas SET cotizacion_condiciones=$2::jsonb WHERE id=$1",
+            propuesta_id, json.dumps(limpias))
+        return await _recalcular(conn, propuesta_id)
 
 
 async def agregar(propuesta_id: int, descripcion: str, cantidad: Decimal,
                   unidad: str | None) -> None:
-    async with connection() as conn:
-        async with conn.transaction():
-            orden = await conn.fetchval(
-                "SELECT COALESCE(MAX(orden), 0) + 1 FROM propuesta_items WHERE propuesta_id=$1",
-                propuesta_id)
-            await conn.execute(
-                """INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad, unidad)
+    async with connection() as conn, conn.transaction():
+        orden = await conn.fetchval(
+            "SELECT COALESCE(MAX(orden), 0) + 1 FROM propuesta_items WHERE propuesta_id=$1",
+            propuesta_id)
+        await conn.execute(
+            """INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad, unidad)
                    VALUES ($1,$2,$3,$4,$5)""",
-                propuesta_id, orden, descripcion.strip()[:500], cantidad,
-                (unidad or "").strip()[:30] or None)
-            await conn.execute(
-                """UPDATE propuestas SET cotizacion_condiciones =
+            propuesta_id, orden, descripcion.strip()[:500], cantidad,
+            (unidad or "").strip()[:30] or None)
+        await conn.execute(
+            """UPDATE propuestas SET cotizacion_condiciones =
                        COALESCE(cotizacion_condiciones, $2::jsonb) WHERE id=$1""",
-                propuesta_id, json.dumps(CONDICIONES_INICIALES))
+            propuesta_id, json.dumps(CONDICIONES_INICIALES))
 
 
 async def quitar(propuesta_id: int, item_id: int) -> None:
-    async with connection() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                "DELETE FROM propuesta_items WHERE id=$1 AND propuesta_id=$2",
-                item_id, propuesta_id)
-            await _recalcular(conn, propuesta_id)
+    async with connection() as conn, conn.transaction():
+        await conn.execute(
+            "DELETE FROM propuesta_items WHERE id=$1 AND propuesta_id=$2",
+            item_id, propuesta_id)
+        await _recalcular(conn, propuesta_id)
 
 
 def monto(valor) -> str:
@@ -238,3 +235,52 @@ def precio_legible(valor) -> str:
 def cantidad_legible(valor) -> str:
     """Decimal('54.000') -> '54', Decimal('2.500') -> '2.5'."""
     return f"{Decimal(valor).normalize():f}"
+
+
+_UNI = ("", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ",
+        "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO",
+        "DIECINUEVE", "VEINTE", "VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO",
+        "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE")
+_DEC = ("", "", "", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA",
+        "NOVENTA")
+_CEN = ("", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
+        "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS")
+
+
+def _hasta_999(n: int) -> str:
+    if n == 100:
+        return "CIEN"
+    c, r = divmod(n, 100)
+    partes = [_CEN[c]] if c else []
+    if r < 30:
+        partes.append(_UNI[r])
+    else:
+        d, u = divmod(r, 10)
+        partes.append(_DEC[d] + (f" Y {_UNI[u]}" if u else ""))
+    return " ".join(p for p in partes if p)
+
+
+def _apocope(texto: str) -> str:
+    """"VEINTIUNO MIL" no se dice: "VEINTIÚN MIL", "UN MILLÓN"."""
+    if texto.endswith("VEINTIUNO"):
+        return texto[:-9] + "VEINTIÚN"
+    if texto.endswith("UNO"):
+        return texto[:-3] + "UN"
+    return texto
+
+
+def monto_en_letras(valor) -> str:
+    """12115.2 -> 'DOCE MIL CIENTO QUINCE CON 20/100 SOLES', como pide una cotizacion."""
+    d = Decimal(valor).quantize(CENTIMO, rounding=ROUND_HALF_UP)
+    entero, cent = int(d), int((d - int(d)) * 100)
+    millones, resto = divmod(entero, 1_000_000)
+    miles, unidades = divmod(resto, 1000)
+    partes = []
+    if millones:
+        partes.append("UN MILLÓN" if millones == 1
+                      else f"{_apocope(_hasta_999(millones))} MILLONES")
+    if miles:
+        partes.append("MIL" if miles == 1 else f"{_apocope(_hasta_999(miles))} MIL")
+    if unidades:
+        partes.append(_hasta_999(unidades))
+    return f"{' '.join(partes) or 'CERO'} CON {cent:02d}/100 SOLES"

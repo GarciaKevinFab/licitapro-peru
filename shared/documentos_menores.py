@@ -49,7 +49,7 @@ def concepto_corto(objeto: str | None, limite: int = 220) -> str:
     caracteres: copiado entero, la declaracion terminaba en "...LAS CARACT".
     """
     texto = re.sub(r"^\[[^\]]+\]\s*", "", (objeto or "").strip())
-    texto = re.split(r"\s+-\s+MUY IMPORTANTE", texto, maxsplit=1, flags=re.I)[0]
+    texto = re.split(r"\s+-\s+MUY IMPORTANTE", texto, maxsplit=1, flags=re.IGNORECASE)[0]
     if len(texto) <= limite:
         return texto
     return texto[:limite].rsplit(" ", 1)[0].rstrip(" -,;:") + "…"
@@ -142,8 +142,8 @@ def _goremad(emp: dict, prop: dict, cci: str | None) -> tuple[str, str, list]:
     parrafos.append("<b>NOTA:</b> Conozco de las sanciones penales y administrativas en caso "
                     "de incurrir en falsedad de las declaraciones juradas antes expuestas.")
     parrafos.append(f"Referencia: {_e(referencia(prop))}")
-    return ("DECLARACIÓN JURADA ÚNICA Y OBLIGATORIA PARA SER POSTOR O PROVEEDOR "
-            "DEL GOBIERNO REGIONAL DE MADRE DE DIOS",
+    return (("DECLARACIÓN JURADA ÚNICA Y OBLIGATORIA PARA SER POSTOR O PROVEEDOR "
+             "DEL GOBIERNO REGIONAL DE MADRE DE DIOS"),
             "Oficina de Abastecimiento y Servicios Auxiliares", parrafos)
 
 
