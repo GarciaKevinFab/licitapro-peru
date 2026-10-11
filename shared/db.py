@@ -344,6 +344,80 @@ async def log_scraping_end(log_id: int, encontrados: int, nuevos: int, errores: 
         )
 
 
+# ─── Documentos que publica la entidad con cada solicitud ──
+#
+# Los baja la PC puente al cosechar (el VPS no alcanza el portal del GOREMAD) y
+# la web los usa para llenar el formato de la entidad. Ver migracion 0017.
+
+async def documentos_conocidos(licitacion_id: str) -> dict[str, bool]:
+    """url -> si ya tiene el contenido guardado."""
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT url, contenido IS NOT NULL AS lleno FROM licitacion_documentos
+                WHERE licitacion_id = $1""", licitacion_id)
+    return {f["url"]: f["lleno"] for f in filas}
+
+
+async def guardar_documento(licitacion_id: str, tipo: str, categoria: str | None,
+                            nombre: str | None, url: str, contenido: bytes | None,
+                            tamano: int | None = None) -> None:
+    """Inserta o refresca un documento. Un contenido None no borra el guardado."""
+    import hashlib
+    sha = hashlib.sha256(contenido).hexdigest() if contenido else None
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO licitacion_documentos
+                   (licitacion_id, tipo, categoria, nombre, url, tamano, sha256, contenido)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+               ON CONFLICT (licitacion_id, url) DO UPDATE SET
+                   tipo = EXCLUDED.tipo, categoria = EXCLUDED.categoria,
+                   nombre = EXCLUDED.nombre,
+                   tamano = COALESCE(EXCLUDED.tamano, licitacion_documentos.tamano),
+                   sha256 = COALESCE(EXCLUDED.sha256, licitacion_documentos.sha256),
+                   contenido = COALESCE(EXCLUDED.contenido, licitacion_documentos.contenido),
+                   updated_at = NOW()""",
+            licitacion_id, tipo, categoria, nombre, url,
+            len(contenido) if contenido else tamano, sha, contenido)
+
+
+async def documentos_de(licitacion_id: str) -> list[dict]:
+    """Los documentos de una licitacion, sin el contenido (para listarlos)."""
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT id, tipo, categoria, nombre, url, tamano,
+                      contenido IS NOT NULL AS guardado
+                 FROM licitacion_documentos WHERE licitacion_id = $1
+                ORDER BY CASE tipo WHEN 'sc' THEN 0 WHEN 'dj' THEN 1
+                                   WHEN 'eett' THEN 2 ELSE 3 END, id""",
+            licitacion_id)
+    return [dict(f) for f in filas]
+
+
+async def contenido_documento(licitacion_id: str, tipo: str) -> bytes | None:
+    """El PDF guardado de ese tipo (el mas reciente), o None."""
+    async with connection() as conn:
+        return await conn.fetchval(
+            """SELECT contenido FROM licitacion_documentos
+                WHERE licitacion_id = $1 AND tipo = $2 AND contenido IS NOT NULL
+                ORDER BY updated_at DESC LIMIT 1""", licitacion_id, tipo)
+
+
+async def purgar_documentos_viejos(dias: int = 30) -> int:
+    """Vacia el contenido de solicitudes cerradas hace mas de `dias` sin propuesta.
+
+    Se queda la fila (con su enlace): solo se suelta el PDF, que es lo que pesa.
+    """
+    async with connection() as conn:
+        r = await conn.execute(
+            """UPDATE licitacion_documentos d SET contenido = NULL, updated_at = NOW()
+                 FROM licitaciones l
+                WHERE l.id = d.licitacion_id AND d.contenido IS NOT NULL
+                  AND l.fecha_cierre < NOW() - make_interval(days => $1)
+                  AND NOT EXISTS (SELECT 1 FROM propuestas p WHERE p.licitacion_id = l.id)""",
+            dias)
+    return int(r.split()[-1]) if r else 0
+
+
 async def refrescar_licitacion(data: dict) -> bool:
     """Inserta la licitacion o refresca la existente. True si es nueva.
 

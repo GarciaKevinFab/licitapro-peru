@@ -1,7 +1,9 @@
 """ZIP Builder — Genera expediente ZIP completo listo para SEACE."""
+import asyncio
 import logging
 import os
 import zipfile
+from pathlib import Path
 
 from prep_bot.document_gen import (
     generar_carta_presentacion,
@@ -75,7 +77,8 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
 
         # 2. Declaración jurada
         log.info("Generando declaración jurada...")
-        dj_llena = _formato_lleno(propuesta_id, "dj", empresa=dict(empresa), cci=cci)
+        dj_llena = await _formato_lleno(propuesta_id, prop["lic_id"], "dj",
+                                        empresa=dict(empresa), cci=cci)
         if dj_llena:
             documentos_generados.append(("02_Declaracion_Jurada.pdf", dj_llena))
         elif formato_dj(licitacion):
@@ -101,8 +104,9 @@ async def generar_expediente_zip(propuesta_id: int) -> str | None:
         if items:
             log.info("Generando cotización por ítems...")
             condiciones = await cotizacion.condiciones_de(propuesta_id)
-            path = _formato_lleno(propuesta_id, "sc", empresa=dict(empresa), items=items,
-                                  condiciones=condiciones)
+            path = await _formato_lleno(propuesta_id, prop["lic_id"], "sc",
+                                        empresa=dict(empresa), items=items,
+                                        condiciones=condiciones)
             if not path:
                 path = await generar_cotizacion(
                     licitacion, dict(empresa), items, condiciones, cci, con_dnie=True)
@@ -246,28 +250,25 @@ async def listar_expedientes() -> list[dict]:
     return sorted(expedientes, key=lambda x: x["fecha"], reverse=True)
 
 
-def _formato_lleno(propuesta_id: int, tipo: str, empresa: dict, cci: str | None = None,
-                   items: list | None = None, condiciones: dict | None = None) -> str | None:
-    """El formato de la entidad que subio el usuario, ya lleno; None si no hay o no
-    se pudo llenar (entonces va el nuestro, y queda en el log por que)."""
-    from shared import fechas, llenar_formatos
-    origen = llenar_formatos.ruta(propuesta_id, tipo)
-    if not origen.exists():
-        return None
+async def _formato_lleno(propuesta_id: int, licitacion_id: str, tipo: str, empresa: dict,
+                         cci: str | None = None, items: list | None = None,
+                         condiciones: dict | None = None) -> str | None:
+    """El formato de la entidad (subido o bajado del portal) ya lleno; None si no
+    hay o no se pudo llenar (entonces va el nuestro, y queda en el log por que).
+
+    Sin firma ni sello: el expediente sale preparado para firmar con DNIe."""
+    from shared import llenar_formatos
     try:
         if tipo == "sc":
-            suma = cotizacion.total(items)
-            pdf = llenar_formatos.llenar_solicitud(
-                origen.read_bytes(), empresa, items, condiciones,
-                cotizacion.monto_en_letras(suma), suma)
+            pdf = await llenar_formatos.sc_llena(propuesta_id, licitacion_id, empresa, items,
+                                                 condiciones)
         else:
-            hoy = fechas.hoy()
-            pdf = llenar_formatos.llenar_declaracion_jurada(
-                origen.read_bytes(), empresa, cci, f"{hoy.day:02d}", f"{hoy.month:02d}")
+            pdf = await llenar_formatos.dj_llena(propuesta_id, licitacion_id, empresa, cci)
     except llenar_formatos.FormatoNoReconocido as e:
         log.warning("Formato %s de la propuesta %s no se pudo llenar: %s", tipo, propuesta_id, e)
         return None
+    if not pdf:
+        return None
     destino = os.path.join(TEMPLATES_DIR, "output", f"{tipo}-formato-{propuesta_id}.pdf")
-    with open(destino, "wb") as f:
-        f.write(pdf)
+    await asyncio.to_thread(Path(destino).write_bytes, pdf)
     return destino
