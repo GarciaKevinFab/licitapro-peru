@@ -436,11 +436,11 @@ def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> None:
             capa.texto(125, y, valor, 8, ancho_max=pag.width - 170)
     y += 95
     centro = pag.width / 2
-    # Firma escaneada sobre la linea y sello a su derecha, si los subio.
-    if imagenes.get("firma"):
-        capa.imagen(imagenes["firma"], centro, y - 2, 150, 62)
+    # Como se firma en papel: el sello sobre la linea y la firma encima de el.
     if imagenes.get("sello"):
-        capa.imagen(imagenes["sello"], centro + 175, y + 30, 95, 95)
+        capa.imagen(imagenes["sello"], centro, y - 1, 200, 80)
+    if imagenes.get("firma"):
+        capa.imagen(imagenes["firma"], centro, y - 6, 120, 62)
     capa.linea(centro - 110, y, centro + 110)
     cargo = (empresa.get("cargo_representante") or "Representante legal").upper()
     for k, (t, neg) in enumerate(((empresa.get("representante_legal") or "", True),
@@ -549,10 +549,15 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                         key=lambda t: t["bottom"], default=None)
             base = (linea["top"] if linea else rotulo["top"]) - 1
             centro = (linea["x0"] + linea["x1"]) / 2 if linea else pag.width / 2
-            if imagenes.get("firma"):
-                capa.imagen(imagenes["firma"], centro, base, 150, 55)
+            # El hueco que queda sobre la linea hasta el texto de la entidad: la
+            # imagen se encoge a lo que cabe para no tapar la "NOTA" de encima.
+            encima = [w["bottom"] for w in palabras
+                      if w["bottom"] < base - 2 and centro - 110 < w["x0"] < centro + 110]
+            alto = min(80.0, max(28.0, base - (max(encima) if encima else base - 80) - 3))
             if imagenes.get("sello"):
-                capa.imagen(imagenes["sello"], centro + 165, base + 20, 85, 85)
+                capa.imagen(imagenes["sello"], centro, base, alto * 2.5, alto)
+            if imagenes.get("firma"):
+                capa.imagen(imagenes["firma"], centro, base - 3, alto * 1.6, alto * 0.85)
         return _fundir(contenido, {0: capa})
 
 
