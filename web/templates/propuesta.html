@@ -247,7 +247,7 @@
           <table class="datos cot">
             <thead><tr>
               <th class="num">N°</th><th>Descripción</th><th class="num">Cant.</th><th>Und.</th>
-              <th>Marca</th><th class="num">P. unit. (S/)</th><th class="num">Total (S/)</th><th></th>
+              <th>Marca</th><th>Presentación</th><th class="num">P. unit. (S/)</th><th class="num">Total (S/)</th><th></th>
             </tr></thead>
             <tbody>
             {% for it in items %}
@@ -259,6 +259,11 @@
                 <td class="c-marca" data-rotulo="Marca">
                   <input type="text" name="marca_{{ it.id }}" value="{{ it.marca or '' }}" maxlength="120"
                          aria-label="Marca del ítem {{ loop.index }}" placeholder="Marca"></td>
+                {# Lo que de verdad se entrega ("x 330 g", "a granel"): va junto a la
+                   descripcion en el formato de la entidad, como se anota a mano. #}
+                <td class="c-marca" data-rotulo="Presentación">
+                  <input type="text" name="presentacion_{{ it.id }}" value="{{ it.presentacion or '' }}" maxlength="80"
+                         aria-label="Presentación del ítem {{ loop.index }}" placeholder="x 330 g, a granel…"></td>
                 <td class="c-precio" data-rotulo="Precio unitario">
                   <input type="text" name="precio_{{ it.id }}" inputmode="decimal" data-precio
                          value="{{ precio_legible(it.precio_unitario).replace(',', '') if it.precio_unitario is not none else '' }}"

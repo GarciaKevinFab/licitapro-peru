@@ -651,7 +651,8 @@ async def guardar_items(request: Request, propuesta_id: int):
         if str(crudo).strip() and precio is None:
             return _volver(propuesta_id,
                            error=f"El precio del ítem {n} no es un número válido")
-        cambios[it["id"]] = (form.get(f"marca_{it['id']}", ""), precio)
+        cambios[it["id"]] = (form.get(f"marca_{it['id']}", ""),
+                             form.get(f"presentacion_{it['id']}", ""), precio)
 
     suma = await cotizacion.guardar(propuesta_id, cambios, dict(form))
     return _volver(propuesta_id,

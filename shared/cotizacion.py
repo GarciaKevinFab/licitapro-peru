@@ -109,7 +109,8 @@ def total(items) -> Decimal:
 async def items_de(propuesta_id: int) -> list[dict]:
     async with connection() as conn:
         filas = await conn.fetch(
-            """SELECT id, orden, descripcion, cantidad, unidad, marca, precio_unitario
+            """SELECT id, orden, descripcion, cantidad, unidad, marca, presentacion,
+                      precio_unitario
                  FROM propuesta_items WHERE propuesta_id=$1 ORDER BY orden""",
             propuesta_id)
     salida = []
@@ -174,20 +175,24 @@ async def _recalcular(conn, propuesta_id: int) -> Decimal:
     return suma
 
 
-async def guardar(propuesta_id: int, cambios: dict[int, tuple[str, Decimal | None]],
-                  condiciones: dict) -> Decimal:
-    """Marca y precio de cada item, y las condiciones del pie. Devuelve el total.
+async def guardar(propuesta_id: int, cambios: dict[int, tuple], condiciones: dict) -> Decimal:
+    """Marca, presentacion y precio de cada item, y las condiciones del pie.
+    Devuelve el total.
 
-    `cambios` va por id de item, y cada UPDATE filtra ademas por propuesta: el
-    id llega de un formulario y no puede tocar items de otra propuesta.
+    `cambios` va por id de item: (marca, precio) o (marca, presentacion, precio).
+    Cada UPDATE filtra ademas por propuesta: el id llega de un formulario y no
+    puede tocar items de otra propuesta.
     """
     limpias = {k: (condiciones.get(k) or "").strip()[:300] for k in CONDICIONES_INICIALES}
     async with connection() as conn, conn.transaction():
-        for item_id, (marca, precio) in cambios.items():
+        for item_id, cambio in cambios.items():
+            marca, presentacion, precio = cambio if len(cambio) == 3 else (cambio[0], None, cambio[1])
             await conn.execute(
-                """UPDATE propuesta_items SET marca=$3, precio_unitario=$4, updated_at=NOW()
+                """UPDATE propuesta_items SET marca=$3, presentacion=$4, precio_unitario=$5,
+                                              updated_at=NOW()
                         WHERE id=$1 AND propuesta_id=$2""",
-                item_id, propuesta_id, (marca or "").strip()[:120] or None, precio)
+                item_id, propuesta_id, (marca or "").strip()[:120] or None,
+                (presentacion or "").strip()[:80] or None, precio)
         await conn.execute(
             "UPDATE propuestas SET cotizacion_condiciones=$2::jsonb WHERE id=$1",
             propuesta_id, json.dumps(limpias))

@@ -116,9 +116,10 @@ def test_la_solicitud_sale_llena_en_su_propio_formato():
     azul = _tinta(pdf)
     assert "FERRETERIA EL EJEMPLO S.A.C." in azul and "20123456789" in azul
     for esperado in ("MARCA 1", "MARCA 3", "135.00", "1,350.00", "270.00", "1,755.00",
-                     "SON: MIL SETECIENTOS CINCUENTA Y CINCO", "TRANSFERENCIA CCI",
-                     "SOLES (S/)", "30 DÍAS CALENDARIO"):
+                     "TRANSFERENCIA CCI", "SOLES (S/)", "30 DÍAS CALENDARIO"):
         assert esperado in azul, esperado
+    # El formato de la entidad no trae importe en letras: no se le anade.
+    assert "SON:" not in azul
     # El texto de la entidad sigue ahi, intacto.
     with pdfplumber.open(io.BytesIO(pdf)) as doc:
         assert "PRODUCTO 2" in doc.pages[0].extract_text()
@@ -163,6 +164,19 @@ def test_la_firma_va_junto_a_la_del_area_de_logistica():
     assert "DATOS DEL POSTOR" not in texto
     assert nombre["x0"] > 345                 # a la derecha de la linea de la entidad
     assert 203 < nombre["top"] < 240          # a su misma altura
+
+
+def test_la_presentacion_va_junto_a_la_descripcion_y_la_marca_sola_en_su_columna():
+    """Como se anota a mano: "x 330 g" al lado de la descripcion; en MARCA, la marca."""
+    items = _items()
+    items[1]["presentacion"] = "x 330 g"
+    pdf = llenar_solicitud(_sc(), EMPRESA, items, {}, "X", sum(i["subtotal"] for i in items))
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        palabras = doc.pages[0].extract_words()
+    nota = next(w for w in palabras if w["text"] == "330")
+    marca = next(w for w in palabras if w["text"] == "2" and w["x0"] > 374)
+    assert 143 < nota["x0"] < 374                      # dentro de DESCRIPCION
+    assert abs(nota["top"] - marca["top"]) < 20        # en la fila del item 2
 
 
 def test_cada_precio_va_en_la_fila_de_su_item():
