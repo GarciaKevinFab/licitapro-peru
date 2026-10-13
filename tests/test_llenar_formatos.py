@@ -252,3 +252,186 @@ async def test_no_se_sube_un_formato_a_la_propuesta_de_otro(empresa, cliente, ma
     finally:
         await borrar_cuenta(intruso["id"])
         await _limpiar(pid, lic)
+
+
+# ─── Automatico: los formatos los baja el puente del portal ──
+
+FICHA_GOREMAD = """
+<ul class="list-group">
+ <li class="list-group-item"><div class="row"><div class="col">
+   <small class="d-block text-muted">SOLICITUD DE COTIZACIÓN</small>
+   <div class="text-truncate"><span>PDF</span><span>SC N° 9999-2026-GOREMAD.pdf</span></div>
+ </div><div class="col-auto">
+   <a class="btn" href="http://portal.ejemplo/solicitud/1/descargar" target="_blank">x</a>
+ </div></div></li>
+ <li class="list-group-item"><div class="row"><div class="col">
+   <small class="d-block text-muted">DECLARACION JURADA</small>
+   <div class="text-truncate"><span>PDF</span><span>DJ 2026.pdf</span></div>
+ </div><div class="col-auto">
+   <a class="btn" href="http://portal.ejemplo/storage/abc.pdf" download="DJ 2026.pdf">x</a>
+ </div></div></li>
+ <li class="list-group-item"><div class="row"><div class="col">
+   <small class="d-block text-muted">ESPECIFICACIONES TECNICAS</small>
+   <div class="text-truncate"><span>PDF</span><span>3404.pdf</span></div>
+ </div><div class="col-auto">
+   <a class="btn" href="http://portal.ejemplo/storage/def.pdf" download="3404.pdf">x</a>
+ </div></div></li>
+ <li class="list-group-item"><a href="http://portal.ejemplo/solicitud/1/enviar">Enviar</a></li>
+</ul>"""
+
+
+def test_el_cosechador_reconoce_la_sc_la_dj_y_las_eett_de_la_ficha():
+    from radar_bot.scrapers.orchestrator import _documentos_cotizacion
+    docs = _documentos_cotizacion(FICHA_GOREMAD)
+    assert [(d["tipo"], d["nombre"]) for d in docs] == [
+        ("sc", "SC N° 9999-2026-GOREMAD.pdf"), ("dj", "DJ 2026.pdf"), ("eett", "3404.pdf")]
+    # "Enviar cotizacion" no es un documento.
+    assert all("/enviar" not in d["url"] for d in docs)
+
+
+def _png(tmp_path, nombre, color):
+    from PIL import Image
+    ruta = tmp_path / nombre
+    Image.new("RGB", (200, 80), color).save(ruta)
+    return str(ruta)
+
+
+def _dj_con_firma() -> bytes:
+    from pypdf import PdfReader, PdfWriter
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    c.setFont("Helvetica", 10)
+    c.drawString(207, _y(750), "." * 60)
+    c.drawString(207, _y(764), "Firma, nombre y/o sello del Representante Legal")
+    c.save()
+    base = PdfReader(io.BytesIO(_dj())).pages[0]
+    base.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
+    w = PdfWriter()
+    w.add_page(base)
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()
+
+
+def test_con_firma_escaneada_se_estampan_la_firma_y_el_sello(tmp_path):
+    imagenes = {"firma": _png(tmp_path, "firma.png", "black"),
+                "sello": _png(tmp_path, "sello.png", "blue")}
+    items = _items()
+    pdf = llenar_solicitud(_sc(), EMPRESA, items, {}, "X", sum(i["subtotal"] for i in items),
+                           imagenes)
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        assert len(doc.pages[-1].images) == 2
+    dj = llenar_declaracion_jurada(_dj_con_firma(), EMPRESA, None, "10", "10", imagenes)
+    with pdfplumber.open(io.BytesIO(dj)) as doc:
+        assert len(doc.pages[0].images) == 2
+    # Sin imagenes (para firmar con DNIe) el documento sale limpio.
+    limpio = llenar_solicitud(_sc(), EMPRESA, items, {}, "X", Decimal(1))
+    with pdfplumber.open(io.BytesIO(limpio)) as doc:
+        assert not doc.pages[-1].images
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_sin_subir_nada_sale_el_formato_que_bajo_el_puente(usuario, empresa, cliente, marca,
+                                                                tmp_path, monkeypatch):
+    from shared import llenar_formatos
+    from shared.db import guardar_documento
+
+    monkeypatch.setattr(llenar_formatos, "DIR", tmp_path)
+    pid, lic = await _propuesta_con_items(empresa, marca)
+    try:
+        await guardar_documento(lic, "sc", "SOLICITUD DE COTIZACIÓN", "sc.pdf",
+                                "http://portal.ejemplo/solicitud/1/descargar", _sc())
+        await guardar_documento(lic, "eett", "ESPECIFICACIONES TECNICAS", "3404.pdf",
+                                "http://portal.ejemplo/storage/def.pdf", None)
+        await _entrar(cliente, usuario)
+        pagina = await cliente.get(f"/propuestas/{pid}")
+        assert "del portal" in pagina.text and "3404.pdf" in pagina.text
+        r = await cliente.get(f"/propuestas/{pid}/cotizacion")
+        assert r.status_code == 200 and "MARCA 2" in _tinta(r.content)
+        assert await llenar_formatos.disponibles(pid, lic) == {"sc": "portal", "dj": None}
+        # Lo subido a mano manda sobre lo del portal.
+        llenar_formatos.guardar(pid, "sc", _sc())
+        assert (await llenar_formatos.formato(pid, lic, "sc"))[1] == "subido"
+    finally:
+        await _limpiar(pid, lic)
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_la_purga_suelta_los_pdf_de_solicitudes_cerradas_sin_propuesta(marca):
+    from shared.db import (
+        connection,
+        contenido_documento,
+        guardar_documento,
+        purgar_documentos_viejos,
+    )
+    lic = f"vieja_{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, tipo, entidad, objeto, fecha_cierre)
+               VALUES ($1, 'gore_portals', 'cotizacion', 'E', 'O', NOW() - INTERVAL '40 days')""",
+            lic)
+    try:
+        await guardar_documento(lic, "sc", None, None, "http://x/1/descargar", _sc())
+        assert await purgar_documentos_viejos() >= 1
+        assert await contenido_documento(lic, "sc") is None
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+# ─── Envio por el portal: datos para copiar y ZIP de adjuntos ─
+
+@sin_base
+@pytest.mark.asyncio
+async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
+        usuario, empresa, cliente, marca, tmp_path, monkeypatch):
+    import zipfile
+
+    from shared import constancia_rnp, llenar_formatos
+    from shared.db import connection, guardar_documento
+
+    monkeypatch.setattr(llenar_formatos, "DIR", tmp_path / "formatos")
+    monkeypatch.setattr(constancia_rnp, "DIR_PDF", tmp_path / "rnp")
+    pid, lic = await _propuesta_con_items(empresa, marca)
+    try:
+        async with connection() as c:
+            await c.execute("UPDATE licitaciones SET url=$2 WHERE id=$1", lic,
+                            "http://portal.ejemplo/solicitud/77")
+        await guardar_documento(lic, "sc", None, None,
+                                "http://portal.ejemplo/solicitud/77/descargar", _sc())
+        await guardar_documento(lic, "dj", None, None, "http://portal.ejemplo/storage/dj.pdf",
+                                _dj())
+        constancia_rnp.guardar_pdf(empresa, b"%PDF-1.4 constancia")
+        await _entrar(cliente, usuario)
+
+        pagina = (await cliente.get(f"/propuestas/{pid}")).text
+        assert "http://portal.ejemplo/solicitud/77/enviar" in pagina
+        assert 'data-copiar="Jurídica"' in pagina   # el RUC de prueba empieza por 20
+
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 200, r.headers.get("location")
+        assert r.headers["content-type"] == "application/zip"
+        zipeado = zipfile.ZipFile(io.BytesIO(r.content))
+        nombres = zipeado.namelist()
+        assert [n[:3] for n in nombres] == ["01_", "02_", "03_"]
+        assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
+    finally:
+        await _limpiar(pid, lic)
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_sin_precios_no_se_arma_el_paquete(usuario, empresa, cliente, marca):
+    from shared.db import connection
+    pid, lic = await _propuesta_con_items(empresa, marca)
+    try:
+        async with connection() as c:
+            await c.execute(
+                "UPDATE propuesta_items SET precio_unitario=NULL WHERE propuesta_id=$1", pid)
+        await _entrar(cliente, usuario)
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303 and "error=" in r.headers["location"]
+    finally:
+        await _limpiar(pid, lic)

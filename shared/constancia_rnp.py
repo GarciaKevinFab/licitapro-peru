@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import re
 from datetime import date
+from pathlib import Path
 
 log = logging.getLogger("shared.constancia_rnp")
 
@@ -146,3 +148,22 @@ def leer_constancia_rnp(contenido: bytes) -> dict:
         raise ConstanciaInvalida(
             "No se pudo leer el texto de la constancia. Escribe los datos a mano.") from e
     return parsear_texto(texto)
+
+
+# ─── El PDF de la constancia, para adjuntarlo ───────────────
+#
+# Las cotizaciones del GOREMAD piden adjuntar la constancia del RNP. Cuando el
+# usuario la sube para rellenar la empresa, se guarda tambien el archivo: asi
+# el paquete de envio la incluye sin pedirsela otra vez.
+
+DIR_PDF = Path(os.getenv("RNP_DIR", "data/rnp"))
+
+
+def ruta_pdf(empresa_id: int) -> Path:
+    return DIR_PDF / f"empresa_{int(empresa_id)}.pdf"
+
+
+def guardar_pdf(empresa_id: int, contenido: bytes) -> None:
+    destino = ruta_pdf(empresa_id)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(contenido)

@@ -26,6 +26,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from shared import fechas
+from shared.config import normalizar
 from shared.db import (
     connection,
     get_config,
@@ -801,8 +802,87 @@ def _detalle_cotizacion(html: str) -> str | None:
     return "\n".join(lineas)[:_DETALLE_MAX]
 
 
-async def _leer_detalle(client: httpx.AsyncClient, url: str) -> str | None:
+# LOS FORMATOS TAMBIEN ESTAN EN LA FICHA
+#
+#   Cada solicitud publica sus documentos: la SC en PDF (/solicitud/<id>/
+#   descargar), la declaracion jurada que exige la entidad y las EETT. La web
+#   llena la SC y la DJ sobre esos mismos PDF (shared/llenar_formatos.py), y el
+#   VPS no alcanza este portal: los baja aqui la PC puente y quedan en
+#   licitacion_documentos. Las EETT solo con su enlace: son escaneos de varios
+#   MB que el usuario abre en el portal.
+_DOC_MAX_BYTES = 3 * 1024 * 1024
+_DOC_GUARDAR = {"sc", "dj"}
+
+
+def _tipo_documento(categoria: str, nombre: str, url: str) -> str:
+    texto = normalizar(f"{categoria} {nombre}")
+    if url.rstrip("/").endswith("/descargar") or "solicitud de cotizacion" in texto:
+        return "sc"
+    if "declaracion jurada" in texto:
+        return "dj"
+    if any(k in texto for k in ("especificacion", "termino", "tdr", "ee.tt", "eett")):
+        return "eett"
+    return "otro"
+
+
+def _documentos_cotizacion(html: str) -> list[dict]:
+    """Los documentos de la ficha: categoria, nombre, url y tipo."""
+    soup = _sopa(html)
+    docs, vistos = [], set()
+    for li in soup.select("li.list-group-item"):
+        enlace = li.find("a", href=True)
+        if not enlace:
+            continue
+        url = enlace["href"]
+        if not (url.endswith("/descargar") or "/storage/" in url) or url in vistos:
+            continue
+        vistos.add(url)
+        rotulo = li.find("small")
+        categoria = rotulo.get_text(" ", strip=True) if rotulo else ""
+        spans = li.select("span")
+        nombre = enlace.get("download") or (spans[-1].get_text(" ", strip=True) if spans else "")
+        docs.append({"categoria": categoria, "nombre": nombre, "url": url,
+                     "tipo": _tipo_documento(categoria, nombre, url)})
+    return docs
+
+
+async def _guardar_documentos(client: httpx.AsyncClient, licitacion_id: str,
+                              docs: list[dict]) -> None:
+    """Baja la SC y la DJ que aun no esten guardadas; del resto, el enlace.
+
+    Un PDF que no baja no detiene nada: la fila queda con su enlace y la
+    proxima pasada lo vuelve a intentar.
+    """
+    from shared.db import documentos_conocidos, guardar_documento
+    if not docs:
+        return
+    conocidos = await documentos_conocidos(licitacion_id)
+    for d in docs:
+        contenido = None
+        if d["tipo"] in _DOC_GUARDAR and not conocidos.get(d["url"]):
+            try:
+                resp = await client.get(d["url"])
+                cuerpo = resp.content
+                if resp.status_code == 200 and cuerpo.startswith(b"%PDF")                         and len(cuerpo) <= _DOC_MAX_BYTES:
+                    contenido = cuerpo
+                else:
+                    log.info("documento %s: HTTP %s, %d bytes", _corto(d["url"]),
+                             resp.status_code, len(cuerpo))
+                await asyncio.sleep(0.3)
+            except Exception as e:  # noqa: BLE001
+                log.info("documento %s: %s", _corto(d["url"]), e)
+        elif d["url"] in conocidos:
+            continue   # ya esta, y no hay nada nuevo que bajar
+        await guardar_documento(licitacion_id, d["tipo"], d["categoria"] or None,
+                                d["nombre"] or None, d["url"], contenido)
+
+
+async def _leer_detalle(client: httpx.AsyncClient, url: str,
+                        documentos: list | None = None) -> str | None:
     """Pide la ficha y devuelve sus items. Un fallo aqui no es un fallo del portal.
+
+    Si se pasa `documentos` (una lista), se le agregan los documentos de la
+    ficha: asi se lee una sola vez para los dos fines.
 
     Va con el cliente directo y no con la Sonda: la sonda diagnostica si el
     portal rinde, y una ficha que no carga no quita la fila del listado, que
@@ -814,6 +894,8 @@ async def _leer_detalle(client: httpx.AsyncClient, url: str) -> str | None:
         if resp.status_code != 200:
             log.info("ficha %s: HTTP %s", _corto(url), resp.status_code)
             return None
+        if documentos is not None:
+            documentos.extend(_documentos_cotizacion(resp.text))
         return _detalle_cotizacion(resp.text)
     except Exception as e:  # noqa: BLE001
         log.info("ficha %s: %s", _corto(url), e)
@@ -894,8 +976,9 @@ async def _scrape_gore_cotizaciones_app(
             # Apply filters
             monto = None  # MDD cotizaciones don't show monto in listing
             descripcion = None
+            documentos: list[dict] = []
             if href and "/solicitud/" in href:
-                descripcion = await _leer_detalle(client, href)
+                descripcion = await _leer_detalle(client, href, documentos)
                 await asyncio.sleep(0.5)
             if not _apply_filters(entidad, objeto, monto, region, filters,
                                   detalle=descripcion or ""):
@@ -928,6 +1011,19 @@ async def _scrape_gore_cotizaciones_app(
             is_new = await refrescar_licitacion(licit)
             if is_new:
                 nuevas.append(licit)
+            try:
+                await _guardar_documentos(client, licit["id"], documentos)
+            except Exception as e:  # noqa: BLE001
+                log.warning("documentos de %s: %s", licit["nomenclatura"], e)
+
+        # Lo que pesa de las solicitudes ya cerradas se suelta aqui mismo.
+        try:
+            from shared.db import purgar_documentos_viejos
+            purgados = await purgar_documentos_viejos()
+            if purgados:
+                log.info("documentos purgados de solicitudes cerradas: %d", purgados)
+        except Exception as e:  # noqa: BLE001
+            log.info("purga de documentos: %s", e)
 
     except Exception as e:  # noqa: BLE001
         errores += 1

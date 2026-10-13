@@ -31,6 +31,7 @@ SI NO SE RECONOCE
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
 from decimal import Decimal
@@ -38,6 +39,8 @@ from itertools import pairwise
 from pathlib import Path
 
 from shared.config import normalizar
+
+log = logging.getLogger("shared.llenar_formatos")
 
 TINTA = (0.05, 0.15, 0.45)        # azul de boligrafo: se ve que es lo llenado
 MAX_BYTES = 10 * 1024 * 1024
@@ -79,6 +82,25 @@ def guardar(propuesta_id: int, tipo: str, contenido: bytes) -> None:
 
 def borrar(propuesta_id: int, tipo: str) -> None:
     ruta(propuesta_id, tipo).unlink(missing_ok=True)
+
+
+async def formato(propuesta_id: int, licitacion_id: str, tipo: str) -> tuple[bytes, str] | None:
+    """El PDF a llenar y su origen: el que subio el usuario manda (es una
+    correccion suya); si no, el que bajo la PC puente del portal de la entidad."""
+    subido = ruta(propuesta_id, tipo)
+    if subido.exists():
+        return subido.read_bytes(), "subido"
+    from shared.db import contenido_documento
+    contenido = await contenido_documento(licitacion_id, tipo)
+    return (bytes(contenido), "portal") if contenido else None
+
+
+async def disponibles(propuesta_id: int, licitacion_id: str) -> dict[str, str | None]:
+    """{tipo: 'subido' | 'portal' | None} para la pantalla de la propuesta."""
+    from shared.db import documentos_de
+    del_portal = {d["tipo"] for d in await documentos_de(licitacion_id) if d["guardado"]}
+    return {t: "subido" if ruta(propuesta_id, t).exists()
+            else ("portal" if t in del_portal else None) for t in TIPOS}
 
 
 # ─── Utilidades comunes ─────────────────────────────────────
@@ -128,6 +150,20 @@ class _Capa:
         self.c.setFillColorRGB(1, 1, 1)
         self.c.rect(x0, self.alto - bottom, x1 - x0, bottom - top, stroke=0, fill=1)
         self.usada = True
+
+    def imagen(self, ruta: str, x_centro: float, base: float, ancho: float, alto: float) -> None:
+        """Una imagen (firma o sello) con su borde inferior en `base`, centrada en x."""
+        from reportlab.lib.utils import ImageReader
+        try:
+            img = ImageReader(ruta)
+            iw, ih = img.getSize()
+            escala = min(ancho / iw, alto / ih)
+            w, h = iw * escala, ih * escala
+            self.c.drawImage(img, x_centro - w / 2, self.alto - base, w, h, mask="auto")
+            self.usada = True
+        except Exception as e:  # noqa: BLE001
+            # Una firma ilegible no impide el documento: queda el espacio para firmar.
+            log.warning("No se pudo estampar %s: %s", ruta, e)
 
     def linea(self, x0, y, x1):
         self.c.setStrokeColorRGB(0, 0, 0)
@@ -245,7 +281,7 @@ def _localizar_tabla(pagina) -> dict:
 
 
 def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condiciones: dict,
-                     total_letras: str, total: Decimal) -> bytes:
+                     total_letras: str, total: Decimal, imagenes: dict | None = None) -> bytes:
     """La SC de la entidad con marca y precios por fila, cabecera y condiciones.
 
     Los items van en el orden de la SC. Si el numero de filas o las cantidades
@@ -318,7 +354,7 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
                 capa.texto(w["x1"] + 5, w["bottom"] - 1.5, str(valor).upper(), 7.5,
                            ancho_max=pag.width - w["x1"] - 50)
 
-        _bloque_postor(capas, paginas, empresa)
+        _bloque_postor(capas, paginas, empresa, imagenes or {})
         return _fundir(contenido, capas)
 
 
@@ -378,7 +414,7 @@ def _partir(texto: str, ancho: float, size: float) -> list[str]:
     return lineas if len(lineas) <= 2 else [lineas[0], " ".join(lineas[1:])]
 
 
-def _bloque_postor(capas: dict, paginas, empresa: dict) -> None:
+def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> None:
     """Datos del postor y linea de firma en el espacio libre de la ultima pagina."""
     ult = len(paginas) - 1
     pag = paginas[ult]
@@ -400,6 +436,11 @@ def _bloque_postor(capas: dict, paginas, empresa: dict) -> None:
             capa.texto(125, y, valor, 8, ancho_max=pag.width - 170)
     y += 95
     centro = pag.width / 2
+    # Como se firma en papel: el sello sobre la linea y la firma encima de el.
+    if imagenes.get("sello"):
+        capa.imagen(imagenes["sello"], centro, y - 1, 200, 80)
+    if imagenes.get("firma"):
+        capa.imagen(imagenes["firma"], centro, y - 6, 120, 62)
     capa.linea(centro - 110, y, centro + 110)
     cargo = (empresa.get("cargo_representante") or "Representante legal").upper()
     for k, (t, neg) in enumerate(((empresa.get("representante_legal") or "", True),
@@ -451,7 +492,7 @@ def _contexto(pagina, tramo: dict, n: int = 40) -> str:
 
 
 def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
-                              dia: str, mes: str) -> bytes:
+                              dia: str, mes: str, imagenes: dict | None = None) -> bytes:
     """La DJ de la entidad con los datos del postor en sus lineas punteadas."""
     with _abrir(contenido) as pdf:
         pag = pdf.pages[0]
@@ -459,7 +500,7 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
         tramos = _tramos_de_puntos(pag)
         if not tramos:
             raise FormatoNoReconocido("La declaración jurada no tiene campos punteados que llenar.")
-        llenados = set()
+        llenados, detectados = set(), set()
         for tr in tramos:
             ctx = _contexto(pag, tr)
             campo = None
@@ -475,15 +516,19 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                 campo = "direccion"
             elif ctx.endswith("interbancaria"):
                 campo = "cci"
+            if campo:
+                detectados.add(campo)
             valor = cci if campo == "cci" else empresa.get(campo) if campo else None
             if not valor or campo in llenados:
-                continue
+                continue   # sin dato: la linea queda para escribirla a mano
             chico = campo == "direccion"
             capa.tapar(tr["x0"] - 0.5, tr["top"] - 0.5, tr["x1"] + 0.5, tr["bottom"] + 0.5)
             capa.texto(tr["x0"] + 2, tr["bottom"] - 1.8, valor, 7.5 if chico else 9,
                        negrita=not chico, ancho_max=tr["x1"] - tr["x0"] - 3)
             llenados.add(campo)
-        if not {"representante_legal", "dni_representante", "ruc"} <= llenados:
+        # Se exige reconocer el FORMATO (que tenga nombre, DNI y RUC), no que la
+        # empresa tenga todos los datos: lo que falte queda en blanco.
+        if not {"representante_legal", "dni_representante", "ruc"} <= detectados:
             raise FormatoNoReconocido(
                 "No reconocimos los campos de la declaración jurada (nombre, DNI, RUC).")
 
@@ -498,4 +543,49 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                            negrita=True, centro=True)
                 capa.texto((barras[0]["x1"] + barras[1]["x0"]) / 2, fecha["bottom"] - 1.5, mes,
                            9, negrita=True, centro=True)
+
+        # Firma y sello sobre la linea de "Firma, nombre y/o sello".
+        imagenes = imagenes or {}
+        rotulo = max((w for w in palabras if normalizar(w["text"]).startswith("firma")),
+                     key=lambda w: w["top"], default=None)
+        if rotulo and (imagenes.get("firma") or imagenes.get("sello")):
+            linea = max((t for t in tramos if t["bottom"] <= rotulo["top"] + 2),
+                        key=lambda t: t["bottom"], default=None)
+            base = (linea["top"] if linea else rotulo["top"]) - 1
+            centro = (linea["x0"] + linea["x1"]) / 2 if linea else pag.width / 2
+            # El hueco que queda sobre la linea hasta el texto de la entidad: la
+            # imagen se encoge a lo que cabe para no tapar la "NOTA" de encima.
+            encima = [w["bottom"] for w in palabras
+                      if w["bottom"] < base - 2 and centro - 110 < w["x0"] < centro + 110]
+            alto = min(80.0, max(28.0, base - (max(encima) if encima else base - 80) - 3))
+            if imagenes.get("sello"):
+                capa.imagen(imagenes["sello"], centro, base, alto * 2.5, alto)
+            if imagenes.get("firma"):
+                capa.imagen(imagenes["firma"], centro, base - 3, alto * 1.6, alto * 0.85)
         return _fundir(contenido, {0: capa})
+
+
+# ─── Lo que llaman la web y el expediente ───────────────────
+
+async def sc_llena(propuesta_id: int, licitacion_id: str, empresa: dict, items: list[dict],
+                   condiciones: dict, imagenes: dict | None = None) -> bytes | None:
+    """La SC de la entidad llena, o None si no hay formato (ni subido ni del portal)."""
+    from shared import cotizacion
+    hallado = await formato(propuesta_id, licitacion_id, "sc")
+    if not hallado:
+        return None
+    suma = cotizacion.total(items)
+    return llenar_solicitud(hallado[0], empresa, items, condiciones,
+                            cotizacion.monto_en_letras(suma), suma, imagenes)
+
+
+async def dj_llena(propuesta_id: int, licitacion_id: str, empresa: dict, cci: str | None,
+                   imagenes: dict | None = None) -> bytes | None:
+    """La DJ de la entidad llena, o None si no hay formato."""
+    from shared import fechas
+    hallado = await formato(propuesta_id, licitacion_id, "dj")
+    if not hallado:
+        return None
+    hoy = fechas.hoy()
+    return llenar_declaracion_jurada(hallado[0], empresa, cci, f"{hoy.day:02d}",
+                                     f"{hoy.month:02d}", imagenes)

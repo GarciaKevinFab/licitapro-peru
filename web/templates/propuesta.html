@@ -77,6 +77,13 @@
 #cotizacion{container-type:inline-size;container-name:cot}
 /* Formatos de la entidad: una fila por documento, con su estado y su subida. */
 .formatos h3{font-size:14px;margin:0 0 4px}
+.envio-portal{border-top:1px solid var(--line-soft);padding-top:14px}
+.envio-portal h3{font-size:14px;margin:0 0 6px}
+.campos-portal{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.campos-portal th{text-align:left;font-weight:600;color:var(--ink-2);padding:5px 8px 5px 0;width:38%;vertical-align:top}
+.campos-portal td{padding:5px 0;vertical-align:top;overflow-wrap:anywhere}
+.campos-portal td:last-child{width:1%;white-space:nowrap;padding-left:8px}
+.campos-portal button{min-height:28px;padding:2px 10px;font-size:12px}
 .fila-formato{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:9px 0;border-top:1px solid var(--line-soft)}
 .fila-formato>span:first-child{min-width:170px;font-weight:600}
 .fila-formato form.fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;min-width:0}
@@ -301,32 +308,49 @@
       </form>
     </details>
 
-    {# Los formatos de la entidad: la SC y la DJ tal como llegaron. Con ellos la
-       descarga sale en SU formato, ya llena; sin ellos, en el nuestro. #}
+    {# Los formatos de la entidad. Los baja solos la PC puente del portal de la
+       entidad (licitacion_documentos); subir a mano queda como plan B, para una
+       entidad que no los publica o un formato que vino mal. #}
     <div class="formatos mt-14">
       <h3>Formatos de la entidad</h3>
-      <p class="ayuda">Sube la solicitud de cotización y la declaración jurada tal como te
-         las mandó la entidad (PDF) y te las devolvemos llenas, con su mismo formato.</p>
       {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada')) %}
       <div class="fila-formato">
         <span>{{ nombre }}</span>
-        {% if formatos and formatos[tipo] %}
-          <span class="pill ok">cargada</span>
+        {% if formatos and formatos[tipo] == 'portal' %}
+          <span class="pill ok">del portal</span>
+        {% elif formatos and formatos[tipo] == 'subido' %}
+          <span class="pill ok">subida por ti</span>
           <form method="post" action="/propuestas/{{ p.id }}/formato/{{ tipo }}/borrar">
             <button type="submit" class="fantasma">Quitar</button>
           </form>
         {% else %}
-          <span class="pill neutro">sin cargar</span>
+          <span class="pill neutro">no publicada</span>
         {% endif %}
+      </div>
+      {% endfor %}
+      {% for d in documentos if d.tipo not in ('sc', 'dj') %}
+      <div class="fila-formato">
+        <span>{{ 'Especificaciones técnicas' if d.tipo == 'eett' else (d.categoria or 'Documento') | capitalize }}</span>
+        <a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.nombre or 'Abrir en el portal' }}</a>
+      </div>
+      {% endfor %}
+      <p class="ayuda">{% if formatos and (formatos.sc or formatos.dj) %}Al descargar salen en el
+         formato de la entidad, ya llenos: solo pones marca y precio de cada ítem.
+         {% else %}Esta entidad no publicó sus formatos en el portal: la cotización sale en el
+         nuestro.{% endif %}</p>
+      <details class="mt-14">
+        <summary>¿Falta un formato o vino mal? Súbelo a mano</summary>
+        {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada')) %}
         <form method="post" action="/propuestas/{{ p.id }}/formato" enctype="multipart/form-data"
-              class="fila" data-cargando="Subiendo…">
+              class="fila fila-formato" data-cargando="Subiendo…">
+          <span>{{ nombre }}</span>
           <input type="hidden" name="tipo" value="{{ tipo }}">
           <input type="file" name="archivo" accept="application/pdf,.pdf" required
                  aria-label="PDF de la {{ nombre | lower }}">
-          <button type="submit" class="sec">{% if formatos and formatos[tipo] %}Reemplazar{% else %}Subir{% endif %}</button>
+          <button type="submit" class="sec">Subir</button>
         </form>
-      </div>
-      {% endfor %}
+        {% endfor %}
+      </details>
     </div>
 
     {% if items %}
@@ -341,7 +365,34 @@
       {% if formatos and formatos.sc %}Sale en la solicitud de la entidad: marca y precios en
          sus columnas, el total en números y en letras, tus datos y las condiciones.
       {% else %}Sale en PDF con la tabla llena, las condiciones, tu RUC, tu domicilio fiscal y
-         tus datos de contacto. Si subes la solicitud de la entidad, sale en su formato.{% endif %}</p>
+         tus datos de contacto.{% endif %}
+      «Con firma escaneada» lleva estampadas tu firma y tu sello, que se suben una sola vez en
+      <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
+
+    {% if portal %}
+    {# El portal pide el envio en su formulario, con reCAPTCHA: eso lo hace el
+       usuario. Aqui se le deja todo listo para copiar y adjuntar. #}
+    <div class="envio-portal mt-14">
+      <h3>Enviar por el portal de la entidad</h3>
+      <ol class="como">
+        <li>Descarga los adjuntos (cotización y DJ firmadas y selladas, y tu constancia del RNP):
+          <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a></li>
+        <li>Abre el formulario de la entidad:
+          <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">Abrir «Enviar cotización»</a></li>
+        <li>Copia cada dato en su casilla:
+          <table class="campos-portal">
+            {% for nombre, valor in portal.campos %}
+            <tr><th>{{ nombre }}</th><td><span>{{ valor or '—' }}</span></td>
+                <td>{% if valor %}<button type="button" class="fantasma" data-copiar="{{ valor }}">Copiar</button>{% endif %}</td></tr>
+            {% endfor %}
+          </table></li>
+        <li>En «Archivos anexos» sube los PDF del ZIP, marca «No soy un robot» y pulsa <b>Guardar</b>.</li>
+      </ol>
+      <p class="ayuda">El último paso lo haces tú: el formulario de la entidad tiene captcha y
+         nosotros no lo saltamos. La ficha técnica de cada producto (catálogo del fabricante)
+         también va por tu cuenta si la piden.</p>
+    </div>
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}
