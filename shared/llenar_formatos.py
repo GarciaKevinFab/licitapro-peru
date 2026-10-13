@@ -414,8 +414,49 @@ def _partir(texto: str, ancho: float, size: float) -> list[str]:
     return lineas if len(lineas) <= 2 else [lineas[0], " ".join(lineas[1:])]
 
 
+def _firma_junto_a_la_entidad(capas: dict, paginas, empresa: dict, imagenes: dict) -> bool:
+    """Firma y sello a la derecha de la firma de la entidad ("Area de Logistica"),
+    a su misma altura: asi se presenta la SC del GOREMAD firmada a mano. False si
+    la SC no tiene esa linea de firma (entonces va el bloque del postor)."""
+    for n in range(len(paginas) - 1, -1, -1):
+        pag = paginas[n]
+        palabras = _palabras(pag)
+        rotulo = next((w for w in palabras if normalizar(w["text"]).startswith("logistica")), None)
+        if not rotulo:
+            continue
+        lineas = [ln for ln in pag.lines if abs(ln["top"] - ln["bottom"]) < 1
+                  and rotulo["top"] - 20 < ln["top"] < rotulo["top"]
+                  and ln["x0"] < rotulo["x1"] and ln["x1"] > rotulo["x0"]]
+        if not lineas:
+            continue
+        linea = lineas[0]
+        y = linea["top"]
+        cx = min(pag.width - 125, linea["x1"] + (pag.width - linea["x1"]) / 2)
+        capa = capas[n]
+        if imagenes.get("sello") or imagenes.get("firma"):
+            if imagenes.get("sello"):
+                capa.imagen(imagenes["sello"], cx, y + 48, 180, 72)
+            if imagenes.get("firma"):
+                capa.imagen(imagenes["firma"], cx, y + 26, 110, 55)
+            return True
+        # Sin imagenes (DNIe o firma a mano): la linea y los datos de quien firma.
+        capa.linea(cx - 90, y, cx + 90)
+        cargo = (empresa.get("cargo_representante") or "Representante legal").upper()
+        for k, (t, neg) in enumerate(((empresa.get("representante_legal") or "", True),
+                                      (f"DNI N° {empresa.get('dni_representante') or ''}", False),
+                                      (cargo, False),
+                                      (empresa.get("razon_social") or "", True))):
+            capa.texto(cx, y + 11 + k * 10, t, 7.5, negrita=neg, centro=True,
+                       ancho_max=200)
+        return True
+    return False
+
+
 def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> None:
-    """Datos del postor y linea de firma en el espacio libre de la ultima pagina."""
+    """Firma del postor: junto a la de la entidad si la SC la tiene; si no, datos
+    del postor y linea de firma en el espacio libre de la ultima pagina."""
+    if _firma_junto_a_la_entidad(capas, paginas, empresa, imagenes):
+        return
     ult = len(paginas) - 1
     pag = paginas[ult]
     cuerpo = [w for w in _palabras(pag) if w["bottom"] < pag.height - 60]
