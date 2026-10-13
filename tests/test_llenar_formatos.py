@@ -126,6 +126,45 @@ def test_la_solicitud_sale_llena_en_su_propio_formato():
     assert "QUISPE MAMANI ROSA ELENA" in _tinta(pdf, 1)
 
 
+def _sc_con_firma_de_la_entidad() -> bytes:
+    """La SC con la pagina 2 del GOREMAD: "Atentamente," y la linea de
+    "Area de Logistica"."""
+    from pypdf import PdfReader, PdfWriter
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    c.showPage()
+    c.setFont("Helvetica", 8)
+    c.drawString(271, _y(150), "Atentamente,")
+    c.line(250, _y(203), 345, _y(203))
+    c.drawString(263, _y(215), "Area de Logística")
+    c.save()
+    base = PdfReader(io.BytesIO(_sc()))
+    extra = PdfReader(io.BytesIO(buf.getvalue())).pages[1]
+    w = PdfWriter()
+    w.add_page(base.pages[0])
+    pagina2 = base.pages[1]
+    pagina2.merge_page(extra)
+    w.add_page(pagina2)
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()
+
+
+def test_la_firma_va_junto_a_la_del_area_de_logistica():
+    """Como se presenta firmada a mano: a la derecha de la firma de la entidad y
+    a su altura, sin un bloque de datos del postor que la SC no pide."""
+    items = _items()
+    pdf = llenar_solicitud(_sc_con_firma_de_la_entidad(), EMPRESA, items, {}, "X",
+                           sum(i["subtotal"] for i in items))
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        p = doc.pages[1]
+        texto = p.extract_text()
+        nombre = next(w for w in p.extract_words() if w["text"] == "QUISPE")
+    assert "DATOS DEL POSTOR" not in texto
+    assert nombre["x0"] > 345                 # a la derecha de la linea de la entidad
+    assert 203 < nombre["top"] < 240          # a su misma altura
+
+
 def test_cada_precio_va_en_la_fila_de_su_item():
     """El total de la fila 2 tiene que estar a la altura del 540.00 de la fila 2."""
     items = _items(precio="1")
