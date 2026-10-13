@@ -40,8 +40,8 @@ async def _traer(aplicar: bool, limite: int | None) -> None:
                 WHERE l.fuente = 'gore_portals' AND l.url LIKE '%/solicitud/%'
                   AND l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
                   AND NOT EXISTS (SELECT 1 FROM licitacion_documentos d
-                                   WHERE d.licitacion_id = l.id AND d.tipo = 'sc'
-                                     AND d.contenido IS NOT NULL)
+                                    JOIN documento_contenidos c ON c.sha256 = d.sha256
+                                   WHERE d.licitacion_id = l.id AND d.tipo = 'sc')
                 ORDER BY l.fecha_cierre""")
     if limite:
         filas = filas[:limite]
