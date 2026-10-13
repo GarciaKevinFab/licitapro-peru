@@ -379,6 +379,29 @@ def test_un_anexo_se_firma_y_se_sella_en_cada_hoja(tmp_path):
     assert sellar_paginas(limpio, {}) is limpio
 
 
+def test_el_sello_no_tapa_lo_que_hay_en_la_esquina(tmp_path):
+    """La ficha RUC lleva el QR de SUNAT abajo a la derecha: el sello sube
+    hasta un hueco libre. En una hoja vacia va a la esquina."""
+    from shared.llenar_formatos import _hueco_para_el_sello, sellar_paginas
+    imagenes = {"firma": _png(tmp_path, "firma.png", "black"),
+                "sello": _png(tmp_path, "sello.png", "blue")}
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    c.drawString(72, _y(100), "Reporte de prueba")
+    c.rect(A4[0] - 150, 40, 110, 110, fill=1)          # un "QR" en la esquina
+    c.drawString(A4[0] - 200, 20, "Central de consultas")  # pie de pagina
+    c.save()
+    with pdfplumber.open(io.BytesIO(buf.getvalue())) as doc:
+        cx, base = _hueco_para_el_sello(doc.pages[0])
+        qr_top = doc.pages[0].rects[0]["top"]
+    assert base < qr_top and abs(cx - (A4[0] - 100)) < 0.01
+    pdf = sellar_paginas(buf.getvalue(), imagenes)
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        pg = doc.pages[0]
+        assert all(im["bottom"] <= qr_top for im in pg.images)   # nada sobre el QR
+        assert "Central de consultas" in pg.extract_text()
+
+
 def test_las_eett_escaneadas_se_achican_para_guardarlas():
     """Un escaneo de varios MB se guarda re-escaneado; uno chico, tal cual."""
     from PIL import Image

@@ -632,13 +632,51 @@ def sellar_paginas(contenido: bytes, imagenes: dict | None) -> bytes:
         capas = {}
         for n, pag in enumerate(pdf.pages):
             capa = _Capa(pag.width, pag.height)
-            cx, base = pag.width - 100, pag.height - 50
+            cx, base = _hueco_para_el_sello(pag)
             if imagenes.get("sello"):
-                capa.imagen(imagenes["sello"], cx, base, 170, 68)
+                capa.imagen(imagenes["sello"], cx, base, SELLO_ANCHO, 68)
             if imagenes.get("firma"):
                 capa.imagen(imagenes["firma"], cx, base - 20, 105, 52)
             capas[n] = capa
     return _fundir(contenido, capas)
+
+
+SELLO_ANCHO, SELLO_ALTO = 170, 90   # sello + firma encima, en puntos
+
+
+def _hueco_para_el_sello(pag) -> tuple[float, float]:
+    """(centro x, base y) del sitio donde el sello tapa lo menos posible.
+
+    Se prefiere abajo a la derecha, como se sella a mano; pero la ficha RUC
+    lleva ahi el codigo QR con el que SUNAT la valida, y un pie de pagina con
+    texto. Cada sitio posible paga por lo que tapa (texto e imagenes, caro;
+    lineas y fondos, barato), por lo que sube y por irse a la izquierda; gana
+    el mas barato. Una pagina escaneada (una sola imagen) paga lo mismo en
+    todas partes: queda en la esquina.
+    """
+    caros, baratos = [], []
+    for k in ("chars", "images", "rects", "curves", "lines"):
+        for o in getattr(pag, k, []):
+            if o["x1"] - o["x0"] >= pag.width * 0.98 and o["bottom"] - o["top"] >= pag.height * 0.98:
+                continue   # un fondo de pagina entera no dice nada
+            (caros if k in ("chars", "images") else baratos).append(
+                (o["x0"], o["top"], o["x1"], o["bottom"]))
+
+    def tapado(cajas, x0, y0, x1, y1):
+        return sum(max(0.0, min(x1, bx1) - max(x0, bx0)) * max(0.0, min(y1, by1) - max(y0, by0))
+                   for bx0, by0, bx1, by1 in cajas)
+
+    abajo = pag.height - 50
+    mejor, coste_mejor = (pag.width - 100, abajo), None
+    for base in range(int(abajo), int(pag.height * 0.4), -10):
+        for lado, cx in (("der", pag.width - 100), ("izq", 100)):
+            x0, x1 = cx - SELLO_ANCHO / 2 - 6, cx + SELLO_ANCHO / 2 + 6
+            y0, y1 = base - SELLO_ALTO - 6, base + 6
+            coste = (3 * tapado(caros, x0, y0, x1, y1) + tapado(baratos, x0, y0, x1, y1)
+                     + 2 * (abajo - base) + (300 if lado == "izq" else 0))
+            if coste_mejor is None or coste < coste_mejor:
+                mejor, coste_mejor = (cx, float(base)), coste
+    return mejor
 
 
 # ─── Lo que llaman la web y el expediente ───────────────────
