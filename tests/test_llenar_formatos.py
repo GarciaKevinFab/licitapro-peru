@@ -359,6 +359,41 @@ async def test_sin_subir_nada_sale_el_formato_que_bajo_el_puente(usuario, empres
 
 @sin_base
 @pytest.mark.asyncio
+async def test_la_misma_dj_se_guarda_una_vez_y_la_purga_no_se_la_quita_a_otra(marca):
+    """El GOREMAD adjunta la misma DJ a cada solicitud: se guarda una sola vez."""
+    import hashlib
+
+    from shared.db import (
+        connection,
+        contenido_documento,
+        guardar_documento,
+        purgar_documentos_viejos,
+    )
+    dj = _dj()
+    sha = hashlib.sha256(dj).hexdigest()
+    vieja, abierta = f"djv_{marca}", f"dja_{marca}"
+    async with connection() as c:
+        for lic, dias in ((vieja, -40), (abierta, 2)):
+            await c.execute(
+                """INSERT INTO licitaciones (id, fuente, tipo, entidad, objeto, fecha_cierre)
+                   VALUES ($1, 'gore_portals', 'cotizacion', 'E', 'O',
+                           NOW() + make_interval(days => $2))""", lic, dias)
+    try:
+        await guardar_documento(vieja, "dj", None, None, f"http://x/{vieja}.pdf", dj)
+        await guardar_documento(abierta, "dj", None, None, f"http://x/{abierta}.pdf", dj)
+        async with connection() as c:
+            assert await c.fetchval(
+                "SELECT COUNT(*) FROM documento_contenidos WHERE sha256=$1", sha) == 1
+        await purgar_documentos_viejos()
+        assert await contenido_documento(vieja, "dj") is None
+        assert await contenido_documento(abierta, "dj") == dj
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones WHERE id = ANY($1::text[])", [vieja, abierta])
+
+
+@sin_base
+@pytest.mark.asyncio
 async def test_la_purga_suelta_los_pdf_de_solicitudes_cerradas_sin_propuesta(marca):
     from shared.db import (
         connection,
