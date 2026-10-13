@@ -244,6 +244,9 @@ def _localizar_tabla(pagina) -> dict:
     c_pu = (pu["x0"] + pu["x1"]) / 2
     c_pt = (pt["x0"] + pt["x1"]) / 2
     cols = {
+        # DESCRIPCION: desde la linea vertical anterior al borde de MARCA.
+        "descripcion": (max(v for v in verticales if v < borde(c_marca - (c_pu - c_marca) / 2) - 5),
+                        borde(c_marca - (c_pu - c_marca) / 2)),
         "marca": (borde(c_marca - (c_pu - c_marca) / 2), borde((c_marca + c_pu) / 2)),
         "pu": (borde((c_marca + c_pu) / 2), borde((c_pu + c_pt) / 2)),
         "pt": (borde((c_pu + c_pt) / 2), borde(c_pt + (c_pt - c_pu) / 2)),
@@ -316,10 +319,17 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
         capas = {i: _Capa(p.width, p.height) for i, p in enumerate(paginas)}
         capa = capas[n]
         cm0, cm1 = tabla["cols"]["marca"]
-        cu0, cu1 = tabla["cols"]["pu"]
+        _, cu1 = tabla["cols"]["pu"]
         _, ct1 = tabla["cols"]["pt"]
+        cd0 = tabla["cols"]["descripcion"]
         for ((top, bottom), _), it in zip(filas, items):
             medio = (top + bottom) / 2
+            # La presentacion ofertada ("x 330 g", "a granel") va al lado de la
+            # descripcion, como se anota a mano; en MARCA solo la marca.
+            presentacion = (it.get("presentacion") or "").strip()
+            if presentacion:
+                capa.texto(cd0[1] - 4, bottom - 4, presentacion, 7, derecha=True,
+                           ancho_max=(cd0[1] - cd0[0]) * 0.6)
             marca = (it.get("marca") or "").strip()
             if marca:
                 partes = _partir(marca, cm1 - cm0 - 4, 7)
@@ -335,8 +345,9 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
                 capa.texto(ct1 - 4, medio + 3, monto(st), 9, derecha=True)
         t0, t1 = tabla["fila_total"]
         capa.texto(ct1 - 4, (t0 + t1) / 2 + 3.5, monto(total), 9.5, negrita=True, derecha=True)
-        capa.texto(tabla["izquierda"] + 4, (t0 + t1) / 2 + 3, f"SON: {total_letras}", 7.5,
-                   negrita=True, ancho_max=cu0 - tabla["izquierda"] - 12)
+        # El importe en letras NO se escribe: el formato del GOREMAD no lo trae y
+        # el usuario pidio respetar el formato tal cual (`total_letras` se
+        # conserva para la cotizacion propia, que si lo lleva).
 
         _cabecera(capas, paginas, n, empresa)
 

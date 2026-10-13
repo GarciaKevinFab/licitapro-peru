@@ -183,7 +183,8 @@ def tabla_items(items: list[dict]) -> Table:
             Paragraph(str(i), cen),
             Paragraph(cantidad_legible(it["cantidad"]), der),
             Paragraph(_e(it.get("unidad")), cen),
-            Paragraph(_e(it["descripcion"]), izq),
+            Paragraph(_e(it["descripcion"]) + (f"<br/><i>{_e(it['presentacion'])}</i>"
+                                               if it.get("presentacion") else ""), izq),
             Paragraph(_e(it.get("marca")), izq),
             Paragraph(precio_legible(pu) if pu is not None else "", der),
             Paragraph(monto(st) if st is not None else "", der),

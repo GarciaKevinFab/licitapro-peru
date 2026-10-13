@@ -289,6 +289,15 @@ async def test_los_items_de_otra_propuesta_no_se_tocan(cliente, usuario, empresa
                 "VALUES ($1, $2, 'iniciado') RETURNING id", lic, empresa)
         await cotizacion.guardar(otra, {ajeno: ("Marca intrusa", Decimal(1))}, {})
         assert (await cotizacion.items_de(mia))[0]["marca"] is None
+        # La presentacion se guarda aparte de la marca y vuelve con el item; la
+        # forma antigua de dos valores (marca, precio) sigue valiendo.
+        propio = (await cotizacion.items_de(mia))[0]["id"]
+        await cotizacion.guardar(mia, {propio: ("Quaker", " x 330 g ", Decimal("5.60"))}, {})
+        it = (await cotizacion.items_de(mia))[0]
+        assert (it["marca"], it["presentacion"], it["precio_unitario"]) == (
+            "Quaker", "x 330 g", Decimal("5.6000"))
+        await cotizacion.guardar(mia, {propio: ("Quaker", Decimal("5.60"))}, {})
+        assert (await cotizacion.items_de(mia))[0]["presentacion"] is None
 
         # Y sembrar dos veces no duplica: la segunda no hace nada.
         assert await cotizacion.sembrar(mia) == 0
