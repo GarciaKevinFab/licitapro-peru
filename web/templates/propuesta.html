@@ -77,6 +77,13 @@
 #cotizacion{container-type:inline-size;container-name:cot}
 /* Formatos de la entidad: una fila por documento, con su estado y su subida. */
 .formatos h3{font-size:14px;margin:0 0 4px}
+.envio-portal{border-top:1px solid var(--line-soft);padding-top:14px}
+.envio-portal h3{font-size:14px;margin:0 0 6px}
+.campos-portal{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.campos-portal th{text-align:left;font-weight:600;color:var(--ink-2);padding:5px 8px 5px 0;width:38%;vertical-align:top}
+.campos-portal td{padding:5px 0;vertical-align:top;overflow-wrap:anywhere}
+.campos-portal td:last-child{width:1%;white-space:nowrap;padding-left:8px}
+.campos-portal button{min-height:28px;padding:2px 10px;font-size:12px}
 .fila-formato{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:9px 0;border-top:1px solid var(--line-soft)}
 .fila-formato>span:first-child{min-width:170px;font-weight:600}
 .fila-formato form.fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;min-width:0}
@@ -361,6 +368,31 @@
          tus datos de contacto.{% endif %}
       «Con firma escaneada» lleva estampadas tu firma y tu sello, que se suben una sola vez en
       <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
+
+    {% if portal %}
+    {# El portal pide el envio en su formulario, con reCAPTCHA: eso lo hace el
+       usuario. Aqui se le deja todo listo para copiar y adjuntar. #}
+    <div class="envio-portal mt-14">
+      <h3>Enviar por el portal de la entidad</h3>
+      <ol class="como">
+        <li>Descarga los adjuntos (cotización y DJ firmadas y selladas, y tu constancia del RNP):
+          <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a></li>
+        <li>Abre el formulario de la entidad:
+          <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">Abrir «Enviar cotización»</a></li>
+        <li>Copia cada dato en su casilla:
+          <table class="campos-portal">
+            {% for nombre, valor in portal.campos %}
+            <tr><th>{{ nombre }}</th><td><span>{{ valor or '—' }}</span></td>
+                <td>{% if valor %}<button type="button" class="fantasma" data-copiar="{{ valor }}">Copiar</button>{% endif %}</td></tr>
+            {% endfor %}
+          </table></li>
+        <li>En «Archivos anexos» sube los PDF del ZIP, marca «No soy un robot» y pulsa <b>Guardar</b>.</li>
+      </ol>
+      <p class="ayuda">El último paso lo haces tú: el formulario de la entidad tiene captcha y
+         nosotros no lo saltamos. La ficha técnica de cada producto (catálogo del fabricante)
+         también va por tu cuenta si la piden.</p>
+    </div>
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}

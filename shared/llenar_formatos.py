@@ -500,7 +500,7 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
         tramos = _tramos_de_puntos(pag)
         if not tramos:
             raise FormatoNoReconocido("La declaración jurada no tiene campos punteados que llenar.")
-        llenados = set()
+        llenados, detectados = set(), set()
         for tr in tramos:
             ctx = _contexto(pag, tr)
             campo = None
@@ -516,15 +516,19 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                 campo = "direccion"
             elif ctx.endswith("interbancaria"):
                 campo = "cci"
+            if campo:
+                detectados.add(campo)
             valor = cci if campo == "cci" else empresa.get(campo) if campo else None
             if not valor or campo in llenados:
-                continue
+                continue   # sin dato: la linea queda para escribirla a mano
             chico = campo == "direccion"
             capa.tapar(tr["x0"] - 0.5, tr["top"] - 0.5, tr["x1"] + 0.5, tr["bottom"] + 0.5)
             capa.texto(tr["x0"] + 2, tr["bottom"] - 1.8, valor, 7.5 if chico else 9,
                        negrita=not chico, ancho_max=tr["x1"] - tr["x0"] - 3)
             llenados.add(campo)
-        if not {"representante_legal", "dni_representante", "ruc"} <= llenados:
+        # Se exige reconocer el FORMATO (que tenga nombre, DNI y RUC), no que la
+        # empresa tenga todos los datos: lo que falte queda en blanco.
+        if not {"representante_legal", "dni_representante", "ruc"} <= detectados:
             raise FormatoNoReconocido(
                 "No reconocimos los campos de la declaración jurada (nombre, DNI, RUC).")
 

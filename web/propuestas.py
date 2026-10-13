@@ -9,8 +9,10 @@ La propiedad se valida SIEMPRE por la empresa de la propuesta, con un JOIN
 contra empresas.usuario_id: una propuesta es del usuario si su empresa lo es.
 No se guarda usuario_id en propuestas a proposito, para que no puedan discrepar.
 """
+import asyncio
 import logging
 import os
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -293,7 +295,12 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
     # `historico_precios` -- que los scrapers llenan en cada corrida -- no lo
     # leia ninguna consulta del producto.
     validacion = await _validacion(propuesta_id)
+    condiciones = await cotizacion.condiciones_de(propuesta_id)
+    async with connection() as conn:
+        empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
     return _plantillas(request).TemplateResponse("propuesta.html", {
+        "portal": _envio_portal(dict(prop), dict(empresa) if empresa else {}, condiciones,
+                                cotizacion.total(items) if items else None),
         "request": request, "usuario": usuario, "p": prop,
         "preguntas": preguntas,
         "pendientes": [q for q in preguntas if not q["respondida"]],
@@ -306,7 +313,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "formatos": await llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"]),
         "documentos": await documentos_de(prop["licitacion_id"]),
         "total_items": cotizacion.total(items),
-        "condiciones": await cotizacion.condiciones_de(propuesta_id),
+        "condiciones": condiciones,
         "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,
         "precio_legible": cotizacion.precio_legible,
         "formato_dj": formato_dj(dict(prop)),
@@ -782,3 +789,89 @@ async def borrar_formato(request: Request, propuesta_id: int, tipo: str):
     if tipo in llenar_formatos.TIPOS:
         llenar_formatos.borrar(propuesta_id, tipo)
     return _volver(propuesta_id, aviso="Formato quitado: se usará el nuestro.")
+
+
+# ─── Envio por el portal de la entidad ───────────────────
+#
+# El formulario "Enviar cotizacion" del portal del GOREMAD lleva reCAPTCHA: el
+# envio lo hace el usuario, a mano, y no se intenta automatizar (seria saltarse
+# un control anti-bot de un sistema del Estado; ademas el VPS no alcanza ese
+# portal). Lo que si se hace es dejarle todo listo: los valores de cada campo
+# para copiar y un ZIP con los adjuntos ya firmados y sellados.
+
+def _envio_portal(prop: dict, empresa: dict, condiciones: dict, total) -> dict | None:
+    url = prop.get("lic_url") or ""
+    if "/solicitud/" not in url or not empresa:
+        return None
+    ruc = empresa.get("ruc") or ""
+    observaciones = "Los precios incluyen I.G.V."
+    if total is not None:
+        observaciones += f" Total de la cotización: S/ {cotizacion.monto(total)}."
+    campos = [
+        ("Tipo de persona", "Jurídica" if ruc.startswith("20") else "Natural"),
+        ("Nro de RUC", ruc),
+        ("Nombres o Razón Social", empresa.get("razon_social") or ""),
+        ("Correo", empresa.get("email") or ""),
+        ("Teléfono", empresa.get("telefono") or ""),
+        ("Dirección", empresa.get("direccion") or ""),
+        ("Plazo de Entrega / Ejecución del Servicio", condiciones.get("plazo_entrega") or ""),
+        ("Validez de la cotización", condiciones.get("validez") or ""),
+        ("Observaciones", observaciones),
+    ]
+    return {"enviar": url.rstrip("/") + "/enviar", "ficha": url, "campos": campos}
+
+
+@router.get("/propuestas/{propuesta_id}/paquete")
+async def paquete_envio(request: Request, propuesta_id: int):
+    """ZIP con lo que pide adjuntar el portal: cotizacion, DJ y constancia del RNP,
+    con la firma y el sello escaneados ya puestos."""
+    import io
+    import zipfile
+
+    from shared.constancia_rnp import ruta_pdf
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if not prop:
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    items = await cotizacion.items_de(propuesta_id)
+    if not items or any(it.get("precio_unitario") is None for it in items):
+        return _volver(propuesta_id, error="Pon precio a todos los ítems antes de armar el envío.")
+    async with connection() as conn:
+        empresa = dict(await conn.fetchrow("SELECT * FROM empresas WHERE id=$1",
+                                           prop["emp_id"]))
+    imagenes = await _imagenes(prop["emp_id"], "escaneada")
+    cci = await kb_get(prop["emp_id"], "financiero", "cci")
+    condiciones = await cotizacion.condiciones_de(propuesta_id)
+    nombre = (prop["nomenclatura"] or f"propuesta-{propuesta_id}").replace("/", "-")
+
+    archivos: list[tuple[str, bytes]] = []
+    try:
+        sc = await llenar_formatos.sc_llena(propuesta_id, prop["licitacion_id"], empresa,
+                                            items, condiciones, imagenes)
+        if sc is None:
+            ruta = await generar_cotizacion(dict(prop), empresa, items, condiciones, cci,
+                                            con_dnie=False)
+            sc = await asyncio.to_thread(Path(ruta).read_bytes)
+        archivos.append((f"01_Cotizacion_{nombre}.pdf", sc))
+        dj = await llenar_formatos.dj_llena(propuesta_id, prop["licitacion_id"], empresa,
+                                            cci, imagenes)
+        if dj is None:
+            ruta = await generar_dj(dict(prop), empresa, cci, False)
+            dj = await asyncio.to_thread(Path(ruta).read_bytes)
+        archivos.append(("02_Declaracion_Jurada.pdf", dj))
+    except llenar_formatos.FormatoNoReconocido as e:
+        return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
+    rnp = ruta_pdf(prop["emp_id"])
+    if rnp.exists():
+        archivos.append(("03_Constancia_RNP.pdf", await asyncio.to_thread(rnp.read_bytes)))
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n, contenido in archivos:
+            z.writestr(n, contenido)
+    destino = _escribir(f"envio-{propuesta_id}.zip", buf.getvalue())
+    return FileResponse(destino, filename=f"Envio_{nombre}.zip", media_type="application/zip")

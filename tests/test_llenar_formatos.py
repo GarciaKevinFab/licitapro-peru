@@ -379,3 +379,59 @@ async def test_la_purga_suelta_los_pdf_de_solicitudes_cerradas_sin_propuesta(mar
     finally:
         async with connection() as c:
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+# ─── Envio por el portal: datos para copiar y ZIP de adjuntos ─
+
+@sin_base
+@pytest.mark.asyncio
+async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
+        usuario, empresa, cliente, marca, tmp_path, monkeypatch):
+    import zipfile
+
+    from shared import constancia_rnp, llenar_formatos
+    from shared.db import connection, guardar_documento
+
+    monkeypatch.setattr(llenar_formatos, "DIR", tmp_path / "formatos")
+    monkeypatch.setattr(constancia_rnp, "DIR_PDF", tmp_path / "rnp")
+    pid, lic = await _propuesta_con_items(empresa, marca)
+    try:
+        async with connection() as c:
+            await c.execute("UPDATE licitaciones SET url=$2 WHERE id=$1", lic,
+                            "http://portal.ejemplo/solicitud/77")
+        await guardar_documento(lic, "sc", None, None,
+                                "http://portal.ejemplo/solicitud/77/descargar", _sc())
+        await guardar_documento(lic, "dj", None, None, "http://portal.ejemplo/storage/dj.pdf",
+                                _dj())
+        constancia_rnp.guardar_pdf(empresa, b"%PDF-1.4 constancia")
+        await _entrar(cliente, usuario)
+
+        pagina = (await cliente.get(f"/propuestas/{pid}")).text
+        assert "http://portal.ejemplo/solicitud/77/enviar" in pagina
+        assert 'data-copiar="Jurídica"' in pagina   # el RUC de prueba empieza por 20
+
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 200, r.headers.get("location")
+        assert r.headers["content-type"] == "application/zip"
+        zipeado = zipfile.ZipFile(io.BytesIO(r.content))
+        nombres = zipeado.namelist()
+        assert [n[:3] for n in nombres] == ["01_", "02_", "03_"]
+        assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
+    finally:
+        await _limpiar(pid, lic)
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_sin_precios_no_se_arma_el_paquete(usuario, empresa, cliente, marca):
+    from shared.db import connection
+    pid, lic = await _propuesta_con_items(empresa, marca)
+    try:
+        async with connection() as c:
+            await c.execute(
+                "UPDATE propuesta_items SET precio_unitario=NULL WHERE propuesta_id=$1", pid)
+        await _entrar(cliente, usuario)
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303 and "error=" in r.headers["location"]
+    finally:
+        await _limpiar(pid, lic)

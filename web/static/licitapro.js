@@ -407,3 +407,32 @@
     if (form) recalcular(form);
   });
 })();
+
+/* COPIAR AL PORTAPAPELES
+ *
+ * Boton con data-copiar="valor": lo copia y dice "Copiado" un momento. Lo usa
+ * el panel de envio por el portal de la entidad, donde el usuario pega cada
+ * dato en un formulario ajeno.
+ */
+(function () {
+  document.addEventListener("click", function (ev) {
+    var boton = ev.target.closest("[data-copiar]");
+    if (!boton) return;
+    var texto = boton.getAttribute("data-copiar");
+    var listo = function () {
+      var antes = boton.textContent;
+      boton.textContent = "Copiado";
+      setTimeout(function () { boton.textContent = antes; }, 1400);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(texto).then(listo, function () {});
+    } else {
+      var area = document.createElement("textarea");
+      area.value = texto;
+      document.body.appendChild(area);
+      area.select();
+      try { document.execCommand("copy"); listo(); } catch (e) { /* sin portapapeles */ }
+      document.body.removeChild(area);
+    }
+  });
+})();

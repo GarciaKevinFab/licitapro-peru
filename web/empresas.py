@@ -226,6 +226,10 @@ async def leer_documentos(request: Request, empresa_id: int = Form(0),
                     f"{ruc_doc}. No se usó."))
             for c in _CAMPOS_RNP:
                 pre[c] = rnp.get(c)
+            if empresa_id:
+                # Para adjuntarla en las cotizaciones que la piden.
+                from shared.constancia_rnp import guardar_pdf
+                await asyncio.to_thread(guardar_pdf, empresa_id, bytes_rnp)
             leidos.append("la constancia del RNP")
             if rnp.get("indeterminada"):
                 notas.append("El RNP es de vigencia indeterminada: no vence, así que "
