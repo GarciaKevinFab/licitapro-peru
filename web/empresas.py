@@ -213,6 +213,10 @@ async def leer_documentos(request: Request, empresa_id: int = Form(0),
             # para empezar, pero si la empresa ya tiene los suyos no se pisan.
             if datos.get("rubros") and not actual.get("rubros"):
                 pre["rubros"] = datos["rubros"]
+            if empresa_id:
+                # Para adjuntarla en las cotizaciones, firmada y sellada.
+                from shared.ficha_ruc import guardar_pdf as guardar_ficha
+                await asyncio.to_thread(guardar_ficha, empresa_id, bytes_ficha)
             leidos.append("la ficha RUC")
             if datos.get("estado") or datos.get("condicion"):
                 notas.append(f"SUNAT: {datos.get('estado') or '?'} · {datos.get('condicion') or '?'}.")

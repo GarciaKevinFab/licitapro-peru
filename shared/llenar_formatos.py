@@ -57,7 +57,8 @@ class FormatoNoReconocido(ValueError):
 # lee el generador de esta misma propuesta.
 
 DIR = Path(os.getenv("FORMATOS_DIR", "data/formatos"))
-TIPOS = {"sc": "Solicitud de cotización", "dj": "Declaración jurada"}
+TIPOS = {"sc": "Solicitud de cotización", "dj": "Declaración jurada",
+         "eett": "Especificaciones técnicas"}
 
 
 def ruta(propuesta_id: int, tipo: str) -> Path:
@@ -617,6 +618,29 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
         return _fundir(contenido, {0: capa})
 
 
+def sellar_paginas(contenido: bytes, imagenes: dict | None) -> bytes:
+    """Firma y sello en la esquina inferior derecha de CADA pagina.
+
+    Asi presenta el postor lo que adjunta a la cotizacion -- ficha RUC,
+    constancia del RNP, EETT de la entidad --: cada hoja firmada y sellada,
+    como se lo piden en papel. Sin imagenes (firma con DNIe) vuelve tal cual.
+    """
+    imagenes = imagenes or {}
+    if not (imagenes.get("sello") or imagenes.get("firma")):
+        return contenido
+    with _abrir(contenido) as pdf:
+        capas = {}
+        for n, pag in enumerate(pdf.pages):
+            capa = _Capa(pag.width, pag.height)
+            cx, base = pag.width - 100, pag.height - 50
+            if imagenes.get("sello"):
+                capa.imagen(imagenes["sello"], cx, base, 170, 68)
+            if imagenes.get("firma"):
+                capa.imagen(imagenes["firma"], cx, base - 20, 105, 52)
+            capas[n] = capa
+    return _fundir(contenido, capas)
+
+
 # ─── Lo que llaman la web y el expediente ───────────────────
 
 async def sc_llena(propuesta_id: int, licitacion_id: str, empresa: dict, items: list[dict],
@@ -641,3 +665,12 @@ async def dj_llena(propuesta_id: int, licitacion_id: str, empresa: dict, cci: st
     hoy = fechas.hoy()
     return llenar_declaracion_jurada(hallado[0], empresa, cci, f"{hoy.day:02d}",
                                      f"{hoy.month:02d}", imagenes)
+
+
+async def eett_selladas(propuesta_id: int, licitacion_id: str,
+                        imagenes: dict | None = None) -> bytes | None:
+    """Las EETT de la entidad con firma y sello en cada hoja, o None si no hay."""
+    hallado = await formato(propuesta_id, licitacion_id, "eett")
+    if not hallado:
+        return None
+    return sellar_paginas(hallado[0], imagenes)

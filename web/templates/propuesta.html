@@ -318,7 +318,8 @@
        entidad que no los publica o un formato que vino mal. #}
     <div class="formatos mt-14">
       <h3>Formatos de la entidad</h3>
-      {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada')) %}
+      {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada'),
+                              ('eett', 'Especificaciones técnicas')) %}
       <div class="fila-formato">
         <span>{{ nombre }}</span>
         {% if formatos and formatos[tipo] == 'portal' %}
@@ -333,7 +334,7 @@
         {% endif %}
       </div>
       {% endfor %}
-      {% for d in documentos if d.tipo not in ('sc', 'dj') %}
+      {% for d in documentos if d.tipo not in ('sc', 'dj') and not (d.tipo == 'eett' and d.guardado) %}
       <div class="fila-formato">
         <span>{{ 'Especificaciones técnicas' if d.tipo == 'eett' else (d.categoria or 'Documento') | capitalize }}</span>
         <a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.nombre or 'Abrir en el portal' }}</a>
@@ -345,7 +346,8 @@
          nuestro.{% endif %}</p>
       <details class="mt-14">
         <summary>¿Falta un formato o vino mal? Súbelo a mano</summary>
-        {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada')) %}
+        {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada'),
+                                ('eett', 'Especificaciones técnicas')) %}
         <form method="post" action="/propuestas/{{ p.id }}/formato" enctype="multipart/form-data"
               class="fila fila-formato" data-cargando="Subiendo…">
           <span>{{ nombre }}</span>
@@ -380,8 +382,22 @@
     <div class="envio-portal mt-14">
       <h3>Enviar por el portal de la entidad</h3>
       <ol class="como">
-        <li>Descarga los adjuntos (cotización y DJ firmadas y selladas, y tu constancia del RNP):
-          <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a></li>
+        <li>Descarga los adjuntos, con la firma y el sello en cada hoja, como se mandan en papel:
+          <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a>
+          <ul class="adjuntos">
+            <li>01 Cotización y 02 Declaración jurada, llenas en el formato de la entidad.</li>
+            <li>03 Ficha RUC:
+              {% if anexos.ficha %}<a href="/propuestas/{{ p.id }}/anexo/ficha">lista</a>
+              {% else %}<span class="pill neutro">falta</span>
+                <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
+            <li>04 Constancia del RNP:
+              {% if anexos.rnp %}<a href="/propuestas/{{ p.id }}/anexo/rnp">lista</a>
+              {% else %}<span class="pill neutro">falta</span>
+                <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
+            <li>05 Especificaciones técnicas de la entidad:
+              {% if formatos and formatos.eett %}<a href="/propuestas/{{ p.id }}/anexo/eett">listas</a>
+              {% else %}<span class="pill neutro">no publicadas aún</span>{% endif %}</li>
+          </ul></li>
         <li>Abre el formulario de la entidad:
           <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">Abrir «Enviar cotización»</a></li>
         <li>Copia cada dato en su casilla:
