@@ -1,4 +1,4 @@
-"""Baja la SC y la DJ de las cotizaciones de GOREMAD que aun estan abiertas.
+"""Baja la SC, la DJ y las EETT de las cotizaciones de GOREMAD que aun estan abiertas.
 
 QUE ARREGLA
 
@@ -6,7 +6,7 @@ QUE ARREGLA
   documentos de la ficha (licitacion_documentos), y la web llena la SC y la DJ
   de la entidad sin que el usuario suba nada. Las solicitudes cosechadas antes
   no los tienen: esto los trae. Solo toca las que siguen abiertas -- para una
-  cerrada ya no se cotiza -- y salta las que ya tienen su SC guardada.
+  cerrada ya no se cotiza -- y salta las que ya tienen su SC y sus EETT.
 
 DONDE SE CORRE
 
@@ -39,13 +39,13 @@ async def _traer(aplicar: bool, limite: int | None) -> None:
             """SELECT l.id, l.nomenclatura, l.url FROM licitaciones l
                 WHERE l.fuente = 'gore_portals' AND l.url LIKE '%/solicitud/%'
                   AND l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima')
-                  AND NOT EXISTS (SELECT 1 FROM licitacion_documentos d
-                                    JOIN documento_contenidos c ON c.sha256 = d.sha256
-                                   WHERE d.licitacion_id = l.id AND d.tipo = 'sc')
+                  AND (SELECT count(DISTINCT d.tipo) FROM licitacion_documentos d
+                          JOIN documento_contenidos c ON c.sha256 = d.sha256
+                         WHERE d.licitacion_id = l.id AND d.tipo IN ('sc', 'eett')) < 2
                 ORDER BY l.fecha_cierre""")
     if limite:
         filas = filas[:limite]
-    print(f"{len(filas)} solicitudes abiertas sin su SC guardada")
+    print(f"{len(filas)} solicitudes abiertas sin su SC o sus EETT guardadas")
     if not aplicar:
         for f in filas[:10]:
             print(f"  {f['nomenclatura']}")

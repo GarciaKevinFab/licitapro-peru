@@ -311,6 +311,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "precio": None if (items or menor) else await _precio_de_mercado(prop),
         "items": items, "menor": menor,
         "formatos": await llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"]),
+        "anexos": _anexos_de(prop["emp_id"]),
         "documentos": await documentos_de(prop["licitacion_id"]),
         "total_items": cotizacion.total(items),
         "condiciones": condiciones,
@@ -822,14 +823,65 @@ def _envio_portal(prop: dict, empresa: dict, condiciones: dict, total) -> dict |
     return {"enviar": url.rstrip("/") + "/enviar", "ficha": url, "campos": campos}
 
 
+def _anexos_de(empresa_id: int) -> dict[str, bool]:
+    """Que PDF de la empresa hay para adjuntar: la ficha RUC y el RNP se guardan
+    cuando el usuario los sube para rellenar la empresa."""
+    from shared import constancia_rnp, ficha_ruc
+    return {"ficha": ficha_ruc.ruta_pdf(empresa_id).exists(),
+            "rnp": constancia_rnp.ruta_pdf(empresa_id).exists()}
+
+
+async def _anexo(prop, tipo: str, imagenes: dict) -> bytes | None:
+    """Un adjunto de la cotizacion, firmado y sellado en cada hoja."""
+    from shared import constancia_rnp, ficha_ruc
+    if tipo == "eett":
+        return await llenar_formatos.eett_selladas(prop["id"], prop["licitacion_id"], imagenes)
+    ruta = (ficha_ruc if tipo == "ficha" else constancia_rnp).ruta_pdf(prop["emp_id"])
+    if not ruta.exists():
+        return None
+    contenido = await asyncio.to_thread(ruta.read_bytes)
+    try:
+        return await asyncio.to_thread(llenar_formatos.sellar_paginas, contenido, imagenes)
+    except llenar_formatos.FormatoNoReconocido as e:
+        nombre = "la ficha RUC" if tipo == "ficha" else "la constancia del RNP"
+        raise llenar_formatos.FormatoNoReconocido(
+            f"{nombre} que subiste no se pudo sellar ({e}). Vuelve a subirla en la empresa.") from e
+
+
+_ANEXOS = {"ficha": "03_Ficha_RUC.pdf", "rnp": "04_Constancia_RNP.pdf",
+           "eett": "05_Especificaciones_Tecnicas.pdf"}
+
+
+@router.get("/propuestas/{propuesta_id}/anexo/{tipo}")
+async def descargar_anexo(request: Request, propuesta_id: int, tipo: str):
+    """La ficha RUC, la constancia del RNP o las EETT, selladas en cada hoja."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if tipo not in _ANEXOS:
+        return _volver(propuesta_id, error="Ese adjunto no existe.")
+    prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if not prop:
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    try:
+        contenido = await _anexo(prop, tipo, await _imagenes(prop["emp_id"], "escaneada"))
+    except llenar_formatos.FormatoNoReconocido as e:
+        return _volver(propuesta_id, error=f"No pudimos sellar el adjunto: {e}")
+    if contenido is None:
+        return _volver(propuesta_id, error="Ese adjunto todavía no está: súbelo en la empresa "
+                       "o espera a que el puente baje las EETT.")
+    destino = _escribir(f"anexo-{propuesta_id}-{tipo}.pdf", contenido)
+    return FileResponse(destino, filename=_ANEXOS[tipo], media_type="application/pdf")
+
+
 @router.get("/propuestas/{propuesta_id}/paquete")
 async def paquete_envio(request: Request, propuesta_id: int):
-    """ZIP con lo que pide adjuntar el portal: cotizacion, DJ y constancia del RNP,
-    con la firma y el sello escaneados ya puestos."""
+    """ZIP con todo lo que se adjunta en el portal, como se manda en papel:
+    cotizacion y DJ llenas, mas ficha RUC, constancia del RNP y EETT de la
+    entidad, todo con la firma y el sello escaneados en cada hoja."""
     import io
     import zipfile
-
-    from shared.constancia_rnp import ruta_pdf
 
     usuario = await usuario_actual(request)
     if not usuario:
@@ -864,11 +916,12 @@ async def paquete_envio(request: Request, propuesta_id: int):
             ruta = await generar_dj(dict(prop), empresa, cci, False)
             dj = await asyncio.to_thread(Path(ruta).read_bytes)
         archivos.append(("02_Declaracion_Jurada.pdf", dj))
+        for tipo, nombre_pdf in _ANEXOS.items():
+            contenido = await _anexo(prop, tipo, imagenes)
+            if contenido is not None:
+                archivos.append((nombre_pdf, contenido))
     except llenar_formatos.FormatoNoReconocido as e:
         return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
-    rnp = ruta_pdf(prop["emp_id"])
-    if rnp.exists():
-        archivos.append(("03_Constancia_RNP.pdf", await asyncio.to_thread(rnp.read_bytes)))
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

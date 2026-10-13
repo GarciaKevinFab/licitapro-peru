@@ -7,6 +7,7 @@ tinta azul: el texto original queda debajo y el extractor lo mezcla.
 """
 import io
 from decimal import Decimal
+from typing import ClassVar
 
 import pdfplumber
 import pytest
@@ -349,6 +350,102 @@ def _png(tmp_path, nombre, color):
     return str(ruta)
 
 
+def _dos_paginas(texto: str = "ANEXO") -> bytes:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    for n in (1, 2):
+        c.drawString(72, _y(100), f"{texto} pagina {n}")
+        c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_un_anexo_se_firma_y_se_sella_en_cada_hoja(tmp_path):
+    """La ficha RUC, el RNP y las EETT se mandan con firma y sello en cada
+    pagina, como en papel. Sin imagenes el PDF vuelve intacto (para el DNIe)."""
+    from shared.llenar_formatos import sellar_paginas
+    imagenes = {"firma": _png(tmp_path, "firma.png", "black"),
+                "sello": _png(tmp_path, "sello.png", "blue")}
+    sellado = sellar_paginas(_dos_paginas(), imagenes)
+    with pdfplumber.open(io.BytesIO(sellado)) as doc:
+        assert len(doc.pages) == 2
+        for pg in doc.pages:
+            assert len(pg.images) == 2
+            # En la esquina inferior derecha, donde cabe sin tapar el texto.
+            assert all(im["x0"] > pg.width / 2 and im["top"] > pg.height * 0.8
+                       for im in pg.images)
+        assert "ANEXO pagina 2" in doc.pages[1].extract_text()
+    limpio = _dos_paginas()
+    assert sellar_paginas(limpio, {}) is limpio
+
+
+def test_las_eett_escaneadas_se_achican_para_guardarlas():
+    """Un escaneo de varios MB se guarda re-escaneado; uno chico, tal cual."""
+    from PIL import Image
+
+    from shared.escaneos import comprimir
+    chico = _dos_paginas()
+    assert comprimir(chico) == chico
+    import random
+    random.seed(1)
+    paginas = [Image.frombytes("RGB", (1240, 1754), random.randbytes(1240 * 1754 * 3))
+               for _ in range(3)]
+    buf = io.BytesIO()
+    paginas[0].save(buf, "PDF", save_all=True, append_images=paginas[1:], resolution=150)
+    grande = buf.getvalue()
+    assert len(grande) > 2_500_000
+    chico = comprimir(grande)
+    assert len(chico) < len(grande) / 3
+    with pdfplumber.open(io.BytesIO(chico)) as doc:
+        assert len(doc.pages) == 3
+        assert abs(doc.pages[0].width - A4[0]) < 2 and abs(doc.pages[0].height - A4[1]) < 2
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_el_puente_baja_las_eett_y_las_guarda_achicadas(marca, monkeypatch):
+    from radar_bot.scrapers import orchestrator
+    from shared import escaneos
+    from shared.db import connection, contenido_documento
+
+    class Respuesta:
+        def __init__(self, contenido):
+            self.status_code, self.content = 200, contenido
+
+    class Cliente:
+        pedidas: ClassVar[list] = []
+
+        async def get(self, url):
+            self.pedidas.append(url)
+            return Respuesta(_dos_paginas("EETT" if "eett" in url else "SC"))
+
+    monkeypatch.setattr(escaneos, "OBJETIVO", 10)   # todo pesa de mas: se comprime
+    lic = f"prueba_{marca}"
+    async with connection() as c:
+        await c.execute(
+            """INSERT INTO licitaciones (id, fuente, tipo, nomenclatura, entidad, objeto)
+               VALUES ($1, 'gore_portals', 'cotizacion', $2, 'E', 'O')""", lic, f"COT-{marca}")
+    try:
+        docs = [{"tipo": "sc", "categoria": None, "nombre": "sc.pdf",
+                 "url": "http://portal.ejemplo/solicitud/1/descargar"},
+                {"tipo": "eett", "categoria": None, "nombre": "3404.pdf",
+                 "url": "http://portal.ejemplo/storage/eett.pdf"},
+                {"tipo": "otro", "categoria": None, "nombre": "x.pdf",
+                 "url": "http://portal.ejemplo/storage/otro.pdf"}]
+        await orchestrator._guardar_documentos(Cliente(), lic, docs)
+        assert len(Cliente.pedidas) == 2      # "otro" queda solo con su enlace
+        eett = await contenido_documento(lic, "eett")
+        assert eett and eett.startswith(b"%PDF")
+        with pdfplumber.open(io.BytesIO(bytes(eett))) as doc:
+            assert len(doc.pages) == 2 and doc.pages[0].images   # re-escaneada
+        # La segunda pasada no vuelve a bajar lo que ya esta.
+        await orchestrator._guardar_documentos(Cliente(), lic, docs)
+        assert len(Cliente.pedidas) == 2
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
 def _dj_con_firma() -> bytes:
     from pypdf import PdfReader, PdfWriter
     buf = io.BytesIO()
@@ -402,7 +499,8 @@ async def test_sin_subir_nada_sale_el_formato_que_bajo_el_puente(usuario, empres
         assert "del portal" in pagina.text and "3404.pdf" in pagina.text
         r = await cliente.get(f"/propuestas/{pid}/cotizacion")
         assert r.status_code == 200 and "MARCA 2" in _tinta(r.content)
-        assert await llenar_formatos.disponibles(pid, lic) == {"sc": "portal", "dj": None}
+        assert await llenar_formatos.disponibles(pid, lic) == {"sc": "portal", "dj": None,
+                                                                "eett": None}
         # Lo subido a mano manda sobre lo del portal.
         llenar_formatos.guardar(pid, "sc", _sc())
         assert (await llenar_formatos.formato(pid, lic, "sc"))[1] == "subido"
@@ -477,7 +575,7 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         usuario, empresa, cliente, marca, tmp_path, monkeypatch):
     import zipfile
 
-    from shared import constancia_rnp, llenar_formatos
+    from shared import constancia_rnp, ficha_ruc, llenar_formatos
     from shared.db import connection, guardar_documento
 
     monkeypatch.setattr(llenar_formatos, "DIR", tmp_path / "formatos")
@@ -491,7 +589,7 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
                                 "http://portal.ejemplo/solicitud/77/descargar", _sc())
         await guardar_documento(lic, "dj", None, None, "http://portal.ejemplo/storage/dj.pdf",
                                 _dj())
-        constancia_rnp.guardar_pdf(empresa, b"%PDF-1.4 constancia")
+        constancia_rnp.guardar_pdf(empresa, _dos_paginas("RNP"))
         await _entrar(cliente, usuario)
 
         pagina = (await cliente.get(f"/propuestas/{pid}")).text
@@ -503,8 +601,32 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         assert r.headers["content-type"] == "application/zip"
         zipeado = zipfile.ZipFile(io.BytesIO(r.content))
         nombres = zipeado.namelist()
-        assert [n[:3] for n in nombres] == ["01_", "02_", "03_"]
+        # Sin ficha RUC ni EETT guardadas, van solo los tres que hay.
+        assert [n[:3] for n in nombres] == ["01_", "02_", "04_"]
         assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
+        assert "falta" in pagina and f"/empresas/{empresa}/editar" in pagina
+
+        # Con la ficha RUC subida y las EETT bajadas por el puente, van las cinco,
+        # y los adjuntos llevan firma y sello en CADA hoja.
+        monkeypatch.setattr(ficha_ruc, "DIR_PDF", tmp_path / "ficha")
+        ficha_ruc.guardar_pdf(empresa, _dos_paginas())
+        await guardar_documento(lic, "eett", "ESPECIFICACIONES TECNICAS", "3404.pdf",
+                                "http://portal.ejemplo/storage/eett.pdf", _dos_paginas())
+        async with connection() as c:
+            await c.execute(
+                "UPDATE empresas SET firma_representante_path=$2, sello_empresa_path=$3 "
+                "WHERE id=$1", empresa, _png(tmp_path, "f.png", "black"),
+                _png(tmp_path, "s.png", "blue"))
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 200, r.headers.get("location")
+        nombres = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+        assert [n[:3] for n in nombres] == ["01_", "02_", "03_", "04_", "05_"]
+        r = await cliente.get(f"/propuestas/{pid}/anexo/eett")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+        with pdfplumber.open(io.BytesIO(r.content)) as doc:
+            assert [len(pg.images) for pg in doc.pages] == [2, 2]
+        pagina = (await cliente.get(f"/propuestas/{pid}")).text
+        assert f"/propuestas/{pid}/anexo/ficha" in pagina and "listas" in pagina
     finally:
         await _limpiar(pid, lic)
 

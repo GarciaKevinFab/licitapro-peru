@@ -808,10 +808,11 @@ def _detalle_cotizacion(html: str) -> str | None:
 #   descargar), la declaracion jurada que exige la entidad y las EETT. La web
 #   llena la SC y la DJ sobre esos mismos PDF (shared/llenar_formatos.py), y el
 #   VPS no alcanza este portal: los baja aqui la PC puente y quedan en
-#   licitacion_documentos. Las EETT solo con su enlace: son escaneos de varios
-#   MB que el usuario abre en el portal.
-_DOC_MAX_BYTES = 3 * 1024 * 1024
-_DOC_GUARDAR = {"sc", "dj"}
+#   licitacion_documentos. Las EETT tambien: el postor las adjunta firmadas y
+#   selladas en cada hoja. Son escaneos de varios MB, asi que se guardan
+#   re-escaneadas (shared/escaneos.py); lo que pasa del tope ni se intenta.
+_DOC_MAX_BYTES = {"sc": 3 * 1024 * 1024, "dj": 3 * 1024 * 1024, "eett": 25 * 1024 * 1024}
+_DOC_GUARDAR = set(_DOC_MAX_BYTES)
 
 
 def _tipo_documento(categoria: str, nombre: str, url: str) -> str:
@@ -863,8 +864,9 @@ async def _guardar_documentos(client: httpx.AsyncClient, licitacion_id: str,
             try:
                 resp = await client.get(d["url"])
                 cuerpo = resp.content
-                if resp.status_code == 200 and cuerpo.startswith(b"%PDF")                         and len(cuerpo) <= _DOC_MAX_BYTES:
-                    contenido = cuerpo
+                if resp.status_code == 200 and cuerpo.startswith(b"%PDF")                         and len(cuerpo) <= _DOC_MAX_BYTES[d["tipo"]]:
+                    from shared.escaneos import comprimir
+                    contenido = await asyncio.to_thread(comprimir, cuerpo)
                 else:
                     log.info("documento %s: HTTP %s, %d bytes", _corto(d["url"]),
                              resp.status_code, len(cuerpo))

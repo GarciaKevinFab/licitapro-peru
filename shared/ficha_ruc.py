@@ -23,7 +23,9 @@ NO SE GUARDA SOLO
 from __future__ import annotations
 
 import io
+import os
 import re
+from pathlib import Path
 
 from shared.config import DEPARTAMENTOS, normalizar
 
@@ -199,3 +201,22 @@ def leer_ficha_ruc(contenido: bytes) -> dict:
     except Exception as e:
         raise FichaInvalida("No se pudo leer el PDF. ¿Está dañado o protegido?") from e
     return parsear_texto(texto)
+
+
+# ─── El PDF, para adjuntarlo ────────────────────────────────
+#
+# Las cotizaciones del GOREMAD se mandan con la ficha RUC, firmada y sellada
+# en cada hoja. Cuando el usuario la sube para rellenar la empresa se guarda
+# tambien el archivo, como la constancia del RNP (shared/constancia_rnp.py).
+
+DIR_PDF = Path(os.getenv("FICHA_RUC_DIR", "data/ficha_ruc"))
+
+
+def ruta_pdf(empresa_id: int) -> Path:
+    return DIR_PDF / f"empresa_{int(empresa_id)}.pdf"
+
+
+def guardar_pdf(empresa_id: int, contenido: bytes) -> None:
+    destino = ruta_pdf(empresa_id)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(contenido)
