@@ -38,17 +38,28 @@ async def cerrar_las_ya_resueltas(propuesta_id: int) -> int:
     conocimiento --, la pregunta seguia pidiendolo para siempre: la
     propuesta 1 del Minimarket pedia el CCI que la DJ ya imprimia.
 
-    Devuelve cuantas cerro. La respuesta registrada es el dato conocido.
+    Devuelve cuantas cerro o retiro. La respuesta registrada es el dato
+    conocido.
     """
     del_empresa = {clave: campo for _, clave, _, campo in CAMPOS_EMPRESA if campo}
     async with connection() as conn:
+        # Lo que una contratacion menor no exige no se pide (ver
+        # generar_preguntas_propuesta). Las preguntas creadas antes de esa
+        # regla se retiran: no hay dato que responder.
+        tipo = await conn.fetchval(
+            """SELECT l.tipo FROM propuestas p JOIN licitaciones l ON l.id = p.licitacion_id
+                WHERE p.id=$1""", propuesta_id)
+        retiradas = 0
+        if es_cotizacion_menor(tipo):
+            retiradas = len(await conn.fetch(
+                """DELETE FROM preguntas WHERE propuesta_id=$1 AND respondida=FALSE
+                       AND kb_clave = ANY($2::text[]) RETURNING id""",
+                propuesta_id, sorted(NO_EXIGIDOS_EN_MENORES)))
         abiertas = await conn.fetch(
             """SELECT id, empresa_id, kb_categoria, kb_clave FROM preguntas
                 WHERE propuesta_id=$1 AND respondida=FALSE
                   AND kb_categoria IS NOT NULL AND kb_clave IS NOT NULL""", propuesta_id)
-    if not abiertas:
-        return 0
-    empresa = await get_empresa(abiertas[0]["empresa_id"])
+    empresa = await get_empresa(abiertas[0]["empresa_id"]) if abiertas else None
     cerradas = 0
     for preg in abiertas:
         valor = await kb_get(preg["empresa_id"], preg["kb_categoria"], preg["kb_clave"])
@@ -64,7 +75,7 @@ async def cerrar_las_ya_resueltas(propuesta_id: int) -> int:
                 """UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW(),
                           guardada_en_kb=TRUE WHERE id=$1""", preg["id"], valor)
         cerradas += 1
-    if cerradas:
+    if cerradas or retiradas:
         async with connection() as conn:
             pendientes = await conn.fetchval(
                 "SELECT COUNT(*) FROM preguntas WHERE propuesta_id=$1 AND respondida=FALSE",
@@ -74,7 +85,7 @@ async def cerrar_las_ya_resueltas(propuesta_id: int) -> int:
                           estado = CASE WHEN $2 = 0 AND estado = 'preguntas_pendientes'
                                         THEN 'listo' ELSE estado END
                     WHERE id=$1""", propuesta_id, pendientes)
-    return cerradas
+    return cerradas + retiradas
 
 
 async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requisitos_bases: dict | None = None) -> list[dict]:

@@ -66,3 +66,38 @@ async def test_al_abrir_la_propuesta_se_cierran_las_que_ya_tienen_respuesta(
         async with connection() as c:
             await c.execute("DELETE FROM propuestas WHERE id=$1", pid)
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_en_una_cotizacion_menor_se_retiran_las_que_no_se_exigen(empresa, marca):
+    """La partida registral y la vigencia de poder no se piden en una
+    cotizacion menor; las preguntas creadas antes de esa regla se retiran."""
+    from prep_bot.questioner import cerrar_las_ya_resueltas
+    from shared.db import connection
+
+    async with connection() as c:
+        lic = await c.fetchval(
+            """INSERT INTO licitaciones (id, fuente, tipo, nomenclatura, entidad, objeto)
+               VALUES ($1, 'gore_portals', 'cotizacion', $2, 'E', 'O') RETURNING id""",
+            f"prueba_{marca}", f"COT-{marca}")
+        pid = await c.fetchval(
+            "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
+            "VALUES ($1, $2, 'preguntas_pendientes') RETURNING id", lic, empresa)
+        for clave in ("partida_registral", "vigencia_poder"):
+            await c.execute(
+                """INSERT INTO preguntas (propuesta_id, empresa_id, campo_requerido, pregunta,
+                       kb_categoria, kb_clave) VALUES ($1, $2, $3, $3, 'legal', $3)""",
+                pid, empresa, clave)
+    try:
+        assert await cerrar_las_ya_resueltas(pid) == 2
+        async with connection() as c:
+            assert await c.fetchval("SELECT count(*) FROM preguntas WHERE propuesta_id=$1",
+                                    pid) == 0
+            fila = await c.fetchrow(
+                "SELECT preguntas_pendientes, estado FROM propuestas WHERE id=$1", pid)
+        assert (fila["preguntas_pendientes"], fila["estado"]) == (0, "listo")
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM propuestas WHERE id=$1", pid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
