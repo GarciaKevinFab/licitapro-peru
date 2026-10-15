@@ -871,6 +871,11 @@ async def _guardar_documentos(client: httpx.AsyncClient, licitacion_id: str,
                     log.info("documento %s: HTTP %s, %d bytes", _corto(d["url"]),
                              resp.status_code, len(cuerpo))
                 await asyncio.sleep(0.3)
+            except ImportError as e:
+                # Falta pypdfium2 o Pillow (requirements-puente.txt): no es un
+                # fallo del portal y no se arregla solo en la proxima pasada.
+                log.warning("documento %s: no se pudo comprimir (%s); instala "
+                            "requirements-puente.txt", _corto(d["url"]), e)
             except Exception as e:  # noqa: BLE001
                 log.info("documento %s: %s", _corto(d["url"]), e)
         elif d["url"] in conocidos:
