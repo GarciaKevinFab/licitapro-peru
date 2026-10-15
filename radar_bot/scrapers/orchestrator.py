@@ -593,6 +593,10 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         # Contratos menores (<=8 UIT) de las 25 regiones, desde la herramienta
         # del OECE para la Ley 32069. Responde al VPS. Ver oece_menores.py.
         ("oece_menores", _run_oece_menores),
+        # Estudios de mercado <8 UIT de la Municipalidad Provincial de
+        # Tambopata, desde la API de su portal: no pasan por SEACE. Responde
+        # al VPS y guarda la SC y el TDR de cada una. Ver mpt_tambopata.py.
+        ("mpt_tambopata", _run_mpt_tambopata),
         # ima_cusco esta escrito y probado (ima_cusco.py, tests/test_ima_cusco.py)
         # pero APAGADO: ver FUENTES_APAGADAS. Para encenderlo basta esta linea:
         #   ("ima_cusco", _run_ima_cusco),
@@ -1808,6 +1812,11 @@ async def _run_gob_pe(user_id):
     return await scrape_gob_pe(user_id)
 
 
+async def _run_mpt_tambopata(user_id):
+    from radar_bot.scrapers.mpt_tambopata import scrape_mpt_tambopata
+    return await scrape_mpt_tambopata(user_id)
+
+
 async def _run_ima_cusco(user_id):
     from radar_bot.scrapers.ima_cusco import scrape_ima_cusco
     return await scrape_ima_cusco(user_id)
@@ -1855,6 +1864,7 @@ def format_scraping_report(results: dict) -> str:
         "ocds_oece": "OCDS OECE (principal)",
         "gob_pe": "gob.pe compras menores",
         "ima_cusco": "IMA Cusco (<8 UIT)",
+        "mpt_tambopata": "Municipalidad de Tambopata (<8 UIT)",
         "oece_menores": "OECE contratos menores (<8 UIT, 25 regiones)",
         "seace_3.0": "SEACE 3.0",
         "gore_portals": "GOREs Regionales",

@@ -319,7 +319,7 @@
     <div class="formatos mt-14">
       <h3>Formatos de la entidad</h3>
       {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada'),
-                              ('eett', 'Especificaciones técnicas')) %}
+                              ('eett', 'Especificaciones técnicas')) if not (tipo == 'dj' and portal and portal.mpt) %}
       <div class="fila-formato">
         <span>{{ nombre }}</span>
         {% if formatos and formatos[tipo] == 'portal' %}
@@ -385,21 +385,32 @@
         <li>Descarga los adjuntos, con la firma y el sello en cada hoja, como se mandan en papel:
           <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a>
           <ul class="adjuntos">
+            {% if portal.mpt %}
+            <li>Solicitud de cotización de la municipalidad, llena con tus precios y marcas.</li>
+            <li>Anexos 05 al 09 (oferta económica, DJ de notificación, carta de CCI, DJ de
+              contratos menores y DJ de prohibiciones), llenos con los datos de la empresa.</li>
+            <li>El anexo 10 (requisitos mínimos) no va: depende de cada TDR. Si lo piden, está en
+              <a href="https://portal.munitambopata.gob.pe/storage/2025/abastecimiento/formatos-zip.zip"
+                 target="_blank" rel="noopener">los formatos de la municipalidad</a>.</li>
+            {% else %}
             <li>01 Cotización y 02 Declaración jurada, llenas en el formato de la entidad.</li>
-            <li>03 Ficha RUC:
+            {% endif %}
+            <li>Ficha RUC:
               {% if anexos.ficha %}<a href="/propuestas/{{ p.id }}/anexo/ficha">lista</a>
               {% else %}<span class="pill neutro">falta</span>
                 <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
-            <li>04 Constancia del RNP:
+            <li>Constancia del RNP:
               {% if anexos.rnp %}<a href="/propuestas/{{ p.id }}/anexo/rnp">lista</a>
               {% else %}<span class="pill neutro">falta</span>
                 <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
-            <li>05 Especificaciones técnicas de la entidad:
+            <li>{% if portal.mpt %}TDR / especificaciones técnicas{% else %}Especificaciones técnicas{% endif %} de la entidad:
               {% if formatos and formatos.eett %}<a href="/propuestas/{{ p.id }}/anexo/eett">listas</a>
               {% else %}<span class="pill neutro">no publicadas aún</span>{% endif %}</li>
           </ul></li>
         <li>Abre el formulario de la entidad:
-          <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">Abrir «Enviar cotización»</a></li>
+          <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">{{ portal.boton }}</a>
+          {% if portal.buscar %}<button type="button" class="sec" data-copiar="{{ portal.buscar }}">Copiar «{{ portal.buscar }}»</button>
+          <span class="ayuda">y pégalo en su buscador: aparece la fila de esta convocatoria.</span>{% endif %}</li>
         <li>Copia cada dato en su casilla:
           <table class="campos-portal">
             {% for nombre, valor in portal.campos %}
@@ -407,11 +418,10 @@
                 <td>{% if valor %}<button type="button" class="fantasma" data-copiar="{{ valor }}">Copiar</button>{% endif %}</td></tr>
             {% endfor %}
           </table></li>
-        <li>En «Archivos anexos» sube los PDF del ZIP, marca «No soy un robot» y pulsa <b>Guardar</b>.</li>
+        <li>{{ portal.paso_final | safe }}</li>
       </ol>
-      <p class="ayuda">El último paso lo haces tú: el formulario de la entidad tiene captcha y
-         nosotros no lo saltamos. La ficha técnica de cada producto (catálogo del fabricante)
-         también va por tu cuenta si la piden.</p>
+      <p class="ayuda">{{ portal.nota }} La ficha técnica de cada producto (catálogo del
+         fabricante) va por tu cuenta si la piden.</p>
     </div>
     {% endif %}
     {% endif %}

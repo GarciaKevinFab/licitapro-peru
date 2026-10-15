@@ -405,7 +405,11 @@ def _cabecera(capas, paginas, n, empresa) -> None:
             cp.texto(x_valor, w["bottom"] - 1.5, valor, size, negrita=neg,
                      ancho_max=limite - x_valor)
         if ruc_w and empresa.get("ruc"):
-            cp.texto(ruc_w["x1"] + 6, ruc_w["bottom"] - 1.5, empresa["ruc"], 9, negrita=True)
+            # El SIGA pone los dos puntos aparte ("R.U.C.  :"): el RUC va tras ellos.
+            dp = next((w for w in pal if w["text"] == ":" and abs(w["top"] - ruc_w["top"]) < 3
+                       and 0 <= w["x0"] - ruc_w["x1"] <= 16), None)
+            cp.texto((dp or ruc_w)["x1"] + 6, ruc_w["bottom"] - 1.5, empresa["ruc"], 9,
+                     negrita=True)
         return
 
 
@@ -689,6 +693,10 @@ async def sc_llena(propuesta_id: int, licitacion_id: str, empresa: dict, items: 
     if not hallado:
         return None
     suma = cotizacion.total(items)
+    from shared.llenar_siga import es_siga, llenar_solicitud_siga
+    if es_siga(hallado[0]):
+        # La SC del SIGA (municipalidades: Tambopata): otra tabla, sin columna MARCA.
+        return llenar_solicitud_siga(hallado[0], empresa, items, condiciones, suma, imagenes)
     return llenar_solicitud(hallado[0], empresa, items, condiciones,
                             cotizacion.monto_en_letras(suma), suma, imagenes)
 
