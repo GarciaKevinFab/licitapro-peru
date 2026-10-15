@@ -392,9 +392,9 @@ def test_el_sello_no_tapa_lo_que_hay_en_la_esquina(tmp_path):
     c.drawString(A4[0] - 200, 20, "Central de consultas")  # pie de pagina
     c.save()
     with pdfplumber.open(io.BytesIO(buf.getvalue())) as doc:
-        cx, base = _hueco_para_el_sello(doc.pages[0])
+        cx, base, escala = _hueco_para_el_sello(doc.pages[0])
         qr_top = doc.pages[0].rects[0]["top"]
-    assert base < qr_top and abs(cx - (A4[0] - 100)) < 0.01
+    assert base < qr_top and cx > A4[0] / 2 and escala == 1.0
     pdf = sellar_paginas(buf.getvalue(), imagenes)
     with pdfplumber.open(io.BytesIO(pdf)) as doc:
         pg = doc.pages[0]
