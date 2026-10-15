@@ -46,7 +46,7 @@ async def _propuesta_del_usuario(propuesta_id: int, usuario_id: int):
             """SELECT p.*, e.razon_social, e.id AS emp_id,
                       l.objeto, l.entidad, l.fecha_cierre, l.monto_referencial,
                       l.tipo, l.departamento, l.bases_urls, l.url AS lic_url,
-                      l.score_viabilidad, l.nomenclatura, l.descripcion
+                      l.score_viabilidad, l.nomenclatura, l.descripcion, l.fuente
                  FROM propuestas p
                  JOIN empresas e ON e.id = p.empresa_id
                  LEFT JOIN licitaciones l ON l.id = p.licitacion_id
@@ -808,10 +808,38 @@ async def borrar_formato(request: Request, propuesta_id: int, tipo: str):
 # para copiar y un ZIP con los adjuntos ya firmados y sellados.
 
 def _envio_portal(prop: dict, empresa: dict, condiciones: dict, total) -> dict | None:
-    url = prop.get("lic_url") or ""
-    if "/solicitud/" not in url or not empresa:
+    """Lo que el usuario copia en el formulario de la entidad, y donde esta.
+
+    Cada portal pide cosas distintas. El del GOREMAD tiene una pagina de envio
+    por solicitud ("/solicitud/<id>/enviar") con captcha. El de la
+    Municipalidad de Tambopata recibe la postulacion en una ventana de su lista
+    de convocatorias, que no se puede enlazar: su buscador no lee la URL. Se da
+    el portal y el numero de E/M para pegar en su buscador.
+    """
+    if not empresa:
         return None
     ruc = empresa.get("ruc") or ""
+    if prop.get("fuente") == "mpt_tambopata":
+        from radar_bot.scrapers.mpt_tambopata import PORTAL, numero_em
+        return {
+            "mpt": True,
+            "enviar": PORTAL,
+            "boton": "Abrir el portal de la Municipalidad",
+            "buscar": numero_em(prop.get("nomenclatura")),
+            "campos": [
+                ("Buscar (pégalo en su buscador)", numero_em(prop.get("nomenclatura"))),
+                ("Número de RUC", ruc),
+                ("Correo Electrónico", empresa.get("email") or ""),
+                ("Nombre y/o Razón Social", empresa.get("razon_social") or ""),
+            ],
+            "paso_final": "En la fila de esa convocatoria pulsa «Postular», sube el ZIP en "
+                          "«Cargar archivo» (hasta 40 MB) y pulsa <b>Enviar propuesta</b>.",
+            "nota": "Solo se puede postular una vez por proceso: revisa el ZIP antes de enviar. "
+                    "La municipalidad confirma por correo.",
+        }
+    url = prop.get("lic_url") or ""
+    if "/solicitud/" not in url:
+        return None
     observaciones = "Los precios incluyen I.G.V."
     if total is not None:
         observaciones += f" Total de la cotización: S/ {cotizacion.monto(total)}."
@@ -826,7 +854,12 @@ def _envio_portal(prop: dict, empresa: dict, condiciones: dict, total) -> dict |
         ("Validez de la cotización", condiciones.get("validez") or ""),
         ("Observaciones", observaciones),
     ]
-    return {"enviar": url.rstrip("/") + "/enviar", "ficha": url, "campos": campos}
+    return {"enviar": url.rstrip("/") + "/enviar", "ficha": url, "campos": campos,
+            "boton": "Abrir «Enviar cotización»",
+            "paso_final": "En «Archivos anexos» sube los PDF del ZIP, marca «No soy un robot» "
+                          "y pulsa <b>Guardar</b>.",
+            "nota": "El último paso lo haces tú: el formulario de la entidad tiene captcha y "
+                    "nosotros no lo saltamos."}
 
 
 def _anexos_de(empresa_id: int) -> dict[str, bool]:
@@ -881,6 +914,46 @@ async def descargar_anexo(request: Request, propuesta_id: int, tipo: str):
     return FileResponse(destino, filename=_ANEXOS[tipo], media_type="application/pdf")
 
 
+async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict,
+                      cci: str | None, imagenes: dict) -> list[tuple[str, bytes]]:
+    """La postulacion a la Municipalidad de Tambopata, en el orden que piden:
+    la SC del SIGA llena, los anexos 05 a 09 llenos, y lo que acredita al
+    postor (ficha RUC, RNP) con el TDR, todo firmado y sellado.
+
+    La SC es obligatoria: sin ella no hay oferta. Los demas van si estan."""
+    from radar_bot.scrapers.mpt_tambopata import numero_em
+    from shared import anexos_mpt, fechas
+
+    sc = await llenar_formatos.sc_llena(prop["id"], prop["licitacion_id"], empresa, items,
+                                        condiciones, imagenes)
+    if sc is None:
+        raise llenar_formatos.FormatoNoReconocido(
+            "la municipalidad no publicó la solicitud de cotización de esta convocatoria.")
+    archivos = [("01_Solicitud_de_Cotizacion.pdf", sc)]
+    emp_id = prop["emp_id"]
+    datos = {
+        "empresa": empresa, "items": items, "condiciones": condiciones,
+        "total": cotizacion.total(items), "referencia": numero_em(prop["nomenclatura"]),
+        "cci": cci, "banco": await kb_get(emp_id, "financiero", "entidad_bancaria"),
+        "partida": empresa.get("partida_registral")
+                   or await kb_get(emp_id, "legal", "partida_registral"),
+        "hoy": fechas.hoy(), "imagenes": imagenes,
+    }
+    anexos, aviso = await anexos_mpt.anexos_pdf(datos)
+    if aviso:
+        log.warning("Paquete MPT %s: %s", prop["id"], aviso)
+    for k, (nombre, contenido) in enumerate(sorted(anexos.items()), start=2):
+        archivos.append((f"{k:02d}_{nombre}", contenido))
+    siguiente = len(archivos) + 1
+    for tipo, rotulo in (("ficha", "Ficha_RUC"), ("rnp", "Constancia_RNP"),
+                         ("eett", "TDR_Especificaciones_Tecnicas")):
+        contenido = await _anexo(prop, tipo, imagenes)
+        if contenido is not None:
+            archivos.append((f"{siguiente:02d}_{rotulo}.pdf", contenido))
+            siguiente += 1
+    return archivos
+
+
 @router.get("/propuestas/{propuesta_id}/paquete")
 async def paquete_envio(request: Request, propuesta_id: int):
     """ZIP con todo lo que se adjunta en el portal, como se manda en papel:
@@ -908,6 +981,18 @@ async def paquete_envio(request: Request, propuesta_id: int):
     nombre = (prop["nomenclatura"] or f"propuesta-{propuesta_id}").replace("/", "-")
 
     archivos: list[tuple[str, bytes]] = []
+    if prop["fuente"] == "mpt_tambopata":
+        try:
+            archivos = await _paquete_mpt(prop, empresa, items, condiciones, cci, imagenes)
+        except llenar_formatos.FormatoNoReconocido as e:
+            return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for n, contenido in archivos:
+                z.writestr(n, contenido)
+        destino = _escribir(f"envio-{propuesta_id}.zip", buf.getvalue())
+        return FileResponse(destino, filename=f"Postulacion_{nombre}.zip",
+                            media_type="application/zip")
     try:
         sc = await llenar_formatos.sc_llena(propuesta_id, prop["licitacion_id"], empresa,
                                             items, condiciones, imagenes)

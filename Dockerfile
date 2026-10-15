@@ -16,8 +16,15 @@ WORKDIR /app
 # tesseract-ocr + spa: la constancia del RNP llega como PDF sin texto (fuente
 # incrustada sin tabla de caracteres) y solo se puede leer con OCR. Ver
 # shared/constancia_rnp.py.
+#
+# libreoffice-writer-nogui + fonts-liberation: los anexos de la Municipalidad
+# de Tambopata llegan en Word y se presentan en PDF (shared/anexos_mpt.py,
+# shared/pdf_firma.docx_a_pdf). Liberation tiene las medidas de Times New
+# Roman y Arial, que son las de esos formatos: sin ella LibreOffice sustituye
+# la letra y cambian los saltos de linea del documento de la entidad.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata curl tesseract-ocr tesseract-ocr-spa \
+      libreoffice-writer-nogui fonts-liberation \
  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
  && rm -rf /var/lib/apt/lists/*
 
