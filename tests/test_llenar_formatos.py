@@ -380,9 +380,9 @@ def test_un_anexo_se_firma_y_se_sella_en_cada_hoja(tmp_path):
 
 
 def test_el_sello_no_tapa_lo_que_hay_en_la_esquina(tmp_path):
-    """La ficha RUC lleva el QR de SUNAT abajo a la derecha: el sello sube
-    hasta un hueco libre. En una hoja vacia va a la esquina."""
-    from shared.llenar_formatos import _hueco_para_el_sello, sellar_paginas
+    """La ficha RUC lleva el QR de SUNAT abajo a la derecha y un pie de
+    pagina: el sello va a un hueco libre, sin cruzarse con ninguno de los dos."""
+    from shared.llenar_formatos import sellar_paginas
     imagenes = {"firma": _png(tmp_path, "firma.png", "black"),
                 "sello": _png(tmp_path, "sello.png", "blue")}
     buf = io.BytesIO()
@@ -392,13 +392,17 @@ def test_el_sello_no_tapa_lo_que_hay_en_la_esquina(tmp_path):
     c.drawString(A4[0] - 200, 20, "Central de consultas")  # pie de pagina
     c.save()
     with pdfplumber.open(io.BytesIO(buf.getvalue())) as doc:
-        cx, base = _hueco_para_el_sello(doc.pages[0])
-        qr_top = doc.pages[0].rects[0]["top"]
-    assert base < qr_top and abs(cx - (A4[0] - 100)) < 0.01
+        qr = doc.pages[0].rects[0]
+        pie = next(w for w in doc.pages[0].extract_words() if w["text"] == "Central")
     pdf = sellar_paginas(buf.getvalue(), imagenes)
+
+    def se_cruzan(a, b):
+        return a["x0"] < b["x1"] and b["x0"] < a["x1"] and a["top"] < b["bottom"]             and b["top"] < a["bottom"]
+
     with pdfplumber.open(io.BytesIO(pdf)) as doc:
         pg = doc.pages[0]
-        assert all(im["bottom"] <= qr_top for im in pg.images)   # nada sobre el QR
+        assert len(pg.images) == 2
+        assert not any(se_cruzan(im, qr) or se_cruzan(im, pie) for im in pg.images)
         assert "Central de consultas" in pg.extract_text()
 
 

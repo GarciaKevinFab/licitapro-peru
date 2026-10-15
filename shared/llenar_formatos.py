@@ -632,31 +632,68 @@ def sellar_paginas(contenido: bytes, imagenes: dict | None) -> bytes:
     imagenes = imagenes or {}
     if not (imagenes.get("sello") or imagenes.get("firma")):
         return contenido
+    tintas = _mapas_de_tinta(contenido)
     with _abrir(contenido) as pdf:
         capas = {}
         for n, pag in enumerate(pdf.pages):
             capa = _Capa(pag.width, pag.height)
-            cx, base = _hueco_para_el_sello(pag)
+            cx, base, k = _hueco_para_el_sello(pag, tintas[n] if n < len(tintas) else None)
             if imagenes.get("sello"):
-                capa.imagen(imagenes["sello"], cx, base, SELLO_ANCHO, 68)
+                capa.imagen(imagenes["sello"], cx, base, SELLO_ANCHO * k, 68 * k)
             if imagenes.get("firma"):
-                capa.imagen(imagenes["firma"], cx, base - 20, 105, 52)
+                capa.imagen(imagenes["firma"], cx, base - 20 * k, 105 * k, 52 * k)
             capas[n] = capa
     return _fundir(contenido, capas)
 
 
 SELLO_ANCHO, SELLO_ALTO = 170, 90   # sello + firma encima, en puntos
+_ESCALA_TINTA = 0.5                  # pixeles por punto del mapa de tinta (36 ppp)
 
 
-def _hueco_para_el_sello(pag) -> tuple[float, float]:
-    """(centro x, base y) del sitio donde el sello tapa lo menos posible.
+def _mapas_de_tinta(contenido: bytes) -> list:
+    """Cada pagina en gris a 36 ppp, para ver la tinta de un escaneo.
+
+    Un TDR escaneado es una sola imagen: pdfplumber no ve que abajo a la
+    derecha ya estan la firma y el sello del supervisor de la entidad, y el
+    nuestro caia encima (E/M 4202-2026 de la MPT). Mirando los pixeles si se
+    ve. Si la pagina no se puede pintar, se sigue sin mapa."""
+    try:
+        import pypdfium2 as pdfium
+        doc = pdfium.PdfDocument(contenido)
+        try:
+            return [doc[i].render(scale=_ESCALA_TINTA).to_pil().convert("L")
+                    for i in range(len(doc))]
+        finally:
+            doc.close()
+    except Exception as e:  # noqa: BLE001
+        log.info("Sin mapa de tinta para sellar: %s", e)
+        return []
+
+
+def _tinta_en(mapa, x0, y0, x1, y1) -> float:
+    """Area oscura (en puntos cuadrados) dentro de la caja."""
+    if mapa is None:
+        return 0.0
+    e = _ESCALA_TINTA
+    caja = (max(0, int(x0 * e)), max(0, int(y0 * e)),
+            min(mapa.width, int(x1 * e)), min(mapa.height, int(y1 * e)))
+    if caja[2] <= caja[0] or caja[3] <= caja[1]:
+        return 0.0
+    oscuros = sum(mapa.crop(caja).histogram()[:150])
+    return oscuros / (e * e)
+
+
+def _hueco_para_el_sello(pag, tinta=None) -> tuple[float, float, float]:
+    """(centro x, base y, escala) del sitio donde el sello tapa lo menos posible.
 
     Se prefiere abajo a la derecha, como se sella a mano; pero la ficha RUC
     lleva ahi el codigo QR con el que SUNAT la valida, y un pie de pagina con
     texto. Cada sitio posible paga por lo que tapa (texto e imagenes, caro;
-    lineas y fondos, barato), por lo que sube y por irse a la izquierda; gana
-    el mas barato. Una pagina escaneada (una sola imagen) paga lo mismo en
-    todas partes: queda en la esquina.
+    lineas y fondos, barato; y la tinta que se ve en la pagina pintada, que es
+    lo unico que distingue algo en un escaneo), por lo que sube y por irse al
+    centro o a la izquierda; gana el mas barato. En una hoja llena de texto
+    de arriba abajo (un TDR escaneado) se prueba tambien al 70%: entra en el
+    margen de un renglon corto sin pisar letras.
     """
     caros, baratos = [], []
     for k in ("chars", "images", "rects", "curves", "lines"):
@@ -671,15 +708,19 @@ def _hueco_para_el_sello(pag) -> tuple[float, float]:
                    for bx0, by0, bx1, by1 in cajas)
 
     abajo = pag.height - 50
-    mejor, coste_mejor = (pag.width - 100, abajo), None
-    for base in range(int(abajo), int(pag.height * 0.4), -10):
-        for lado, cx in (("der", pag.width - 100), ("izq", 100)):
-            x0, x1 = cx - SELLO_ANCHO / 2 - 6, cx + SELLO_ANCHO / 2 + 6
-            y0, y1 = base - SELLO_ALTO - 6, base + 6
-            coste = (3 * tapado(caros, x0, y0, x1, y1) + tapado(baratos, x0, y0, x1, y1)
-                     + 2 * (abajo - base) + (300 if lado == "izq" else 0))
-            if coste_mejor is None or coste < coste_mejor:
-                mejor, coste_mejor = (cx, float(base)), coste
+    mejor, coste_mejor = (pag.width - 100, abajo, 1.0), None
+    for k, castigo_k in ((1.0, 0), (0.7, 400)):
+        ancho, alto = SELLO_ANCHO * k, SELLO_ALTO * k
+        sitios = ((pag.width - 30 - ancho / 2, 0), (pag.width / 2, 150), (30 + ancho / 2, 300))
+        for base in range(int(abajo), int(pag.height * 0.4), -10):
+            for cx, castigo in sitios:
+                x0, x1 = cx - ancho / 2 - 6, cx + ancho / 2 + 6
+                y0, y1 = base - alto - 6, base + 6
+                coste = (3 * tapado(caros, x0, y0, x1, y1) + tapado(baratos, x0, y0, x1, y1)
+                         + 4 * _tinta_en(tinta, x0, y0, x1, y1)
+                         + 2 * (abajo - base) + castigo + castigo_k)
+                if coste_mejor is None or coste < coste_mejor:
+                    mejor, coste_mejor = (cx, float(base), k), coste
     return mejor
 
 
