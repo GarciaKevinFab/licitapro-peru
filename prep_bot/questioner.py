@@ -17,7 +17,7 @@ CAMPOS_EMPRESA = [
     # (categoria_kb, clave_kb, pregunta, campo_tabla_empresas)
     ("legal", "representante_legal", "Cual es el nombre completo del representante legal?", "representante_legal"),
     ("legal", "dni_representante", "Cual es el DNI del representante legal?", "dni_representante"),
-    ("legal", "cargo_representante", "Cual es el cargo del representante legal (ej: Gerente General)?", None),
+    ("legal", "cargo_representante", "Cual es el cargo del representante legal (ej: Gerente General)?", "cargo_representante"),
     ("legal", "partida_registral", "Cual es el numero de partida registral en SUNARP?", "partida_registral"),
     ("legal", "domicilio_legal", "Cual es el domicilio legal completo de la empresa?", "direccion"),
     ("legal", "telefono_empresa", "Telefono de contacto de la empresa?", "telefono"),
@@ -27,6 +27,54 @@ CAMPOS_EMPRESA = [
     ("financiero", "cuenta_corriente", "Numero de cuenta corriente? (para pagos del contrato)", None),
     ("financiero", "cci", "Codigo de cuenta interbancario (CCI) de 20 digitos?", None),
 ]
+
+
+async def cerrar_las_ya_resueltas(propuesta_id: int) -> int:
+    """Da por respondidas las preguntas abiertas cuyo dato ya se sabe.
+
+    Las preguntas se crean al abrir la propuesta y no se miraban mas. Si el
+    dato llegaba despues por otro camino -- otra propuesta de la misma
+    empresa, la ficha de la empresa, una carga directa a la base de
+    conocimiento --, la pregunta seguia pidiendolo para siempre: la
+    propuesta 1 del Minimarket pedia el CCI que la DJ ya imprimia.
+
+    Devuelve cuantas cerro. La respuesta registrada es el dato conocido.
+    """
+    del_empresa = {clave: campo for _, clave, _, campo in CAMPOS_EMPRESA if campo}
+    async with connection() as conn:
+        abiertas = await conn.fetch(
+            """SELECT id, empresa_id, kb_categoria, kb_clave FROM preguntas
+                WHERE propuesta_id=$1 AND respondida=FALSE
+                  AND kb_categoria IS NOT NULL AND kb_clave IS NOT NULL""", propuesta_id)
+    if not abiertas:
+        return 0
+    empresa = await get_empresa(abiertas[0]["empresa_id"])
+    cerradas = 0
+    for preg in abiertas:
+        valor = await kb_get(preg["empresa_id"], preg["kb_categoria"], preg["kb_clave"])
+        campo = del_empresa.get(preg["kb_clave"])
+        if not valor and campo and empresa and empresa.get(campo):
+            valor = str(empresa[campo])
+            await kb_set(preg["empresa_id"], preg["kb_categoria"], preg["kb_clave"], valor,
+                         "tabla_empresas")
+        if not valor:
+            continue
+        async with connection() as conn:
+            await conn.execute(
+                """UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW(),
+                          guardada_en_kb=TRUE WHERE id=$1""", preg["id"], valor)
+        cerradas += 1
+    if cerradas:
+        async with connection() as conn:
+            pendientes = await conn.fetchval(
+                "SELECT COUNT(*) FROM preguntas WHERE propuesta_id=$1 AND respondida=FALSE",
+                propuesta_id)
+            await conn.execute(
+                """UPDATE propuestas SET preguntas_pendientes=$2,
+                          estado = CASE WHEN $2 = 0 AND estado = 'preguntas_pendientes'
+                                        THEN 'listo' ELSE estado END
+                    WHERE id=$1""", propuesta_id, pendientes)
+    return cerradas
 
 
 async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requisitos_bases: dict | None = None) -> list[dict]:
