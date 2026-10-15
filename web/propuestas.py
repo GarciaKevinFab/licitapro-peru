@@ -281,6 +281,12 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
     # Las propuestas abiertas antes de existir la cotizacion por items reciben
     # sus items la primera vez que se abren. `sembrar` lo hace una sola vez.
     await cotizacion.sembrar(propuesta_id)
+    # Lo que se aprendio despues de abrir la propuesta no se vuelve a pedir.
+    try:
+        from prep_bot.questioner import cerrar_las_ya_resueltas
+        await cerrar_las_ya_resueltas(propuesta_id)
+    except Exception:
+        log.exception("No se pudieron cerrar las preguntas resueltas de %s", propuesta_id)
 
     async with connection() as conn:
         preguntas = await conn.fetch(
