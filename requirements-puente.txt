@@ -45,3 +45,12 @@ beautifulsoup4==4.12.3
 # Windows no trae la base de zonas horarias del sistema. Sin esto el puente
 # muere con ZoneInfoNotFoundError antes de pedir nada (visto el 2026-10-07).
 tzdata==2025.2
+# pypdfium2 y Pillow: desde el 2026-10-12 el puente baja tambien las EETT del
+# GOREMAD, escaneos de 2 a 21 MB que se guardan re-escaneados en gris
+# (shared/escaneos.py). Sin estas dos, la SC y la DJ siguen bajando -- pesan
+# poco y no pasan por la compresion -- pero cada EETT falla al importar
+# pypdfium2 y queda solo con su enlace, en silencio. Las dos publican binario
+# para Windows en Python 3.13 y 3.14: no hay que compilar nada. Mismas
+# versiones que el servidor (Pillow llega alli como dependencia de reportlab).
+pypdfium2==4.30.0
+pillow==12.3.0
