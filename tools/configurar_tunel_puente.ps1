@@ -41,8 +41,15 @@ if (-not (Test-Path $Llave)) {
 Write-Host "Pidiendo al VPS la conexion de la base..."
 # -T: sin terminal. Sin el, ssh avisa "Pseudo-terminal will not be allocated"
 # y ese aviso se mezclaba con la conexion. Se toma solo la linea que importa.
+# En PowerShell 5.1, con ErrorActionPreference=Stop, cualquier linea que ssh
+# escriba en stderr -- como "Permanently added ... to the list of known hosts"
+# la primera vez -- se vuelve un error que corta el script. Se baja a Continue
+# solo para esta llamada; lo que vale es si llega la linea de conexion.
+$ErrorActionPreference = 'Continue'
 $salida = ssh -T -i $Llave -o BatchMode=yes -o StrictHostKeyChecking=accept-new `
-             -o "UserKnownHostsFile=`"$Hosts`"" -o ConnectTimeout=15 $Vps 2>&1
+             -o "UserKnownHostsFile=`"$Hosts`"" -o ConnectTimeout=15 $Vps 2>&1 |
+          ForEach-Object { "$_" }
+$ErrorActionPreference = 'Stop'
 $linea = @($salida) | Where-Object { "$_" -match '^DATABASE_URL=postgresql://' } | Select-Object -First 1
 if (-not $linea) {
     throw "El VPS no entrego la conexion. Si la llave aun no esta registrada, pasale a Claude esta linea:`n$(Get-Content "$Llave.pub" -Raw)`nDetalle: $($salida -join ' ')"
@@ -76,6 +83,8 @@ with tunel():
     asyncio.run(main())
 '@
 Push-Location $Raiz
-try { $prueba | & $Py - } finally { Pop-Location }
+# Python escribe sus registros en stderr; con Stop, el primero cortaria aqui.
+$ErrorActionPreference = 'Continue'
+try { $prueba | & $Py - } finally { Pop-Location; $ErrorActionPreference = 'Stop' }
 if ($LASTEXITCODE -ne 0) { throw "La prueba fallo. El .env anterior esta en $respaldo." }
 Write-Host "Listo. La tarea 'LicitaPro - Traer OECE' ya usa el tunel." -ForegroundColor Green
