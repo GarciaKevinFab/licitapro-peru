@@ -109,7 +109,8 @@ async def iniciar_autofill(propuesta_id: int, empresa_id: int, app):
         await conn.execute(
             """UPDATE propuestas SET 
             anexos_completados=$2, anexos_totales=$3, 
-            preguntas_pendientes=$4, estado=$5
+            preguntas_pendientes=$4,
+            estado = CASE WHEN estado IN ('enviado','ganada','adjudicado','cancelado') THEN estado ELSE $5 END
             WHERE id=$1""",
             propuesta_id, campos_completos, total_anexos,
             len(preguntas_a_hacer),
@@ -235,7 +236,8 @@ async def cmd_responder(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             
             if pendientes == 0:
                 await conn.execute(
-                    "UPDATE propuestas SET estado='listo' WHERE id=$1",
+                    "UPDATE propuestas SET estado='listo' WHERE id=$1 "
+                    "AND estado NOT IN ('enviado','ganada','adjudicado','cancelado')",
                     preg["propuesta_id"],
                 )
                 await update.message.reply_text(
@@ -314,7 +316,8 @@ async def cmd_aprobar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     async with connection() as conn:
         await conn.execute(
-            "UPDATE propuestas SET estado='listo' WHERE id=$1", prop_id
+            "UPDATE propuestas SET estado='listo' WHERE id=$1 "
+            "AND estado NOT IN ('enviado','ganada','adjudicado','cancelado')", prop_id
         )
 
 

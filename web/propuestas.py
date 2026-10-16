@@ -551,6 +551,29 @@ async def descargar(request: Request, propuesta_id: int):
                         media_type="application/zip")
 
 
+@router.post("/propuestas/{propuesta_id}/enviada")
+async def marcar_enviada(request: Request, propuesta_id: int, enviada: int = Form(1)):
+    """El envio lo hace el usuario en el portal de la entidad: aqui lo anota.
+    Desmarcar la devuelve a lista, por si se marco sin querer."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    async with connection() as conn:
+        if enviada:
+            await conn.execute(
+                "UPDATE propuestas SET estado='enviado', updated_at=NOW() WHERE id=$1 "
+                "AND estado NOT IN ('ganada','adjudicado')", propuesta_id)
+        else:
+            await conn.execute(
+                "UPDATE propuestas SET estado='listo', updated_at=NOW() WHERE id=$1 "
+                "AND estado='enviado'", propuesta_id)
+    return _volver(propuesta_id, aviso="Marcada como enviada." if enviada
+                   else "Desmarcada: vuelve a estar lista para enviar.")
+
+
 @router.post("/propuestas/{propuesta_id}/precio")
 async def fijar_precio(request: Request, propuesta_id: int, precio: float = Form(...)):
     usuario = await usuario_actual(request)

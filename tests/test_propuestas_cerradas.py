@@ -115,3 +115,43 @@ def test_el_envio_al_goremad_lleva_solo_lo_que_pide_el_portal():
         return b.getvalue()
     unido = PdfReader(io.BytesIO(_unir_pdfs([pdf("RNP", 1), pdf("RUC", 2)])))
     assert [p.extract_text().strip() for p in unido.pages] == ["RNP", "RUC", "RUC"]
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_la_propuesta_se_marca_enviada_y_no_se_desmarca_sola(usuario, empresa, cliente, marca):
+    """El envio lo hace el usuario en el portal; LicitaPro solo lo anota. Y lo
+    anotado no lo pisa nadie: responder una pregunta no la devuelve a 'listo'."""
+    from prep_bot.questioner import procesar_respuesta
+    from shared.db import connection
+
+    async with connection() as c:
+        lic = await c.fetchval(
+            """INSERT INTO licitaciones (id, fuente, tipo, nomenclatura, entidad, objeto)
+               VALUES ($1, 'gore_portals', 'cotizacion', $1, 'E', 'O') RETURNING id""",
+            f"prueba_enviada_{marca}")
+        pid = await c.fetchval(
+            "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
+            "VALUES ($1, $2, 'listo') RETURNING id", lic, empresa)
+        qid = await c.fetchval(
+            "INSERT INTO preguntas (propuesta_id, empresa_id, pregunta) "
+            "VALUES ($1, $2, '¿Algo?') RETURNING id", pid, empresa)
+        await c.execute("DELETE FROM intentos_acceso")
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+        r = await cliente.post(f"/propuestas/{pid}/enviada", data={"enviada": "1"})
+        assert r.status_code == 303
+        await procesar_respuesta(qid, "sí")
+        async with connection() as c:
+            assert await c.fetchval("SELECT estado FROM propuestas WHERE id=$1", pid) == "enviado"
+        assert "Desmarcar envío" in (await cliente.get(f"/propuestas/{pid}")).text
+
+        await cliente.post(f"/propuestas/{pid}/enviada", data={"enviada": "0"})
+        async with connection() as c:
+            assert await c.fetchval("SELECT estado FROM propuestas WHERE id=$1", pid) == "listo"
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM preguntas WHERE propuesta_id=$1", pid)
+            await c.execute("DELETE FROM propuestas WHERE id=$1", pid)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)

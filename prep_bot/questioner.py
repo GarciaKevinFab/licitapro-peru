@@ -152,7 +152,7 @@ async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requis
             """UPDATE propuestas SET
             anexos_completados=$2, anexos_totales=$3,
             preguntas_pendientes=$4,
-            estado=$5
+            estado = CASE WHEN estado IN ('enviado','ganada','adjudicado','cancelado') THEN estado ELSE $5 END
             WHERE id=$1""",
             propuesta_id, campos_completos, total_campos,
             len(preguntas_creadas),
@@ -260,7 +260,8 @@ async def procesar_respuesta(pregunta_id: int, respuesta: str) -> dict:
         )
         estado = "listo" if pendientes == 0 else "preguntas_pendientes"
         await conn.execute(
-            "UPDATE propuestas SET preguntas_pendientes=$2, estado=$3 WHERE id=$1",
+            "UPDATE propuestas SET preguntas_pendientes=$2, estado = CASE WHEN estado IN "
+            "('enviado','ganada','adjudicado','cancelado') THEN estado ELSE $3 END WHERE id=$1",
             preg["propuesta_id"], pendientes, estado,
         )
 
