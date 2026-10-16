@@ -156,7 +156,7 @@
           <input type="hidden" name="enviada" value="{{ 0 if p.estado == 'enviado' else 1 }}">
           <button type="submit" class="fantasma chico">{{ 'Desmarcar envío' if p.estado == 'enviado' else 'Marcar como enviada' }}</button></form>
         {% endif %}</dd></div>
-      <div><dt>Cierre</dt><dd class="num"><b>{{ p.fecha_cierre.strftime('%d/%m/%Y') if p.fecha_cierre else '—' }}</b></dd></div>
+      <div><dt>Cierre</dt><dd class="num"><b>{{ p.fecha_cierre.strftime('%d/%m/%Y %H:%M') if p.fecha_cierre else '—' }}</b>{% if p.fecha_cierre %} <span class="nd">hora de Lima</span>{% endif %}</dd></div>
       <div><dt>Referencial</dt><dd class="num"><b>{% if p.monto_referencial %}S/ {{ '{:,.0f}'.format(p.monto_referencial) }}{% else %}—{% endif %}</b></dd></div>
       <div><dt>Tu oferta</dt><dd class="num"><b>{% if p.precio_ofertado %}S/ {{ '{:,.2f}'.format(p.precio_ofertado) }}{% else %}<span class="sin">sin fijar</span>{% endif %}</b></dd></div>
     </dl>

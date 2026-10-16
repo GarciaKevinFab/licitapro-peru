@@ -1,8 +1,9 @@
 """Validator — Valida que la propuesta esté completa antes de generar ZIP."""
+import asyncio
 import logging
 
 from shared.cotizacion import es_cotizacion_menor, items_de
-from shared.db import connection, get_empresa, kb_get
+from shared.db import connection, get_empresa, kb_todos
 
 log = logging.getLogger("prep.validator")
 
@@ -45,7 +46,7 @@ async def validar_propuesta(propuesta_id: int) -> dict:
             return {"completa": False, "error": "Propuesta no encontrada"}
 
     empresa_id = prop["empresa_id"]
-    empresa = await get_empresa(empresa_id)
+    empresa, sabido = await asyncio.gather(get_empresa(empresa_id), kb_todos(empresa_id))
     faltantes = []
     warnings = []
     campos_ok = 0
@@ -56,7 +57,7 @@ async def validar_propuesta(propuesta_id: int) -> dict:
     ]
 
     for v in validaciones:
-        valor = await kb_get(empresa_id, v["cat"], v["campo"])
+        valor = sabido.get((v["cat"], v["campo"]))
         if not valor and empresa:
             valor = empresa.get(v["campo"])
 
@@ -86,7 +87,7 @@ async def validar_propuesta(propuesta_id: int) -> dict:
         # Ni equipo tecnico ni experiencia cuentan en una cotizacion: avisar
         # de ellos solo ensucia la lista. Lo que si cuenta es la CCI, porque
         # se paga por transferencia y varias entidades la piden en la DJ.
-        if not await kb_get(empresa_id, "financiero", "cci"):
+        if not sabido.get(("financiero", "cci")):
             warnings.append("Sin CCI registrada: el pago es por transferencia y la "
                             "declaración jurada la pide")
         return _resultado(validaciones, faltantes, warnings, campos_ok, pendientes,

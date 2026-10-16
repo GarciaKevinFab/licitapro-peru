@@ -111,7 +111,7 @@
       </div>
       <div>
         <dt>Cierre</dt>
-        <dd class="num">{{ lic.fecha_cierre.strftime('%d/%m/%Y %H:%M') if lic.fecha_cierre else '—' }}</dd>
+        <dd class="num">{{ lic.fecha_cierre.strftime('%d/%m/%Y %H:%M') if lic.fecha_cierre else '—' }}{% if lic.fecha_cierre %} <span class="nd">hora de Lima</span>{% endif %}</dd>
       </div>
       <div>
         <dt>Monto referencial</dt>

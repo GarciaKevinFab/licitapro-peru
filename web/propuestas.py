@@ -251,7 +251,7 @@ async def listar(request: Request, aviso: str = "", error: str = "", cerradas: i
     async with connection() as conn:
         filas = await conn.fetch(
             """SELECT p.*, e.razon_social, l.objeto, l.entidad, l.fecha_cierre,
-                      l.monto_referencial,
+                      l.monto_referencial, l.nomenclatura,
                       (SELECT COUNT(*) FROM preguntas q
                         WHERE q.propuesta_id = p.id AND q.respondida = FALSE) AS pendientes
                  FROM propuestas p
@@ -288,30 +288,41 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
 
     # Las propuestas abiertas antes de existir la cotizacion por items reciben
     # sus items la primera vez que se abren. `sembrar` lo hace una sola vez.
-    await cotizacion.sembrar(propuesta_id)
     # Lo que se aprendio despues de abrir la propuesta no se vuelve a pedir.
-    try:
-        from prep_bot.questioner import cerrar_las_ya_resueltas
-        await cerrar_las_ya_resueltas(propuesta_id)
-    except Exception:
-        log.exception("No se pudieron cerrar las preguntas resueltas de %s", propuesta_id)
+    async def cerrar_resueltas():
+        try:
+            from prep_bot.questioner import cerrar_las_ya_resueltas
+            await cerrar_las_ya_resueltas(propuesta_id)
+        except Exception:
+            log.exception("No se pudieron cerrar las preguntas resueltas de %s", propuesta_id)
 
-    async with connection() as conn:
-        preguntas = await conn.fetch(
-            """SELECT * FROM preguntas WHERE propuesta_id=$1
-               ORDER BY respondida, id""", propuesta_id)
-    items = await cotizacion.items_de(propuesta_id)
-    menor = cotizacion.es_cotizacion_menor(prop["tipo"])
+    # Cada consulta es un viaje de ~50 ms hasta la base: las que no dependen
+    # unas de otras van a la vez, cada una con su conexion del pool. En serie,
+    # la ficha tardaba dos segundos.
+    await asyncio.gather(cotizacion.sembrar(propuesta_id), cerrar_resueltas())
+
+    async def leer_preguntas():
+        async with connection() as conn:
+            return await conn.fetch(
+                """SELECT * FROM preguntas WHERE propuesta_id=$1
+                   ORDER BY respondida, id""", propuesta_id)
+
+    async def leer_empresa():
+        async with connection() as conn:
+            return await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
 
     # Que falta para que el expediente sea presentable, y cuanto se ha pagado
     # por trabajos parecidos. Los dos modulos existian desde el principio y no
     # los llamaba nadie: el ZIP se armaba con los campos legales vacios, y
     # `historico_precios` -- que los scrapers llenan en cada corrida -- no lo
     # leia ninguna consulta del producto.
-    validacion = await _validacion(propuesta_id)
-    condiciones = await cotizacion.condiciones_de(propuesta_id)
-    async with connection() as conn:
-        empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
+    (preguntas, items, validacion, condiciones, empresa, formatos,
+     documentos) = await asyncio.gather(
+        leer_preguntas(), cotizacion.items_de(propuesta_id), _validacion(propuesta_id),
+        cotizacion.condiciones_de(propuesta_id), leer_empresa(),
+        llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"]),
+        documentos_de(prop["licitacion_id"]))
+    menor = cotizacion.es_cotizacion_menor(prop["tipo"])
     return _plantillas(request).TemplateResponse("propuesta.html", {
         "portal": _envio_portal(dict(prop), dict(empresa) if empresa else {}, condiciones,
                                 cotizacion.total(items) if items else None),
@@ -324,9 +335,9 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         # una mediana de S/ 96 mil junto a una oferta de S/ 12 mil.
         "precio": None if (items or menor) else await _precio_de_mercado(prop),
         "items": items, "menor": menor,
-        "formatos": await llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"]),
+        "formatos": formatos,
         "anexos": _anexos_de(prop["emp_id"]),
-        "documentos": await documentos_de(prop["licitacion_id"]),
+        "documentos": documentos,
         "total_items": cotizacion.total(items),
         "condiciones": condiciones,
         "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,

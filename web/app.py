@@ -4,6 +4,7 @@ Deliberadamente sobrio: esto se abre todos los dias para trabajar, no para
 impresionar. El tratamiento cinematografico vive en la landing; aqui manda la
 densidad de informacion y la velocidad.
 """
+import asyncio
 import logging
 import os
 import secrets
@@ -406,6 +407,14 @@ def _dias(fecha) -> int | None:
     return (fecha - fechas.ahora()).days
 
 
+def _horas(fecha) -> int | None:
+    """Horas que faltan para el cierre, en hora de Lima. Para lo que cierra
+    hoy, "0 d" no decia nada: cierra a las 12:00 o a las 23:00 es otra cosa."""
+    if not fecha:
+        return None
+    return int((fecha - fechas.ahora()).total_seconds() // 3600)
+
+
 async def _resumen(usuario_id: int) -> dict:
     """Resumen del usuario: cuenta sobre SU seleccion, no sobre el pozo entero.
 
@@ -413,10 +422,16 @@ async def _resumen(usuario_id: int) -> dict:
     numero que le importa a cada cuenta es cuantas le corresponden a ella.
     """
     from datetime import timedelta
-    suyas = await licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False)
+    # Las vigentes se piden como vigentes. Antes se sacaban de la lista
+    # completa, que trae las 500 de mas puntaje con vencidas incluidas: las
+    # que cerraban hoy quedaban fuera de esas 500 y el panel decia "0
+    # vigentes" encima de una tabla con siete.
+    suyas, vigentes = await asyncio.gather(
+        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False),
+        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=True))
     ahora = fechas.ahora()
-    vigentes = [l for l in suyas if l["fecha_cierre"] and l["fecha_cierre"] > ahora]
-    urgentes = [l for l in vigentes if l["fecha_cierre"] < ahora + timedelta(days=3)]
+    urgentes = [l for l in vigentes
+                if l["fecha_cierre"] and l["fecha_cierre"] < ahora + timedelta(days=3)]
     fila = {"total": len(suyas), "vigentes": len(vigentes), "urgentes": len(urgentes)}
     async with connection() as conn:
         historico = await conn.fetchval("SELECT COUNT(*) FROM historico_precios")
@@ -460,6 +475,7 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
         filas = [f for f in filas
                  if aguja in normalizar(f["objeto"] or "")
                  or aguja in normalizar(f["entidad"] or "")
+                 or aguja in normalizar(f["nomenclatura"] or "")
                  or aguja in normalizar(f["descripcion"] or "")]
     if region:
         filas = [f for f in filas if f["departamento"] == region]
@@ -479,6 +495,7 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
     for f in filas:
         d = dict(f)
         d["dias"] = _dias(d["fecha_cierre"])
+        d["horas"] = _horas(d["fecha_cierre"])
         detalle = d.get("score_detalle")
         if isinstance(detalle, str):
             import json

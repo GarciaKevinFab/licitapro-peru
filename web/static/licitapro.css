@@ -396,6 +396,8 @@ table.datos tbody tr:hover .acciones{opacity:1}
 table.datos td.cobrar{font-weight:600}
 table.datos td.cobrar.hay{color:var(--warn)}
 table.datos .ent{font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:3px}
+table.datos .ent .num-proc{color:var(--ink);font-weight:600;white-space:nowrap}
+table.datos td.cierre .hora{color:var(--ink-3);font-size:.9em}
 table.datos .obj,table.datos .desc{color:var(--ink);font-weight:500}
 table.datos .nd{color:var(--ink-4)}
 table.datos a{text-decoration:none;font-weight:500}
