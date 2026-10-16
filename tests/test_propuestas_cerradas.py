@@ -92,3 +92,26 @@ async def test_con_envio_armado_el_expediente_entrega_el_zip_firmado(
         async with connection() as c:
             await c.execute("DELETE FROM propuestas WHERE id=$1", pid)
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+def test_el_envio_al_goremad_lleva_solo_lo_que_pide_el_portal():
+    """El portal pide cotizacion, DJ de postor, RNP y ficha tecnica. La
+    consulta RUC va en el mismo PDF que el RNP, detras de la constancia."""
+    import io
+
+    from pypdf import PdfReader
+    from reportlab.pdfgen import canvas
+
+    from web.propuestas import _ANEXOS_GOREMAD, _unir_pdfs
+    assert [t for t, _ in _ANEXOS_GOREMAD] == [("rnp", "ficha"), ("eett",)]
+
+    def pdf(texto, hojas):
+        b = io.BytesIO()
+        c = canvas.Canvas(b)
+        for _ in range(hojas):
+            c.drawString(72, 720, texto)
+            c.showPage()
+        c.save()
+        return b.getvalue()
+    unido = PdfReader(io.BytesIO(_unir_pdfs([pdf("RNP", 1), pdf("RUC", 2)])))
+    assert [p.extract_text().strip() for p in unido.pages] == ["RNP", "RUC", "RUC"]

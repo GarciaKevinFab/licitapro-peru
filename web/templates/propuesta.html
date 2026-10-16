@@ -397,18 +397,20 @@
               <a href="https://portal.munitambopata.gob.pe/storage/2025/abastecimiento/formatos-zip.zip"
                  target="_blank" rel="noopener">los formatos de la municipalidad</a>.</li>
             {% else %}
-            <li>01 Cotización y 02 Declaración jurada, llenas en el formato de la entidad.</li>
+            <li>01 Cotización y 02 Declaración jurada de postor, llenas en el formato de la entidad.</li>
             {% endif %}
             {% if not armado %}
+            {% if portal.mpt %}
             <li>Ficha RUC:
               {% if anexos.ficha %}<a href="/propuestas/{{ p.id }}/anexo/ficha">lista</a>
               {% else %}<span class="pill neutro">falta</span>
                 <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
-            <li>Constancia del RNP:
+            {% endif %}
+            <li>Constancia del RNP{% if not portal.mpt %}, con la consulta RUC detrás en el mismo PDF{% endif %}:
               {% if anexos.rnp %}<a href="/propuestas/{{ p.id }}/anexo/rnp">lista</a>
               {% else %}<span class="pill neutro">falta</span>
                 <a href="/empresas/{{ p.emp_id }}/editar">súbela en la empresa</a>{% endif %}</li>
-            <li>{% if portal.mpt %}TDR / especificaciones técnicas{% else %}Especificaciones técnicas{% endif %} de la entidad:
+            <li>{% if portal.mpt %}TDR / especificaciones técnicas{% else %}Ficha técnica (las especificaciones técnicas de la entidad){% endif %}:
               {% if formatos and formatos.eett %}<a href="/propuestas/{{ p.id }}/anexo/eett">listas</a>
               {% else %}<span class="pill neutro">no publicadas aún</span>{% endif %}</li>
             {% endif %}

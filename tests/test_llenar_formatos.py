@@ -11,6 +11,7 @@ from typing import ClassVar
 
 import pdfplumber
 import pytest
+from pypdf import PdfReader
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
@@ -668,13 +669,16 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         assert r.headers["content-type"] == "application/zip"
         zipeado = zipfile.ZipFile(io.BytesIO(r.content))
         nombres = zipeado.namelist()
-        # Sin ficha RUC ni EETT guardadas, van solo los tres que hay.
-        assert [n[:3] for n in nombres] == ["01_", "02_", "04_"]
+        # Sin ficha RUC ni EETT guardadas, van los que hay: cotizacion, DJ y RNP.
+        assert nombres == ["01_Cotizacion.pdf", "02_Declaracion_Jurada_de_Postor.pdf",
+                           "03_Registro_Nacional_de_Proveedores_y_Consulta_RUC.pdf"]
         assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
-        assert "falta" in pagina and f"/empresas/{empresa}/editar" in pagina
+        assert len(PdfReader(io.BytesIO(zipeado.read(nombres[2]))).pages) == 2
+        assert "no publicadas aún" in pagina
 
-        # Con la ficha RUC subida y las EETT bajadas por el puente, van las cinco,
-        # y los adjuntos llevan firma y sello en CADA hoja.
+        # Con la ficha RUC subida y las EETT bajadas por el puente van los cuatro
+        # que pide el portal: la consulta RUC detras del RNP, en el mismo PDF, y
+        # las EETT como ficha tecnica. Los adjuntos llevan firma y sello en CADA hoja.
         monkeypatch.setattr(ficha_ruc, "DIR_PDF", tmp_path / "ficha")
         ficha_ruc.guardar_pdf(empresa, _dos_paginas())
         await guardar_documento(lic, "eett", "ESPECIFICACIONES TECNICAS", "3404.pdf",
@@ -686,14 +690,18 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
                 _png(tmp_path, "s.png", "blue"))
         r = await cliente.get(f"/propuestas/{pid}/paquete")
         assert r.status_code == 200, r.headers.get("location")
-        nombres = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
-        assert [n[:3] for n in nombres] == ["01_", "02_", "03_", "04_", "05_"]
+        zipeado = zipfile.ZipFile(io.BytesIO(r.content))
+        nombres = zipeado.namelist()
+        assert [n[:3] for n in nombres] == ["01_", "02_", "03_", "04_"]
+        assert nombres[3] == "04_Ficha_Tecnica.pdf"
+        assert len(PdfReader(io.BytesIO(zipeado.read(nombres[2]))).pages) == 4
         r = await cliente.get(f"/propuestas/{pid}/anexo/eett")
         assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
         with pdfplumber.open(io.BytesIO(r.content)) as doc:
             assert [len(pg.images) for pg in doc.pages] == [2, 2]
         pagina = (await cliente.get(f"/propuestas/{pid}")).text
-        assert f"/propuestas/{pid}/anexo/ficha" in pagina and "listas" in pagina
+        assert f"/propuestas/{pid}/anexo/rnp" in pagina and "listas" in pagina
+        assert f"/propuestas/{pid}/anexo/ficha" not in pagina
     finally:
         await _limpiar(pid, lic)
 
