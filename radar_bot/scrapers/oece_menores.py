@@ -73,7 +73,18 @@ HEADERS = {
 ESTADO_VIGENTE = 2          # maestras/listar-estados-contrato-cotizacion
 PAGINA = 200                # maximo que acepta page_size (probado)
 MAX_PAGINAS_POR_DEPTO = 10  # Lima tenia 714 vigentes: 4 paginas. 10 es tope de seguridad.
-PAUSA = 0.15                # entre peticiones; es un servicio publico del Estado
+# RITMO. Hasta el 13/10/2026 bastaba una pausa de 0,15 s; desde el 14/10 el
+# buscador responde 403 a las rafagas y la corrida paso de ~2.400 vigentes a
+# ~650 (las 25 regiones fallaban en la pagina 1). Una consulta suelta desde el
+# VPS responde bien: no es un bloqueo al servidor, es el ritmo. Ahora se espera
+# entre busquedas, entre detalles y al cambiar de region, y ante un 403/429 se
+# respira y se reintenta una vez. Si tres regiones seguidas siguen cortadas, se
+# deja para la proxima hora en vez de insistir: es un servicio publico del Estado.
+PAUSA_BUSQUEDA = 1.0
+PAUSA_DETALLE = 0.6
+ESPERA_TRAS_CORTE = 20.0
+CORTES_SEGUIDOS_MAX = 3
+_CORTES = {403, 429}
 
 # Codigos de `maestras/listar-departamento` el 2026-10-07: alfabetico, 1..25.
 # Se verifica al arrancar contra la API y se avisa si cambio; no se adivina.
@@ -180,7 +191,13 @@ async def _ya_guardadas(ids: list[str]) -> dict[str, datetime | None]:
 
 
 async def _get(cliente: httpx.AsyncClient, ruta: str, **params) -> dict | list | None:
+    """Una consulta; ante un corte por ritmo (403/429) espera y reintenta una vez."""
     r = await cliente.get(f"{API}{ruta}", params=params or None)
+    if r.status_code in _CORTES:
+        log.info("OECE menores: %s en %s, se espera %.0f s", r.status_code, ruta,
+                 ESPERA_TRAS_CORTE)
+        await asyncio.sleep(ESPERA_TRAS_CORTE)
+        r = await cliente.get(f"{API}{ruta}", params=params or None)
     r.raise_for_status()
     return r.json()
 
@@ -207,10 +224,15 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
     encontradas = errores = 0
     paginas_vivas = 0
     detalle_error: str | None = None
+    cortes_seguidos = 0
 
     async with httpx.AsyncClient(timeout=45, headers=HEADERS, verify=False) as cliente:
         await _verificar_codigos(cliente)
         for codigo, departamento in CODIGOS_DEPARTAMENTO.items():
+            if cortes_seguidos >= CORTES_SEGUIDOS_MAX:
+                detalle_error = (f"SEACE corto {cortes_seguidos} regiones seguidas por ritmo; "
+                                 f"se sigue la proxima hora | {detalle_error or ''}")
+                break
             for page in range(1, MAX_PAGINAS_POR_DEPTO + 1):
                 try:
                     data = await _get(cliente, "/contrataciones/buscador", anio=anio,
@@ -221,7 +243,10 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
                     errores += 1
                     detalle_error = f"{departamento} pagina {page}: {str(e)[:120]}"
                     log.warning("OECE menores %s pagina %s: %s", departamento, page, e)
+                    if isinstance(e, httpx.HTTPStatusError) and                             e.response.status_code in _CORTES:
+                        cortes_seguidos += 1
                     break
+                cortes_seguidos = 0
                 paginas_vivas += 1
                 filas = (data or {}).get("data") or []
                 if not filas:
@@ -236,7 +261,7 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
                         try:
                             detalle = await _get(cliente, "/contrataciones/listar-completo",
                                                  id_contrato=item["idContrato"])
-                            await asyncio.sleep(PAUSA)
+                            await asyncio.sleep(PAUSA_DETALLE)
                         except Exception as e:  # noqa: BLE001
                             errores += 1
                             log.debug("detalle %s: %s", item.get("idContrato"), e)
@@ -254,9 +279,11 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
                         log.error("fila %s: %s", item.get("idContrato"), e)
 
                 total = ((data or {}).get("pageable") or {}).get("totalElements") or 0
+                await asyncio.sleep(PAUSA_BUSQUEDA)
                 if page * PAGINA >= total:
                     break
-                await asyncio.sleep(PAUSA)
+            # Tambien al pasar de region: antes la siguiente salia de inmediato.
+            await asyncio.sleep(PAUSA_BUSQUEDA)
 
     if paginas_vivas == 0:
         detalle_error = f"CAIDA -- ninguna consulta a {API} respondio | {detalle_error or ''}"

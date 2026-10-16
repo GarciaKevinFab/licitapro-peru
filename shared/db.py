@@ -414,19 +414,30 @@ async def contenido_documento(licitacion_id: str, tipo: str) -> bytes | None:
                 ORDER BY d.updated_at DESC LIMIT 1""", licitacion_id, tipo)
 
 
-async def purgar_documentos_viejos(dias: int = 30) -> int:
-    """Suelta los PDF de solicitudes cerradas hace mas de `dias` sin propuesta.
+async def purgar_documentos_viejos(dias: int = 30, dias_pesados: int = 3) -> int:
+    """Suelta los PDF de solicitudes cerradas sin propuesta. Devuelve cuantas
+    filas solto.
+
+    Las EETT y los TDR son escaneos de 1 a 2 MB cada uno: guardados 30 dias
+    despues del cierre, con 20 a 30 solicitudes nuevas al dia entre el GOREMAD
+    y la Municipalidad de Tambopata, la base pasaba de 500 MB (el 15/10/2026
+    entraron 93 MB). Se sueltan a los `dias_pesados`; la SC y la DJ, que pesan
+    poco, a los `dias`. Lo que tiene propuesta no se toca nunca: es lo que el
+    postor presento.
 
     La fila se queda (con su enlace); se le quita la huella y se borra el
-    contenido que ya no use ninguna otra. Devuelve cuantas filas solto."""
+    contenido que ya no use ninguna otra. `fecha_cierre` es hora de Lima, y se
+    compara con la hora de Lima, no con la de la base (UTC)."""
     async with connection() as conn, conn.transaction():
         r = await conn.execute(
             """UPDATE licitacion_documentos d SET sha256 = NULL, updated_at = NOW()
                  FROM licitaciones l
                 WHERE l.id = d.licitacion_id AND d.sha256 IS NOT NULL
-                  AND l.fecha_cierre < NOW() - make_interval(days => $1)
+                  AND l.fecha_cierre < (NOW() AT TIME ZONE 'America/Lima')
+                      - make_interval(days => CASE WHEN d.tipo IN ('eett', 'otro')
+                                                   THEN $2::int ELSE $1::int END)
                   AND NOT EXISTS (SELECT 1 FROM propuestas p WHERE p.licitacion_id = l.id)""",
-            dias)
+            dias, dias_pesados)
         await conn.execute(
             """DELETE FROM documento_contenidos c
                 WHERE NOT EXISTS (SELECT 1 FROM licitacion_documentos d

@@ -594,6 +594,46 @@ async def test_la_purga_suelta_los_pdf_de_solicitudes_cerradas_sin_propuesta(mar
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
 
 
+@sin_base
+@pytest.mark.asyncio
+async def test_las_eett_se_sueltan_a_los_3_dias_y_la_sc_a_los_30(marca):
+    """Las EETT pesan 1-2 MB: se sueltan pronto. La SC y la DJ, poco: a los 30
+    dias. Lo que tiene propuesta se queda siempre."""
+    from shared.db import (
+        connection,
+        contenido_documento,
+        guardar_documento,
+        purgar_documentos_viejos,
+    )
+    sin, con = f"p5_{marca}", f"c5_{marca}"
+    async with connection() as c:
+        for lic in (sin, con):
+            await c.execute(
+                """INSERT INTO licitaciones (id, fuente, tipo, entidad, objeto, fecha_cierre)
+                   VALUES ($1, 'mpt_tambopata', 'cotizacion', 'E', 'O',
+                           (NOW() AT TIME ZONE 'America/Lima') - INTERVAL '5 days')""", lic)
+        emp = await c.fetchval("SELECT id FROM empresas LIMIT 1")
+    try:
+        for lic in (sin, con):
+            await guardar_documento(lic, "sc", None, None, f"http://x/{lic}/sc.pdf", _sc())
+            await guardar_documento(lic, "eett", None, None, f"http://x/{lic}/tdr.pdf",
+                                    _dos_paginas(lic))
+        if emp:
+            async with connection() as c:
+                await c.execute("INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
+                                "VALUES ($1, $2, 'iniciado')", con, emp)
+        await purgar_documentos_viejos()
+        assert await contenido_documento(sin, "eett") is None
+        assert await contenido_documento(sin, "sc") is not None
+        if emp:
+            assert await contenido_documento(con, "eett") is not None
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM propuestas WHERE licitacion_id = ANY($1::text[])",
+                            [sin, con])
+            await c.execute("DELETE FROM licitaciones WHERE id = ANY($1::text[])", [sin, con])
+
+
 # ─── Envio por el portal: datos para copiar y ZIP de adjuntos ─
 
 @sin_base
