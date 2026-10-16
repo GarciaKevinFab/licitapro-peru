@@ -633,6 +633,15 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
 
         await asyncio.sleep(2)
 
+    # Soltar los PDF de lo que ya cerro. Corria solo en la cosecha del GOREMAD,
+    # que hace la PC puente: con ella apagada nadie limpiaba, y la MPT guarda
+    # documentos desde este servidor.
+    try:
+        from shared.db import purgar_documentos_viejos
+        results["documentos_purgados"] = await purgar_documentos_viejos()
+    except Exception as e:  # noqa: BLE001
+        log.info("purga de documentos: %s", e)
+
     # Puntuar lo recien capturado. Sin esto las licitaciones quedan con
     # score_viabilidad en NULL y el bot las lista por fecha, no por relevancia.
     try:
