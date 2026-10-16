@@ -165,3 +165,31 @@ async def test_tres_regiones_cortadas_seguidas_dejan_la_corrida_para_la_proxima_
 
 async def _nada():
     return None
+
+
+@pytest.mark.asyncio
+async def test_las_regiones_de_los_usuarios_van_primero_y_el_resto_rota_cada_hora(monkeypatch):
+    from radar_bot.scrapers import oece_menores
+
+    class _Conn:
+        async def fetch(self, *a):
+            return [{"r": "Madre de Dios"}]
+
+    class _Ctx:
+        async def __aenter__(self):
+            return _Conn()
+
+        async def __aexit__(self, *a):
+            return False
+    import shared.db
+    monkeypatch.setattr(shared.db, "connection", lambda: _Ctx())
+    ordenes = {}
+    for hora in (0, 1):
+        monkeypatch.setattr(oece_menores.fechas, "ahora",
+                            lambda h=hora: fechas.fija(2026, 10, 16, h, 0))
+        ordenes[hora] = [d for _, d in await oece_menores._orden_regiones()]
+    for orden in ordenes.values():
+        assert orden[0] == "Madre de Dios"
+        assert sorted(orden) == sorted(oece_menores.CODIGOS_DEPARTAMENTO.values())
+    # Las primeras doce de cada hora son distintas: en dos horas se cubren todas.
+    assert set(ordenes[0][1:13]).isdisjoint(ordenes[1][1:13])
