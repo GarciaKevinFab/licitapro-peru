@@ -10,6 +10,7 @@ contra empresas.usuario_id: una propuesta es del usuario si su empresa lo es.
 No se guarda usuario_id en propuestas a proposito, para que no puedan discrepar.
 """
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -344,6 +345,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "precio_legible": cotizacion.precio_legible,
         "formato_dj": formato_dj(dict(prop)),
         "armado": _contenido_zip(armado) if (armado := paquete_armado(propuesta_id)) else None,
+        "otras_empresas": [e for e in await empresas_de(usuario["id"]) if e["id"] != prop["emp_id"]],
         "aviso": aviso, "error": error,
     })
 
@@ -560,6 +562,67 @@ async def descargar(request: Request, propuesta_id: int):
             status_code=303)
     return FileResponse(ruta, filename=os.path.basename(ruta),
                         media_type="application/zip")
+
+
+@router.post("/propuestas/{propuesta_id}/otra-empresa")
+async def postular_con_otra_empresa(request: Request, propuesta_id: int,
+                                    empresa_id: int = Form(...),
+                                    rebaja: str = Form("2")):
+    """La misma cotizacion con otra empresa de la cuenta: copia items, marcas y
+    condiciones, y pone precios redondos un `rebaja` % por debajo en total
+    (cotizacion.precios_rebajados). Lo demas -- anexos, sello, ZIP -- sale solo
+    con los datos de la otra empresa."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if not prop:
+        return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
+                                status_code=303)
+    if empresa_id == prop["emp_id"] or not await empresa_es_de(empresa_id, usuario["id"]):
+        return _volver(propuesta_id, ancla="otra-empresa", error="Elige otra empresa tuya.")
+    porcentaje = cotizacion.a_decimal(rebaja)
+    if porcentaje is None or not (0 <= porcentaje < 50):
+        return _volver(propuesta_id, ancla="otra-empresa",
+                       error="La rebaja tiene que ser un porcentaje entre 0 y 50.")
+    items = await cotizacion.items_de(propuesta_id)
+    if not items or any(it["precio_unitario"] is None for it in items):
+        return _volver(propuesta_id, ancla="otra-empresa",
+                       error="Pon precio a todos los ítems antes de copiar la cotización.")
+    precios = cotizacion.precios_rebajados(items, porcentaje)
+    condiciones = await cotizacion.condiciones_de(propuesta_id)
+    suma = cotizacion.total([{**it, "precio_unitario": precios[it["id"]]} for it in items])
+
+    async with connection() as conn:
+        ya = await conn.fetchval(
+            "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
+            prop["licitacion_id"], empresa_id)
+        if ya:
+            aviso = "Esa empresa ya tiene propuesta para esta convocatoria: no se copió nada."
+            return RedirectResponse(f"/propuestas/{ya}?error={quote_plus(aviso)}",
+                                    status_code=303)
+        async with conn.transaction():
+            nueva = await conn.fetchval(
+                """INSERT INTO propuestas (licitacion_id, empresa_id, estado,
+                                           cotizacion_condiciones, precio_ofertado)
+                   VALUES ($1, $2, 'listo', $3::jsonb, $4) RETURNING id""",
+                prop["licitacion_id"], empresa_id, json.dumps(condiciones), float(suma))
+            for it in items:
+                await conn.execute(
+                    """INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad,
+                                                    unidad, marca, presentacion, precio_unitario)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
+                    nueva, it["orden"], it["descripcion"], it["cantidad"], it["unidad"],
+                    it["marca"], it["presentacion"], precios[it["id"]])
+    try:
+        from prep_bot.questioner import generar_preguntas_propuesta
+        await generar_preguntas_propuesta(nueva, empresa_id)
+    except Exception:
+        log.exception("No se pudieron generar preguntas para %s", nueva)
+    aviso = (f"Cotización copiada con precios redondos: total S/ {cotizacion.monto(suma)}. "
+             "Revisa marcas y precios antes de enviar.")
+    return RedirectResponse(f"/propuestas/{nueva}?aviso={quote_plus(aviso)}#siguiente",
+                            status_code=303)
 
 
 @router.post("/propuestas/{propuesta_id}/enviada")

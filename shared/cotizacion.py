@@ -106,6 +106,53 @@ def total(items) -> Decimal:
     return sum((subtotal(i) or Decimal(0) for i in items), Decimal(0))
 
 
+def _paso(precio: Decimal) -> Decimal:
+    """Precio "redondo": de 50 en 50 centimos por debajo de S/ 10, de sol en sol
+    por encima. Nada de S/ 2.32."""
+    return Decimal("0.50") if precio < 10 else Decimal(1)
+
+
+def precios_rebajados(items: list[dict], porcentaje: Decimal) -> dict[int, Decimal]:
+    """Precios unitarios redondos cuyo total queda un `porcentaje` por debajo
+    del de `items`, lo mas cerca posible sin pasarse. {item_id: precio}.
+
+    Primero cada precio baja el porcentaje y se redondea HACIA ABAJO a su paso
+    (asi el total arranca por debajo del objetivo). Luego se reparte lo que
+    sobra subiendo un paso los items que mas acercan al objetivo, sin que
+    ninguno pase de su precio original (alguno puede quedarse en el: con
+    precios tan pequenos, bajar un paso a todos ya rebaja mas del 2%). Los
+    items sin precio se quedan sin.
+    """
+    con_precio = [i for i in items if i.get("precio_unitario") is not None]
+    if not con_precio:
+        return {}
+    factor = 1 - Decimal(porcentaje) / 100
+    objetivo = (total(con_precio) * factor).quantize(CENTIMO, rounding=ROUND_HALF_UP)
+    nuevos: dict[int, Decimal] = {}
+    for it in con_precio:
+        original = Decimal(it["precio_unitario"])
+        paso = _paso(original * factor)
+        precio = (original * factor / paso).to_integral_value(rounding="ROUND_FLOOR") * paso
+        if precio >= original:          # un precio ya redondo y pequeno
+            precio = original - paso
+        nuevos[it["id"]] = max(precio, paso)
+    cantidades = {it["id"]: Decimal(it["cantidad"]) for it in con_precio}
+    originales = {it["id"]: Decimal(it["precio_unitario"]) for it in con_precio}
+
+    def suma() -> Decimal:
+        return sum((cantidades[k] * v for k, v in nuevos.items()), Decimal(0))
+
+    while True:
+        resto = objetivo - suma()
+        candidatos = [
+            (cantidades[k] * _paso(v), k) for k, v in nuevos.items()
+            if cantidades[k] * _paso(v) <= resto and v + _paso(v) <= originales[k]]
+        if not candidatos:
+            return {k: v.quantize(CENTIMO) for k, v in nuevos.items()}
+        _, k = max(candidatos)
+        nuevos[k] += _paso(nuevos[k])
+
+
 async def items_de(propuesta_id: int) -> list[dict]:
     async with connection() as conn:
         filas = await conn.fetch(
