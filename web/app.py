@@ -36,6 +36,34 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 # Los routers alcanzan las plantillas por app.state y no importando este modulo,
 # que los importa a ellos: al reves habria ciclo.
 app.state.templates = templates
+
+# El estado de una propuesta lo escriben los bots en jerga interna
+# ("preguntas_pendientes", "listo"). En pantalla va en palabras de usuario, y
+# con pocos colores: lo ganado en verde, lo que se puede enviar en acento, lo
+# enviado en informativo; el resto neutro.
+ESTADOS_PROPUESTA = {
+    "iniciado": ("En preparación", "neutro"),
+    "preguntas_pendientes": ("Faltan datos", "pend"),
+    "listo": ("Lista para enviar", "ac"),
+    "enviado": ("Enviada", "info"),
+    "ganada": ("Ganada", "ok"),
+    "adjudicado": ("Ganada", "ok"),
+    "cancelado": ("Cancelada", "neutro"),
+}
+
+
+def estado_legible(estado) -> str:
+    if estado in ESTADOS_PROPUESTA:
+        return ESTADOS_PROPUESTA[estado][0]
+    return (estado or "—").replace("_", " ").capitalize()
+
+
+def clase_estado(estado) -> str:
+    return ESTADOS_PROPUESTA.get(estado, ("", "neutro"))[1]
+
+
+templates.env.filters["estado_legible"] = estado_legible
+templates.env.filters["clase_estado"] = clase_estado
 # El correo del dueno, para que la barra sepa si mostrar "Admin". Vacio = nadie.
 app.state.admin_email = (os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip().lower()
 
@@ -434,6 +462,16 @@ async def _resumen(usuario_id: int, suyas=None, vigentes=None) -> dict:
     fila = {"total": len(suyas), "vigentes": len(vigentes), "urgentes": len(urgentes)}
     async with connection() as conn:
         historico = await conn.fetchval("SELECT COUNT(*) FROM historico_precios")
+        # Las abiertas que todavia no se enviaron y no han cerrado.
+        por_enviar = await conn.fetchval(
+            """SELECT COUNT(*) FROM propuestas p
+                 JOIN empresas e ON e.id = p.empresa_id
+                 LEFT JOIN licitaciones l ON l.id = p.licitacion_id
+                WHERE e.usuario_id = $1
+                  AND p.estado NOT IN ('enviado', 'ganada', 'adjudicado', 'cancelado')
+                  AND (l.fecha_cierre IS NULL
+                       OR l.fecha_cierre > (NOW() AT TIME ZONE 'America/Lima'))""",
+            usuario_id)
         ultimo = await conn.fetchrow(
             """SELECT fuente, fin, registros_nuevos FROM scraping_log
                WHERE status='done' ORDER BY fin DESC NULLS LAST LIMIT 1"""
@@ -443,6 +481,7 @@ async def _resumen(usuario_id: int, suyas=None, vigentes=None) -> dict:
         "vigentes": fila["vigentes"],
         "urgentes": fila["urgentes"],
         "historico": historico,
+        "por_enviar": por_enviar,
         "ultimo": dict(ultimo) if ultimo else None,
     }
 
@@ -516,6 +555,21 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
                 detalle = None
         d["score_detalle"] = detalle or {}
         salida.append(d)
+    # Si la cuenta ya abrio propuesta para alguna, la fila lo dice (y si ya
+    # se envio): sin esto se volvia a postular a lo ya enviado por no
+    # recordarlo. Una sola consulta para la pagina entera.
+    if salida:
+        async with connection() as conn:
+            props = await conn.fetch(
+                """SELECT DISTINCT ON (p.licitacion_id) p.licitacion_id, p.id, p.estado
+                     FROM propuestas p JOIN empresas e ON e.id = p.empresa_id
+                    WHERE e.usuario_id = $1 AND p.licitacion_id = ANY($2::text[])
+                    ORDER BY p.licitacion_id,
+                             (p.estado IN ('enviado', 'ganada', 'adjudicado')) DESC, p.id DESC""",
+                usuario_id, [d["id"] for d in salida])
+        por_lic = {r["licitacion_id"]: dict(r) for r in props}
+        for d in salida:
+            d["propuesta"] = por_lic.get(d["id"])
     return salida, total
 
 

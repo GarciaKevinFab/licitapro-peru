@@ -778,3 +778,30 @@ header.cab-antigua .sesion{margin-left:auto;border-left:0;padding-left:0}
 /* -- el distintivo fijo "Hecho por" (abajo a la derecha) no debe tapar los
    enlaces del pie ni el ultimo boton: se le deja sitio en escritorio. -- */
 @media (min-width:900px){.pie-app{padding-right:calc(var(--gutter) + 230px)}main{padding-bottom:96px}}
+
+/* ---------- Siguiente paso (propuesta por portal) ----------
+   Una sola tarjeta arriba con el paso que toca y su boton. La tira de tres
+   pasos dice donde se esta sin tener que leer. */
+.tarjeta.siguiente{border-color:var(--ac-3);background:linear-gradient(180deg,var(--ac-soft),transparent 70%),var(--panel)}
+.tarjeta.siguiente > h2{font-size:19px;margin:6px 0 6px}
+.tres-pasos{list-style:none;margin:0 0 14px;padding:0;display:flex;gap:6px;flex-wrap:wrap}
+.tres-pasos li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);padding:4px 10px 4px 4px;border-radius:var(--r-pill);border:1px solid var(--line-soft)}
+.tres-pasos li span{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font-family:var(--f-mono);font-size:11px;background:var(--panel-3);color:var(--ink-2)}
+.tres-pasos li.actual{color:var(--ink);border-color:var(--ac-2)}
+.tres-pasos li.actual span{background:var(--ac);color:var(--btn-txt)}
+.tres-pasos li.listo{color:var(--ink-2)}
+.tres-pasos li.listo span{background:var(--ac-3);color:var(--ink)}
+.tarjeta.siguiente form .ayuda{margin-right:8px}
+/* Lo que casi nunca hace falta, plegado: no compite con el paso principal. */
+details.avanzado{border:1px solid var(--line-soft);border-radius:var(--r);padding:10px 14px}
+details.avanzado > summary{cursor:pointer;font-size:13px;color:var(--ink-2)}
+details.avanzado[open] > summary{margin-bottom:6px}
+
+/* La fila de una licitacion a la que ya se postulo dice en que va. */
+table.datos .ya-postulada{display:table;margin:2px 0 5px;text-decoration:none;font-size:11px}
+table.datos .ya-postulada:hover{filter:brightness(1.15)}
+
+/* Primeros pasos con uno solo pendiente: una linea, no una tarjeta. */
+.arranque.compacto{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 18px}
+.arranque.compacto .arr-txt span{color:var(--ink-3)}
+a.t{text-decoration:none;color:inherit}

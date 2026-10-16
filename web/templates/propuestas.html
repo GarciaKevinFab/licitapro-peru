@@ -59,7 +59,7 @@ table.datos .pend-n{font-weight:600}
           {# El estado lo escriben los bots (iniciado, listo, enviado, ganada,
              adjudicado). Solo tres colores: lo ganado en verde, lo listo en
              acento, lo demas neutro; el resto de matices no ayuda a decidir. #}
-          <td data-eti="Estado"><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></td>
+          <td data-eti="Estado"><span class="pill {{ p.estado | clase_estado }}">{{ p.estado | estado_legible }}</span></td>
           <td class="num" data-eti="Pendientes">{% if p.pendientes %}<span class="pill pend pend-n">{{ p.pendientes }}</span>{% else %}<span class="nd">0</span>{% endif %}</td>
           <td class="num fecha" data-eti="Cierre">{{ p.fecha_cierre.strftime('%d/%m %H:%M') if p.fecha_cierre else '—' }}</td>
           <td class="acciones"><a class="btn sec chico" href="/propuestas/{{ p.id }}">Abrir</a></td>

@@ -85,7 +85,10 @@ async def test_con_envio_armado_el_expediente_entrega_el_zip_firmado(
         r = await cliente.get(f"/propuestas/{pid}/paquete")
         assert r.status_code == 200 and r.content.startswith(b"PK")
         pagina = (await cliente.get(f"/propuestas/{pid}")).text
-        assert "Descargar ZIP para el portal" in pagina
+        # El paso 2 de la tarjeta "siguiente" lleva al ZIP armado, y el
+        # expediente de SEACE ya no aparece.
+        assert f'href="/propuestas/{pid}/paquete">Descargar ZIP</a>' in pagina
+        assert "Subir al portal" in pagina
         assert "01_Cotizacion_firmada.pdf" in pagina
         assert "Armar expediente ZIP" not in pagina
     finally:
@@ -142,6 +145,8 @@ async def test_la_propuesta_se_marca_enviada_y_no_se_desmarca_sola(usuario, empr
                                             "password": usuario["password"]})
         r = await cliente.post(f"/propuestas/{pid}/enviada", data={"enviada": "1"})
         assert r.status_code == 303
+        # Vuelve a la tarjeta del paso, que es lo que acaba de cambiar.
+        assert r.headers["location"].endswith("#siguiente")
         await procesar_respuesta(qid, "sí")
         async with connection() as c:
             assert await c.fetchval("SELECT estado FROM propuestas WHERE id=$1", pid) == "enviado"

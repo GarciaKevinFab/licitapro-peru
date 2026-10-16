@@ -62,6 +62,11 @@
       </td>
       <td class="obj">
         <span class="ent">{{ l.entidad }}{% if l.nomenclatura %} · <span class="num-proc">{{ l.nomenclatura }}</span>{% endif %}</span>
+        {% if l.propuesta %}
+          {# Ya hay propuesta: se dice en que va, para no repetir lo hecho. #}
+          <a class="ya-postulada pill {{ l.propuesta.estado | clase_estado }}" href="/propuestas/{{ l.propuesta.id }}">
+            {% if l.propuesta.estado in ('enviado', 'ganada', 'adjudicado') %}✓ {% endif %}{{ l.propuesta.estado | estado_legible }}</a>
+        {% endif %}
         {# El objeto oficial puede pasar de 400 caracteres; recortado a ~140
            cabe en dos lineas y el completo viaja en el title para quien lo
            quiera leer sin abrir la ficha. #}
