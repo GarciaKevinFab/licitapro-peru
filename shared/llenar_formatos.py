@@ -696,7 +696,12 @@ def _hueco_para_el_sello(pag, tinta=None) -> tuple[float, float, float]:
     margen de un renglon corto sin pisar letras.
     """
     caros, baratos = [], []
-    for k in ("chars", "images", "rects", "curves", "lines"):
+    # Con el mapa de tinta, las imagenes se juzgan por sus pixeles y no por su
+    # recuadro: un escaneo suele traer varias capas superpuestas, y una de ellas
+    # cubre casi toda la hoja aunque este en blanco (TDR del E/M 4201 de la MPT:
+    # el sello huia a la esquina izquierda, sobre la nota al pie).
+    tipos = ("chars", "rects", "curves", "lines") if tinta is not None else         ("chars", "images", "rects", "curves", "lines")
+    for k in tipos:
         for o in getattr(pag, k, []):
             if o["x1"] - o["x0"] >= pag.width * 0.98 and o["bottom"] - o["top"] >= pag.height * 0.98:
                 continue   # un fondo de pagina entera no dice nada
