@@ -109,13 +109,15 @@ table.datos td{vertical-align:middle}
      Izipay siga simulado, y decir "no se cobra nada" seria mentir justo en la
      pantalla donde alguien decide si probar un pago. #}
   {% if modo_pasarela == 'simulado' and not culqi_activo %}
-    <div class="mensaje aviso">
+    {# Todo en un solo bloque: .mensaje es flex, y cada <code> suelto era una
+       pieza que no se encogia y desbordaba la pagina en el telefono. #}
+    <div class="mensaje aviso"><div>
       <b>Pasarela en modo simulado.</b> No se cobra nada real. Para el cobro
       automático configura <code>CULQI_MODO</code>,
       <code>CULQI_LLAVE_PUBLICA</code> y <code>CULQI_LLAVE_SECRETA</code>; para
       el pago único, <code>IZIPAY_MODO</code>,
       <code>IZIPAY_MERCHANT_CODE</code> e <code>IZIPAY_API_KEY</code>.
-    </div>
+    </div></div>
   {% endif %}
 
   <div class="arriba mb-16">
