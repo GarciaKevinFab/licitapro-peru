@@ -230,6 +230,28 @@
   </div>
   {% endif %}
 
+  {% if items and otras_empresas %}
+  {# La misma cotizacion con otra empresa de la cuenta. Los precios salen
+     redondos y un porcentaje por debajo en total; se revisan antes de enviar. #}
+  <div class="tarjeta" id="otra-empresa">
+    <h2>Postular con otra empresa</h2>
+    <p class="sub">Copia los ítems, las marcas y las condiciones a otra de tus empresas, con precios redondos más bajos.</p>
+    <form method="post" action="/propuestas/{{ p.id }}/otra-empresa" class="fila">
+      <label class="campo w-desc"><span>Empresa</span>
+        <select name="empresa_id" required>
+          {% for e in otras_empresas %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
+        </select></label>
+      <label class="campo w-corto"><span>Rebaja en el total (%)</span>
+        <input type="text" name="rebaja" value="2" inputmode="decimal" required></label>
+      <button type="submit" class="sec">Crear su cotización</button>
+    </form>
+    <p class="ayuda mt-14">Los precios salen redondos (de 50 en 50 céntimos bajo S/ 10, de sol en sol encima)
+       y el total queda lo más cerca posible de la rebaja sin pasarse; ninguno sube. Si las dos empresas
+       son tuyas, ten en cuenta que en procedimientos de selección dos empresas del mismo grupo
+       económico no pueden presentarse juntas; en compras menores el Tribunal no tiene un criterio único.</p>
+  </div>
+  {% endif %}
+
   {# Sin nada pendiente, en una cotizacion por portal esta tarjeta solo decia
      "no hay preguntas": ruido. Se muestra cuando de verdad falta algo. #}
   {% if pendientes or not (portal and items) %}
@@ -497,26 +519,6 @@
   </div>
   {% endif %}
 
-  {% if items and otras_empresas %}
-  {# La misma cotizacion con otra empresa de la cuenta. Los precios salen
-     redondos y un porcentaje por debajo en total; se revisan antes de enviar. #}
-  <details class="tarjeta avanzado" id="otra-empresa">
-    <summary><b>Postular con otra empresa</b> <span class="nd">— copia ítems, marcas y condiciones con precios más bajos</span></summary>
-    <form method="post" action="/propuestas/{{ p.id }}/otra-empresa" class="fila mt-14">
-      <label class="campo w-desc"><span>Empresa</span>
-        <select name="empresa_id" required>
-          {% for e in otras_empresas %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
-        </select></label>
-      <label class="campo w-corto"><span>Rebaja en el total (%)</span>
-        <input type="text" name="rebaja" value="2" inputmode="decimal" required></label>
-      <button type="submit" class="sec">Crear su cotización</button>
-    </form>
-    <p class="ayuda mt-14">Los precios salen redondos (de 50 en 50 céntimos bajo S/ 10, de sol en sol encima)
-       y el total queda lo más cerca posible de la rebaja sin pasarse; ninguno sube. Si las dos empresas
-       son tuyas, ten en cuenta que en procedimientos de selección dos empresas del mismo grupo
-       económico no pueden presentarse juntas; en compras menores el Tribunal no tiene un criterio único.</p>
-  </details>
-  {% endif %}
 
   {% if not items %}
   <div class="tarjeta" id="precio">
