@@ -251,7 +251,7 @@ async def listar(request: Request, aviso: str = "", error: str = "", cerradas: i
     async with connection() as conn:
         filas = await conn.fetch(
             """SELECT p.*, e.razon_social, l.objeto, l.entidad, l.fecha_cierre,
-                      l.monto_referencial,
+                      l.monto_referencial, l.nomenclatura,
                       (SELECT COUNT(*) FROM preguntas q
                         WHERE q.propuesta_id = p.id AND q.respondida = FALSE) AS pendientes
                  FROM propuestas p

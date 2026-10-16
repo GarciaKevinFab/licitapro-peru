@@ -48,9 +48,12 @@
       </td>
       <td class="cierre" data-eti="Cierre">
         {% if l.fecha_cierre %}
-          <span class="fecha">{{ l.fecha_cierre.strftime('%d/%m') }}</span>
+          {# Hora de Lima, que es como se guarda. La hora va solo si la fuente
+             la publica: medianoche exacta es "sin hora", no las 00:00. #}
+          <span class="fecha">{{ l.fecha_cierre.strftime('%d/%m') }}{% if l.fecha_cierre.strftime('%H:%M') != '00:00' %} <span class="hora">{{ l.fecha_cierre.strftime('%H:%M') }}</span>{% endif %}</span>
           {% if l.dias is not none %}
-            {% if l.dias < 0 %}<span class="chip venc">vencida</span>
+            {% if l.horas is not none and l.horas < 0 %}<span class="chip venc">vencida</span>
+            {% elif l.horas is not none and l.horas < 24 %}<span class="chip urg">{{ 'menos de 1 h' if l.horas < 1 else 'en ' ~ l.horas ~ ' h' }}</span>
             {% elif l.dias <= 2 %}<span class="chip urg">{{ l.dias }} d</span>
             {% elif l.dias <= 7 %}<span class="chip pronto">{{ l.dias }} d</span>
             {% else %}<span class="chip ok">{{ l.dias }} d</span>{% endif %}
@@ -58,7 +61,7 @@
         {% else %}<span class="nd">sin fecha</span>{% endif %}
       </td>
       <td class="obj">
-        <span class="ent">{{ l.entidad }}</span>
+        <span class="ent">{{ l.entidad }}{% if l.nomenclatura %} · <span class="num-proc">{{ l.nomenclatura }}</span>{% endif %}</span>
         {# El objeto oficial puede pasar de 400 caracteres; recortado a ~140
            cabe en dos lineas y el completo viaja en el title para quien lo
            quiera leer sin abrir la ficha. #}

@@ -51,7 +51,7 @@ table.datos .pend-n{font-weight:600}
       {% for p in propuestas %}
         <tr>
           <td class="obj">
-            <span class="ent">{{ p.entidad or '—' }}</span>
+            <span class="ent">{{ p.entidad or '—' }}{% if p.nomenclatura %} · <b>{{ p.nomenclatura }}</b>{% endif %}</span>
             {% set objeto = p.objeto or 'Sin licitación asociada' %}
             <a class="desc" href="/propuestas/{{ p.id }}"{% if objeto|length > 110 %} title="{{ objeto }}"{% endif %}>{{ objeto|truncate(110, False, '…') }}</a>
           </td>
@@ -61,7 +61,7 @@ table.datos .pend-n{font-weight:600}
              acento, lo demas neutro; el resto de matices no ayuda a decidir. #}
           <td data-eti="Estado"><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></td>
           <td class="num" data-eti="Pendientes">{% if p.pendientes %}<span class="pill pend pend-n">{{ p.pendientes }}</span>{% else %}<span class="nd">0</span>{% endif %}</td>
-          <td class="num fecha" data-eti="Cierre">{{ p.fecha_cierre.strftime('%d/%m') if p.fecha_cierre else '—' }}</td>
+          <td class="num fecha" data-eti="Cierre">{{ p.fecha_cierre.strftime('%d/%m %H:%M') if p.fecha_cierre else '—' }}</td>
           <td class="acciones"><a class="btn sec chico" href="/propuestas/{{ p.id }}">Abrir</a></td>
         </tr>
       {% endfor %}
