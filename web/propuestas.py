@@ -903,6 +903,23 @@ async def _anexo(prop, tipo: str, imagenes: dict) -> bytes | None:
 
 _ANEXOS = {"ficha": "03_Ficha_RUC.pdf", "rnp": "04_Constancia_RNP.pdf",
            "eett": "05_Especificaciones_Tecnicas.pdf"}
+# El portal del GOREMAD pide cuatro: cotizacion, DJ de postor, RNP y ficha
+# tecnica (las EETT de la entidad, selladas). La consulta RUC va dentro del
+# RNP, en el mismo PDF y despues de la constancia: asi lo arma el usuario.
+_ANEXOS_GOREMAD = ((("rnp", "ficha"), "03_Registro_Nacional_de_Proveedores_y_Consulta_RUC.pdf"),
+                   (("eett",), "04_Ficha_Tecnica.pdf"))
+
+
+def _unir_pdfs(partes: list[bytes]) -> bytes:
+    import io
+
+    from pypdf import PdfReader, PdfWriter
+    w = PdfWriter()
+    for p in partes:
+        w.append(PdfReader(io.BytesIO(p)))
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
 
 
 @router.get("/propuestas/{propuesta_id}/anexo/{tipo}")
@@ -1036,16 +1053,18 @@ async def paquete_envio(request: Request, propuesta_id: int):
             ruta = await generar_cotizacion(dict(prop), empresa, items, condiciones, cci,
                                             con_dnie=False)
             sc = await asyncio.to_thread(Path(ruta).read_bytes)
-        archivos.append((f"01_Cotizacion_{nombre}.pdf", sc))
+        archivos.append(("01_Cotizacion.pdf", sc))
         dj = await llenar_formatos.dj_llena(propuesta_id, prop["licitacion_id"], empresa,
                                             cci, imagenes)
         if dj is None:
             ruta = await generar_dj(dict(prop), empresa, cci, False)
             dj = await asyncio.to_thread(Path(ruta).read_bytes)
-        archivos.append(("02_Declaracion_Jurada.pdf", dj))
-        for tipo, nombre_pdf in _ANEXOS.items():
-            contenido = await _anexo(prop, tipo, imagenes)
-            if contenido is not None:
+        archivos.append(("02_Declaracion_Jurada_de_Postor.pdf", dj))
+        for tipos, nombre_pdf in _ANEXOS_GOREMAD:
+            partes = [c for t in tipos if (c := await _anexo(prop, t, imagenes)) is not None]
+            if partes:
+                contenido = partes[0] if len(partes) == 1 else await asyncio.to_thread(
+                    _unir_pdfs, partes)
                 archivos.append((nombre_pdf, contenido))
     except llenar_formatos.FormatoNoReconocido as e:
         return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
