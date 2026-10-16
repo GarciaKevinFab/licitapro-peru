@@ -37,3 +37,12 @@ def test_si_ssh_no_conecta_falla_con_el_motivo(monkeypatch):
     monkeypatch.setattr(tunel_puente, "_acepta", lambda puerto: False)
     with pytest.raises(RuntimeError, match="Permission denied"), tunel_puente.tunel():
         pass
+
+
+def test_la_ruta_de_huellas_va_sin_comillas_si_no_hace_falta():
+    """El ssh de Windows Server de la PC puente rechaza las comillas."""
+    from pathlib import PureWindowsPath
+    assert tunel_puente._ruta_ssh(PureWindowsPath("E:/licitapro-peru-main/data/kh")) == \
+        "E:/licitapro-peru-main/data/kh"
+    assert tunel_puente._ruta_ssh(PureWindowsPath("C:/Users/KEVIN GARCIA/kh")) == \
+        '"C:/Users/KEVIN GARCIA/kh"'
