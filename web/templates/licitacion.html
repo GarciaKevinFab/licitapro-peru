@@ -251,40 +251,44 @@
       {% set restantes = empresas | rejectattr('id', 'in', con_propuesta) | list %}
       {% if propuestas %}
         <p class="sub">Ya tienes propuesta para esta licitación:</p>
-        <div class="tabla-caja suelta">
-          <table class="datos"><tbody>
-            {% for p in propuestas %}
-              <tr><td>{{ p.razon_social }}</td>
-                  <td><span class="pill {{ p.estado | clase_estado }}">{{ p.estado | estado_legible }}</span></td>
-                  <td class="acciones texto-der"><a class="btn sec chico" href="/propuestas/{{ p.id }}">Abrir</a></td></tr>
-            {% endfor %}
-          </tbody></table>
-        </div>
+        {# Lista y no tabla: en el telefono la tabla se salia de la tarjeta. #}
+        <ul class="mis-propuestas">
+          {% for p in propuestas %}
+            <li><span class="nombre">{{ p.razon_social }}</span>
+                <span class="pill {{ p.estado | clase_estado }}">{{ p.estado | estado_legible }}</span>
+                <a class="btn sec chico" href="/propuestas/{{ p.id }}">Abrir</a></li>
+          {% endfor %}
+        </ul>
         {# Una empresa que ya postulo no cierra la puerta a las demas de la
            cuenta: se puede copiar su cotizacion (con rebaja) o empezar en blanco. #}
         {% if restantes %}
           {% set base = propuestas | selectattr('tiene_precios') | first %}
           <h3 class="mt-14">Postular con otra empresa</h3>
-          {% if base %}
-          <form method="post" action="/propuestas/{{ base.id }}/otra-empresa" class="fila">
-            <label class="campo w-desc"><span>Empresa</span>
-              <select name="empresa_id" required>
-                {% for e in restantes %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
-              </select></label>
-            <label class="campo w-corto"><span>Rebaja (%)</span>
-              <input type="text" name="rebaja" value="2" inputmode="decimal" required></label>
-            <button type="submit">Copiar la cotización de {{ base.razon_social | truncate(28, True, '…') }}</button>
-          </form>
-          <p class="ayuda">Mismos ítems, marcas y condiciones, con precios redondos más bajos. Pon 0 para no rebajar.</p>
-          {% endif %}
-          <form method="post" action="/postular" class="fila{% if base %} mt-14{% endif %}">
+          {# Un solo selector de empresa y dos botones: cada uno manda el mismo
+             formulario a su ruta (formaction). /postular ignora la rebaja. #}
+          <form method="post" action="/postular" class="otra-empresa">
             <input type="hidden" name="licitacion_id" value="{{ lic.id }}">
-            <label class="campo w-desc"><span>Empresa</span>
+            <label class="campo"><span>Empresa</span>
               <select name="empresa_id" required>
                 {% for e in restantes %}<option value="{{ e.id }}">{{ e.razon_social }}</option>{% endfor %}
               </select></label>
-            <button type="submit" class="{{ 'sec' if base else '' }}">{{ 'Empezar en blanco' if base else 'Postular' }}</button>
+            {% if base %}
+            <label class="campo w-corto"><span>Rebaja (%)</span>
+              <input type="text" name="rebaja" value="2" inputmode="decimal"></label>
+            {% endif %}
+            <div class="btn-grupo">
+              {% if base %}
+              <button type="submit" formaction="/propuestas/{{ base.id }}/otra-empresa">Copiar con rebaja</button>
+              <button type="submit" class="sec">Empezar en blanco</button>
+              {% else %}
+              <button type="submit">Postular</button>
+              {% endif %}
+            </div>
           </form>
+          {% if base %}
+          <p class="ayuda">«Copiar con rebaja» usa la cotización de {{ base.razon_social }}: mismos ítems,
+             marcas y condiciones, con precios redondos más bajos (0 para no rebajar).</p>
+          {% endif %}
         {% endif %}
       {% elif not empresas %}
         <div class="vacio">

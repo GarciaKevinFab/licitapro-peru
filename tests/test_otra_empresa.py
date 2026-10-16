@@ -118,7 +118,7 @@ async def test_la_licitacion_deja_postular_con_otra_empresa(usuario, empresa, cl
                                             "password": usuario["password"]})
         pagina = (await cliente.get(f"/licitacion/{lic}")).text
         assert "Enviada</span>" in pagina
-        assert f'action="/propuestas/{pid}/otra-empresa"' in pagina
+        assert f'formaction="/propuestas/{pid}/otra-empresa"' in pagina
         assert "SEGUNDA EMPRESA SAC" in pagina
         assert "Empezar en blanco" in pagina
     finally:
