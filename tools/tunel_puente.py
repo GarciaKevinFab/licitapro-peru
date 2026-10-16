@@ -39,6 +39,18 @@ def llave() -> Path:
                 or Path.home() / ".ssh" / "licitapro_puente")
 
 
+def _ruta_ssh(ruta) -> str:
+    """La ruta como la entiende el valor de un -o de ssh.
+
+    ssh parte ese valor en los espacios: "C:/Users/KEVIN GARCIA/..." se quedaba
+    en "C:/Users/KEVIN". Las comillas lo arreglan en el OpenSSH moderno, pero
+    el de Windows Server de la PC puente las rechaza ("invalid quotes"). Asi
+    que: barras normales, que los dos aceptan, y comillas solo si hay espacios.
+    """
+    texto = ruta.as_posix()
+    return f'"{texto}"' if " " in texto else texto
+
+
 def comando(destino_ssh: str) -> list[str]:
     return [
         "ssh", "-N",
@@ -49,9 +61,7 @@ def comando(destino_ssh: str) -> list[str]:
         # despues se exige, guardada junto al proyecto y no en el perfil.
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=accept-new",
-        # Entre comillas: ssh parte el valor de -o en los espacios, y una
-        # ruta como C:\Users\KEVIN GARCIA\... se quedaba en "C:\Users\KEVIN".
-        "-o", f'UserKnownHostsFile="{RAIZ / "data" / "puente_known_hosts"}"',
+        "-o", f"UserKnownHostsFile={_ruta_ssh(RAIZ / 'data' / 'puente_known_hosts')}",
         # Si el puerto local esta ocupado, que falle en vez de quedarse
         # abierto sin reenviar nada.
         "-o", "ExitOnForwardFailure=yes",

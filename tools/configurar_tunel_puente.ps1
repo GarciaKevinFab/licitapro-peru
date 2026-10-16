@@ -47,7 +47,7 @@ Write-Host "Pidiendo al VPS la conexion de la base..."
 # solo para esta llamada; lo que vale es si llega la linea de conexion.
 $ErrorActionPreference = 'Continue'
 $salida = ssh -T -i $Llave -o BatchMode=yes -o StrictHostKeyChecking=accept-new `
-             -o "UserKnownHostsFile=`"$Hosts`"" -o ConnectTimeout=15 $Vps 2>&1 |
+             -o "UserKnownHostsFile=$($Hosts.Replace('\','/'))" -o ConnectTimeout=15 $Vps 2>&1 |
           ForEach-Object { "$_" }
 $ErrorActionPreference = 'Stop'
 $linea = @($salida) | Where-Object { "$_" -match '^DATABASE_URL=postgresql://' } | Select-Object -First 1
