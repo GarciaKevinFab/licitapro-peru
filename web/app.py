@@ -710,17 +710,19 @@ async def panel(request: Request, q: str = "", region: str = "",
         return RedirectResponse("/entrar?siguiente=/panel", status_code=303)
     uid = usuario["id"]
     vigentes = _vigentes_efectivo(request, vigentes)
-    filas, total = await _licitaciones(uid, q, region, score_min, bool(vigentes),
-                                       bool(banderas), pagina)
+    # La tabla y los contadores no dependen uno del otro: a la vez.
+    (filas, total), resumen, primeros_pasos = await asyncio.gather(
+        _licitaciones(uid, q, region, score_min, bool(vigentes), bool(banderas), pagina),
+        _resumen(uid), _primeros_pasos(uid))
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "resumen": await _resumen(uid),
+        "resumen": resumen,
         "licitaciones": filas,
         "departamentos": DEPARTAMENTOS,
         "usuario": usuario,
         "q": q, "region": region, "score_min": score_min, "vigentes": vigentes,
         "banderas": banderas,
-        "primeros_pasos": await _primeros_pasos(uid),
+        "primeros_pasos": primeros_pasos,
         **_contexto_paginado(q, region, score_min, vigentes, banderas, pagina, total),
     })
 
