@@ -150,7 +150,12 @@
   <div class="tarjeta">
     <dl class="datos-ficha metas">
       <div><dt>Empresa</dt><dd><b>{{ p.razon_social }}</b></dd></div>
-      <div><dt>Estado</dt><dd><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span></dd></div>
+      <div><dt>Estado</dt><dd><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span>
+        {% if not (portal and items) and p.estado not in ('ganada','adjudicado') %}
+        <form method="post" action="/propuestas/{{ p.id }}/enviada" class="en-linea">
+          <input type="hidden" name="enviada" value="{{ 0 if p.estado == 'enviado' else 1 }}">
+          <button type="submit" class="fantasma chico">{{ 'Desmarcar envío' if p.estado == 'enviado' else 'Marcar como enviada' }}</button></form>
+        {% endif %}</dd></div>
       <div><dt>Cierre</dt><dd class="num"><b>{{ p.fecha_cierre.strftime('%d/%m/%Y') if p.fecha_cierre else '—' }}</b></dd></div>
       <div><dt>Referencial</dt><dd class="num"><b>{% if p.monto_referencial %}S/ {{ '{:,.0f}'.format(p.monto_referencial) }}{% else %}—{% endif %}</b></dd></div>
       <div><dt>Tu oferta</dt><dd class="num"><b>{% if p.precio_ofertado %}S/ {{ '{:,.2f}'.format(p.precio_ofertado) }}{% else %}<span class="sin">sin fijar</span>{% endif %}</b></dd></div>
@@ -427,6 +432,17 @@
             {% endfor %}
           </table></li>
         <li>{{ portal.paso_final | safe }}</li>
+        <li>Cuando el portal confirme el envío, anótalo aquí:
+          {% if p.estado == 'enviado' %}
+          <span class="pill info">Enviada</span>
+          <form method="post" action="/propuestas/{{ p.id }}/enviada" class="en-linea">
+            <input type="hidden" name="enviada" value="0">
+            <button type="submit" class="fantasma chico">Desmarcar</button></form>
+          {% else %}
+          <form method="post" action="/propuestas/{{ p.id }}/enviada" class="en-linea">
+            <input type="hidden" name="enviada" value="1">
+            <button type="submit">Marcar como enviada</button></form>
+          {% endif %}</li>
       </ol>
       <p class="ayuda">{{ portal.nota }} La ficha técnica de cada producto (catálogo del
          fabricante) va por tu cuenta si la piden.</p>
