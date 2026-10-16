@@ -130,14 +130,23 @@ FIRMAS="$DESTINO/firmas-$SELLO.tar.gz"
 
 mkdir -p "$DESTINO"
 
-echo "[$(date '+%F %T')] Volcando la base desde Supabase..."
+# Desde la mudanza (tools/migrar_a_vps.sh) la base vive en el servicio
+# `postgres` de este compose, que solo se ve desde su red interna: el
+# contenedor del volcado tiene que entrar en esa red. Con Supabase no hace
+# falta red, se sale a internet.
+RED_VOLCADO=()
+if [[ "$URL_VOLCADO" == *@postgres:* ]]; then
+  RED_VOLCADO=(--network "$(docker network ls --format '{{.Name}}' | grep -m1 '^licitapro_default$')")
+fi
+
+echo "[$(date '+%F %T')] Volcando la base..."
 # La URL viaja por el entorno del contenedor y se expande DENTRO: los
 # argumentos de un proceso los ve cualquiera que liste procesos, y ahi va la
 # contrasena de la base.
 #
 # Solo el esquema `public`: auth, storage y las demas son de Supabase, no las
 # gestionamos nosotros y restaurarlas encima romperia su instalacion.
-docker run --rm -e PGURL="$URL_VOLCADO" "$IMAGEN_PG" \
+docker run --rm "${RED_VOLCADO[@]}" -e PGURL="$URL_VOLCADO" "$IMAGEN_PG" \
   sh -c 'pg_dump "$PGURL" --schema=public --clean --if-exists --no-owner --no-privileges' \
   | gzip -9 > "$DUMP"
 

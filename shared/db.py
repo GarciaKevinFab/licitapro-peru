@@ -95,7 +95,13 @@ async def get_pool() -> asyncpg.Pool:
             # naive en hora local: cinco horas de desfase. Un token de Telegram
             # nacia pareciendo caducado, y una licitacion se daba por vencida
             # cinco horas antes de cerrar, justo en el caso "cierra hoy".
-            "server_settings": {"timezone": "America/Lima"},
+            #
+            #   OJO: el pooler transaccional de Supabase IGNORA este ajuste y su
+            #   sesion corrio siempre en UTC. En el Postgres del VPS, que si lo
+            #   aplica, se fija POSTGRES_ZONA_SESION=UTC para no cambiar de zona
+            #   al mudarse: lo guardado con NOW() durante meses esta en UTC.
+            "server_settings": {"timezone": os.getenv("POSTGRES_ZONA_SESION",
+                                                      "America/Lima")},
             "init": _preparar_conexion,
         }
 

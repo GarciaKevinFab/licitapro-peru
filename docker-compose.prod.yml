@@ -30,11 +30,58 @@
 #   a anadir junto con el codigo que lo use, en el mismo cambio.
 
 services:
+  # ── La base, en el mismo servidor ─────────────────────────────────────
+  #
+  #   Supabase quedaba a ~50 ms por consulta (VPS en Boston, base en Ohio,
+  #   pasando por su pooler con TLS), y una pagina hace decenas. Aqui la ida
+  #   y vuelta es de microsegundos.
+  #
+  #   Sin `ports`: solo la ven los servicios de este compose por la red
+  #   interna (host `postgres`). El 5432 del host ya lo usa otro proyecto, y
+  #   una base abierta a internet es una base que alguien va a probar.
+  #
+  #   La sesion va en UTC (`-c timezone=UTC` y POSTGRES_ZONA_SESION=UTC en el
+  #   .env), igual que estuvo siempre en Supabase: su pooler ignoraba la zona
+  #   que pedia el pool. Lo guardado con NOW() durante meses esta en UTC, y
+  #   cambiar de zona al mudarse correria cinco horas todo lo nuevo.
+  #
+  #   Respaldo: tools/respaldar.sh, cada 6 horas desde el cron del host, con
+  #   copia fuera del servidor (R2). Restaurar: ver tools/migrar_a_vps.sh.
+  postgres:
+    image: postgres:17-alpine   # misma version mayor que Supabase (17.6)
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: licitapro
+      POSTGRES_USER: licitapro
+      # Sin `:?`: compose interpola todos los servicios y exigirla aqui
+      # impediria levantar el resto. Vacia, la imagen se niega a inicializar,
+      # que es el sitio correcto para protestar.
+      POSTGRES_PASSWORD: ${PG_VPS_PASSWORD:-}
+    command: >
+      postgres
+      -c timezone=UTC
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c work_mem=8MB
+      -c maintenance_work_mem=64MB
+      -c max_connections=60
+      -c log_min_duration_statement=500
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U licitapro -d licitapro"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   migraciones:
     build: .
     command: alembic upgrade head
     env_file: .env
     restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   web:
     # RESOLUTOR PROPIO, Y NO POR CAPRICHO
@@ -238,5 +285,8 @@ services:
 volumes:
   # `datos_redis` se fue con el servicio que lo montaba. Estaba vacio.
   datos_expedientes:
+  # La base de LicitaPro. Borrar este volumen es borrar los datos de los
+  # clientes: el respaldo existe, pero es de hace hasta seis horas.
+  datos_postgres:
   caddy_datos:
   caddy_config:
