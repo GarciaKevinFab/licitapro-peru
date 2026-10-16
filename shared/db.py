@@ -44,6 +44,10 @@ def _es_gestionado(host: str) -> bool:
     return bool(host) and not host.startswith(("localhost", "127.", "db", "postgres"))
 
 
+async def _sin_reinicio(conn) -> None:
+    """Ver `opciones["reset"]` en get_pool."""
+
+
 async def _preparar_conexion(conn) -> None:
     """Hace que JSONB llegue a Python como dict o lista, no como texto.
 
@@ -99,6 +103,13 @@ async def get_pool() -> asyncpg.Pool:
             # Sin esto la app arranca y falla mas tarde, con trafico y de forma
             # intermitente, que es la peor forma de descubrirlo.
             opciones["statement_cache_size"] = 0
+            # Al devolver cada conexion asyncpg manda "RESET ALL; CLOSE ALL;
+            # UNLISTEN *..." : un viaje mas a la base (~50 ms hasta Supabase)
+            # por cada `connection()`. Detras del pooler transaccional no sirve
+            # de nada -- el estado de sesion no sobrevive a la transaccion y aqui
+            # no se usan LISTEN, cursores ni locks de sesion -- y era casi la
+            # mitad de las consultas de la ficha de una propuesta (23 de 54).
+            opciones["reset"] = _sin_reinicio
         if _es_gestionado(host):
             opciones["ssl"] = "require"
 
@@ -178,20 +189,26 @@ async def marcar_notificada(lid: str):
 
 # ─── Knowledge Base ──────────────────────────────────────
 async def kb_get(empresa_id: int, categoria: str, clave: str) -> str | None:
+    # Leer y contar el uso en un solo viaje: eran dos consultas por dato, y la
+    # ficha de una propuesta pide una docena de datos.
     async with connection() as conn:
-        row = await conn.fetchrow(
-            """SELECT valor FROM knowledge_base 
-            WHERE empresa_id=$1 AND categoria=$2 AND clave=$3""",
+        return await conn.fetchval(
+            """UPDATE knowledge_base SET usado_count = usado_count + 1
+                WHERE empresa_id=$1 AND categoria=$2 AND clave=$3
+            RETURNING valor""",
             empresa_id, categoria, clave,
         )
-        if row:
-            await conn.execute(
-                """UPDATE knowledge_base SET usado_count = usado_count + 1
-                WHERE empresa_id=$1 AND categoria=$2 AND clave=$3""",
-                empresa_id, categoria, clave,
-            )
-            return row["valor"]
-        return None
+
+
+async def kb_todos(empresa_id: int) -> dict[tuple[str, str], str]:
+    """Todo lo que se sabe de la empresa, {(categoria, clave): valor}, en un
+    solo viaje. Para quien revisa muchos datos a la vez (el validador pedia
+    uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar."""
+    async with connection() as conn:
+        filas = await conn.fetch(
+            "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
+            empresa_id)
+    return {(f["categoria"], f["clave"]): f["valor"] for f in filas}
 
 
 async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str, fuente="usuario_respuesta"):
