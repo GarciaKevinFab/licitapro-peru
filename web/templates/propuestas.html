@@ -1,11 +1,12 @@
 {% extends "_base.html" %}
 {% block titulo %}Propuestas · LicitaPro{% endblock %}
 {% set titulo_pagina = 'Propuestas' %}
-{% set sub_pagina = 'En preparación, ordenadas por fecha de cierre: primero lo que vence antes.' %}
+{% set sub_pagina = 'Ya cerradas: archivadas, la más reciente primero.' if cerradas else 'En preparación, ordenadas por fecha de cierre: primero lo que vence antes.' %}
 {% set og_titulo = 'Propuestas · LicitaPro Perú' %}
 {% block estilos %}
 table.datos td.obj{min-width:260px;max-width:560px}
 table.datos .pend-n{font-weight:600}
+.pestanas{display:flex;gap:8px;margin-bottom:14px}
 @media (max-width:640px){
   table.apilada td{justify-content:flex-start;gap:10px;align-items:center}
   table.apilada td[data-eti]::before{margin-right:auto}
@@ -16,12 +17,24 @@ table.datos .pend-n{font-weight:600}
 {% endblock %}
 {% block nav %}{% with activo='propuestas' %}{% include "_nav.html" %}{% endwith %}{% endblock %}
 {% block acciones_pagina %}
-  {% if propuestas %}<div class="cab-acc"><a class="btn sec" href="/panel">Ver licitaciones</a></div>{% endif %}
+  {% if hay_alguna %}<div class="cab-acc"><a class="btn sec" href="/panel">Ver licitaciones</a></div>{% endif %}
 {% endblock %}
 {% block contenido %}
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
-  {% if not propuestas %}
+  {% if n_cerradas %}
+  <nav class="pestanas" aria-label="Propuestas">
+    <a class="btn {{ 'sec' if cerradas else '' }} chico" href="/propuestas"{% if not cerradas %} aria-current="page"{% endif %}>Vigentes ({{ n_vigentes }})</a>
+    <a class="btn {{ '' if cerradas else 'sec' }} chico" href="/propuestas?cerradas=1"{% if cerradas %} aria-current="page"{% endif %}>Cerradas ({{ n_cerradas }})</a>
+  </nav>
+  {% endif %}
+  {% if not propuestas and hay_alguna %}
+    <div class="vacio">
+      <b>{{ 'No hay propuestas cerradas.' if cerradas else 'No tienes propuestas abiertas ahora.' }}</b>
+      <p>Las que ya cerraron están en «Cerradas».</p>
+      <a class="btn" href="/panel">Ver licitaciones</a>
+    </div>
+  {% elif not propuestas %}
     <div class="vacio">
       <svg class="ilustracion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
       <b>Todavía no has abierto ninguna propuesta.</b>

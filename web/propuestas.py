@@ -243,7 +243,7 @@ async def postular(request: Request, licitacion_id: str = Form(...),
 # ─── Propuestas ──────────────────────────────────────────
 
 @router.get("/propuestas", response_class=HTMLResponse)
-async def listar(request: Request, aviso: str = "", error: str = ""):
+async def listar(request: Request, aviso: str = "", error: str = "", cerradas: int = 0):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar?siguiente=/propuestas", status_code=303)
@@ -261,8 +261,16 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
                 ORDER BY l.fecha_cierre ASC NULLS LAST, p.created_at DESC""",
             usuario["id"])
 
+    # Lo que ya cerro no se puede enviar: sale de la lista y queda archivado
+    # en "Cerradas", lo ultimo primero. La fecha de cierre va en hora de Lima.
+    from shared import fechas
+    ahora = fechas.ahora()
+    vigentes = [f for f in filas if not f["fecha_cierre"] or f["fecha_cierre"] >= ahora]
+    pasadas = [f for f in filas if f["fecha_cierre"] and f["fecha_cierre"] < ahora][::-1]
     return _plantillas(request).TemplateResponse("propuestas.html", {
-        "request": request, "usuario": usuario, "propuestas": filas,
+        "request": request, "usuario": usuario,
+        "propuestas": pasadas if cerradas else vigentes, "cerradas": bool(cerradas),
+        "n_vigentes": len(vigentes), "n_cerradas": len(pasadas), "hay_alguna": bool(filas),
         "aviso": aviso, "error": error,
     })
 
