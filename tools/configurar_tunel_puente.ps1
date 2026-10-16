@@ -39,16 +39,21 @@ if (-not (Test-Path $Llave)) {
 }
 
 Write-Host "Pidiendo al VPS la conexion de la base..."
-$linea = ssh -i $Llave -o BatchMode=yes -o StrictHostKeyChecking=accept-new `
-             -o "UserKnownHostsFile=$Hosts" -o ConnectTimeout=15 $Vps 2>&1
-if ($LASTEXITCODE -ne 0 -or "$linea" -notmatch '^DATABASE_URL=postgresql://') {
-    throw "El VPS no entrego la conexion. Si la llave aun no esta registrada, pasale a Claude esta linea:`n$(Get-Content "$Llave.pub" -Raw)`nDetalle: $linea"
+# -T: sin terminal. Sin el, ssh avisa "Pseudo-terminal will not be allocated"
+# y ese aviso se mezclaba con la conexion. Se toma solo la linea que importa.
+$salida = ssh -T -i $Llave -o BatchMode=yes -o StrictHostKeyChecking=accept-new `
+             -o "UserKnownHostsFile=`"$Hosts`"" -o ConnectTimeout=15 $Vps 2>&1
+$linea = @($salida) | Where-Object { "$_" -match '^DATABASE_URL=postgresql://' } | Select-Object -First 1
+if (-not $linea) {
+    throw "El VPS no entrego la conexion. Si la llave aun no esta registrada, pasale a Claude esta linea:`n$(Get-Content "$Llave.pub" -Raw)`nDetalle: $($salida -join ' ')"
 }
 
 $respaldo = "$Env.antes-del-tunel-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
 Copy-Item $Env $respaldo
-$resto = Get-Content $Env | Where-Object { $_ -notmatch '^(DATABASE_URL|PUENTE_TUNEL_SSH)=' }
-$nuevo = @($resto) + "$linea".Trim() + "PUENTE_TUNEL_SSH=$Vps"
+$resto = Get-Content $Env | Where-Object { $_ -notmatch '^(DATABASE_URL|PUENTE_TUNEL_SSH|POSTGRES_ZONA_SESION)=' }
+# La sesion en UTC, como el servidor: sin esto el pool pediria hora de Lima y
+# lo que el puente guarde con NOW() quedaria cinco horas corrido.
+$nuevo = @($resto) + "$linea".Trim() + "PUENTE_TUNEL_SSH=$Vps" + "POSTGRES_ZONA_SESION=UTC"
 # UTF-8 sin BOM: python-dotenv leeria el BOM como parte del primer nombre.
 [System.IO.File]::WriteAllLines($Env, $nuevo, (New-Object System.Text.UTF8Encoding $false))
 Write-Host ".env actualizado (copia del anterior: $respaldo)."

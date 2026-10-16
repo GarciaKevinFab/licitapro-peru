@@ -49,7 +49,9 @@ def comando(destino_ssh: str) -> list[str]:
         # despues se exige, guardada junto al proyecto y no en el perfil.
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=accept-new",
-        "-o", f"UserKnownHostsFile={RAIZ / 'data' / 'puente_known_hosts'}",
+        # Entre comillas: ssh parte el valor de -o en los espacios, y una
+        # ruta como C:\Users\KEVIN GARCIA\... se quedaba en "C:\Users\KEVIN".
+        "-o", f'UserKnownHostsFile="{RAIZ / "data" / "puente_known_hosts"}"',
         # Si el puerto local esta ocupado, que falle en vez de quedarse
         # abierto sin reenviar nada.
         "-o", "ExitOnForwardFailure=yes",
