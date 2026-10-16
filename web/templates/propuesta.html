@@ -162,7 +162,7 @@
   {% set paso_preguntas = not pendientes %}
   {% set paso_precio = (items and not (items | selectattr('precio_unitario', 'none') | list)) if items else p.precio_ofertado %}
   {% set paso_docs = p.propuesta_tecnica_path or p.propuesta_economica_path %}
-  {% set paso_zip = p.expediente_zip_path %}
+  {% set paso_zip = armado or (p.expediente_zip_path and not portal) %}
   {% set ns = namespace(actual=false) %}
   <div class="tarjeta">
     <h2>Avance</h2>
@@ -172,6 +172,7 @@
           (paso_precio, 'Llenar la cotización', 'Marca y precio unitario de cada ítem.', '#cotizacion', 'Llenar') if (items or menor) else
           (paso_precio, 'Fijar el precio', 'Con el histórico de adjudicaciones parecidas como referencia.', '#precio', 'Fijar precio'),
           (paso_docs, 'Generar los documentos', 'Anexos y declaraciones con los datos de la empresa.', '#expediente', 'Generar'),
+          (paso_zip, 'Armar el envío', 'El ZIP con los adjuntos firmados y sellados, para el portal de la entidad.', '#envio', 'Ver envío') if portal else
           (paso_zip, 'Armar el expediente', 'El ZIP listo para subir a SEACE.', '#expediente', 'Armar ZIP'),
       ] %}
         {% set es_actual = (not hecho) and (not ns.actual) %}
@@ -379,7 +380,7 @@
     {% if portal %}
     {# El portal pide el envio en su formulario, con reCAPTCHA: eso lo hace el
        usuario. Aqui se le deja todo listo para copiar y adjuntar. #}
-    <div class="envio-portal mt-14">
+    <div class="envio-portal mt-14" id="envio">
       <h3>Enviar por el portal de la entidad</h3>
       <ol class="como">
         <li>Descarga los adjuntos, con la firma y el sello en cada hoja, como se mandan en papel:
@@ -468,6 +469,19 @@
   </div>
   {% endif %}
 
+  {# Con portal, lo que se sube es el ZIP de "Enviar por el portal": el
+     expediente de SEACE (carta, pacto, cotizacion generica) no sirve ahi y
+     confundia. En la SC 6023 se descargo ese en vez del firmado. #}
+  {% if portal %}
+  <div class="tarjeta" id="expediente">
+    <h2>Expediente</h2>
+    <p class="sub">Esta convocatoria se envía por el portal de la entidad: el ZIP que subes es el de
+       «Enviar por el portal», con {{ 'tus documentos firmados' if armado else 'la cotización y la DJ en el formato de la entidad' }}.</p>
+    <div class="btn-grupo">
+      <a class="btn" href="/propuestas/{{ p.id }}/paquete">Descargar ZIP para el portal</a>
+    </div>
+  </div>
+  {% else %}
   <div class="tarjeta" id="expediente">
     <h2>Expediente</h2>
 
@@ -524,6 +538,7 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 
   <div class="tarjeta" id="firma">
     <h2>Declaración jurada para firmar</h2>
