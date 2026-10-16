@@ -498,6 +498,9 @@ async def armar_expediente(request: Request, propuesta_id: int):
     if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
+    if paquete_armado(propuesta_id):
+        return _volver(propuesta_id, aviso="El envío ya está armado con tus documentos "
+                       "firmados: descárgalo en «Enviar por el portal».")
 
     # Se valida ANTES de armar nada. Un expediente al que le falta el DNI del
     # representante o la partida registral no es un expediente incompleto: es
@@ -533,6 +536,8 @@ async def descargar(request: Request, propuesta_id: int):
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
     prop = await _propuesta_del_usuario(propuesta_id, usuario["id"])
+    if prop and paquete_armado(propuesta_id):
+        return RedirectResponse(f"/propuestas/{propuesta_id}/paquete", status_code=303)
     if not prop or not prop["expediente_zip_path"]:
         return RedirectResponse(f"/propuestas/{propuesta_id}?error=Todavia+no+hay+expediente",
                                 status_code=303)
