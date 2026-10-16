@@ -54,6 +54,10 @@ paso() { echo; echo "[$(date '+%F %T')] $*"; }
 
 PG_VPS_PASSWORD="$(leer_env PG_VPS_PASSWORD)"
 URL_VPS="postgresql://licitapro:${PG_VPS_PASSWORD}@postgres:5432/licitapro"
+# En el .env va con sslmode=disable: el Postgres local no tiene TLS, y sin
+# esto Alembic (migrations/env.py) anade sslmode=require y no arranca. Paso en
+# el corte del 16/10/2026: la aplicacion quedo dos minutos sin levantar.
+URL_VPS_ENV="${URL_VPS}?sslmode=disable"
 
 # La URL de Supabase sale del .env actual o, si ya se hizo el corte, de la
 # copia que se guardo al hacerlo.
@@ -174,8 +178,11 @@ case "$MODO" in
     cp -p .env "$TRABAJO/env.antes-del-corte"
     chmod 600 "$TRABAJO/env.antes-del-corte"
     tmp="$(mktemp)"
-    grep -vE '^(DATABASE_URL|POSTGRES_ZONA_SESION)=' .env > "$tmp"
-    { echo "DATABASE_URL=$URL_VPS"; echo "POSTGRES_ZONA_SESION=UTC"; } >> "$tmp"
+    # POSTGRES_HOST tambien cambia: shared/db.py decide el TLS mirando ese
+    # host, y si sigue diciendo Supabase pide TLS a un Postgres que no lo tiene.
+    grep -vE '^(DATABASE_URL|POSTGRES_ZONA_SESION|POSTGRES_HOST|POSTGRES_PORT)=' .env > "$tmp"
+    { echo "DATABASE_URL=$URL_VPS_ENV"; echo "POSTGRES_ZONA_SESION=UTC"
+      echo "POSTGRES_HOST=postgres"; echo "POSTGRES_PORT=5432"; } >> "$tmp"
     cat "$tmp" > .env && rm -f "$tmp"
     paso "Levantando la aplicacion contra el VPS..."
     "${COMPOSE[@]}" up -d --no-build migraciones web radar prep win
