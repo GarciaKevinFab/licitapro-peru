@@ -71,9 +71,15 @@ async def detalle_licitacion(request: Request, licitacion_id: str,
         if not lic:
             return RedirectResponse("/panel", status_code=303)
         mias = await conn.fetch(
-            """SELECT p.id, p.estado, e.razon_social
+            """SELECT p.id, p.estado, p.empresa_id, e.razon_social,
+                      -- Si tiene todos los items con precio, se puede copiar.
+                      (EXISTS (SELECT 1 FROM propuesta_items i WHERE i.propuesta_id = p.id)
+                       AND NOT EXISTS (SELECT 1 FROM propuesta_items i
+                                        WHERE i.propuesta_id = p.id
+                                          AND i.precio_unitario IS NULL)) AS tiene_precios
                  FROM propuestas p JOIN empresas e ON e.id = p.empresa_id
-                WHERE p.licitacion_id = $1 AND e.usuario_id = $2""",
+                WHERE p.licitacion_id = $1 AND e.usuario_id = $2
+                ORDER BY p.id""",
             licitacion_id, usuario["id"])
         seguida = await conn.fetchval(
             """SELECT EXISTS(SELECT 1 FROM licitaciones_seguidas
