@@ -217,6 +217,39 @@ async def _verificar_codigos(cliente: httpx.AsyncClient) -> None:
                       "Revisar CODIGOS_DEPARTAMENTO.", fila.get("id"), real, esperado)
 
 
+async def _orden_regiones() -> list[tuple[int, str]]:
+    """En que orden se consultan las regiones en esta corrida.
+
+    SEACE no solo corta las rafagas: tiene un cupo por ventana de tiempo. Con
+    pausas de 1 s y reintento, la corrida del 15/10 llego hasta la region 13 y
+    ahi se corto (1.075 vigentes en vez de ~650, pero no las 25 regiones).
+    Recorrerlas siempre en el mismo orden dejaba sin leer a las mismas.
+
+      * Primero las regiones que los usuarios tienen configuradas (hoy, Madre
+        de Dios): esas se leen en todas las corridas.
+      * Despues el resto, empezando cada hora por una mitad distinta: en dos
+        corridas se cubren todas aunque SEACE corte a mitad de camino.
+    """
+    nombre_a_codigo = {normalizar(v): k for k, v in CODIGOS_DEPARTAMENTO.items()}
+    prioridad: list[int] = []
+    try:
+        from shared.db import connection
+        async with connection() as conn:
+            filas = await conn.fetch(
+                "SELECT DISTINCT unnest(regiones) AS r FROM user_config WHERE activo")
+        for f in filas:
+            codigo = nombre_a_codigo.get(normalizar(f["r"] or ""))
+            if codigo and codigo not in prioridad:
+                prioridad.append(codigo)
+    except Exception as e:  # noqa: BLE001
+        log.info("OECE menores: sin regiones de usuarios (%s)", e)
+    resto = [k for k in CODIGOS_DEPARTAMENTO if k not in prioridad]
+    if resto:
+        corrimiento = (fechas.ahora().hour * ((len(resto) + 1) // 2)) % len(resto)
+        resto = resto[corrimiento:] + resto[:corrimiento]
+    return [(k, CODIGOS_DEPARTAMENTO[k]) for k in sorted(prioridad) + resto]
+
+
 async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
     log_id = await log_scraping_start(FUENTE)
     anio = fechas.hoy().year
@@ -228,7 +261,7 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
 
     async with httpx.AsyncClient(timeout=45, headers=HEADERS, verify=False) as cliente:
         await _verificar_codigos(cliente)
-        for codigo, departamento in CODIGOS_DEPARTAMENTO.items():
+        for codigo, departamento in await _orden_regiones():
             if cortes_seguidos >= CORTES_SEGUIDOS_MAX:
                 detalle_error = (f"SEACE corto {cortes_seguidos} regiones seguidas por ritmo; "
                                  f"se sigue la proxima hora | {detalle_error or ''}")
