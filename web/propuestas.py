@@ -324,6 +324,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,
         "precio_legible": cotizacion.precio_legible,
         "formato_dj": formato_dj(dict(prop)),
+        "armado": _contenido_zip(armado) if (armado := paquete_armado(propuesta_id)) else None,
         "aviso": aviso, "error": error,
     })
 
@@ -914,6 +915,23 @@ async def descargar_anexo(request: Request, propuesta_id: int, tipo: str):
     return FileResponse(destino, filename=_ANEXOS[tipo], media_type="application/pdf")
 
 
+# Cuando el usuario firma a mano la cotizacion y los anexos, el envio se arma
+# con sus escaneos y no con lo que genera el sistema: ese ZIP se deja aqui y
+# la descarga lo sirve tal cual.
+PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
+
+
+def paquete_armado(propuesta_id: int) -> Path | None:
+    ruta = PAQUETES / f"propuesta_{int(propuesta_id)}.zip"
+    return ruta if ruta.exists() else None
+
+
+def _contenido_zip(ruta: Path) -> list[str]:
+    import zipfile
+    with zipfile.ZipFile(ruta) as z:
+        return sorted(z.namelist())
+
+
 async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict,
                       cci: str | None, imagenes: dict) -> list[tuple[str, bytes]]:
     """La postulacion a la Municipalidad de Tambopata, en el orden que piden:
@@ -969,6 +987,12 @@ async def paquete_envio(request: Request, propuesta_id: int):
     if not prop:
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
+    nombre = (prop["nomenclatura"] or f"propuesta-{propuesta_id}").replace("/", "-")
+    armado = paquete_armado(propuesta_id)
+    if armado:
+        prefijo = "Postulacion" if prop["fuente"] == "mpt_tambopata" else "Envio"
+        return FileResponse(armado, filename=f"{prefijo}_{nombre}.zip",
+                            media_type="application/zip")
     items = await cotizacion.items_de(propuesta_id)
     if not items or any(it.get("precio_unitario") is None for it in items):
         return _volver(propuesta_id, error="Pon precio a todos los ítems antes de armar el envío.")
@@ -978,7 +1002,6 @@ async def paquete_envio(request: Request, propuesta_id: int):
     imagenes = await _imagenes(prop["emp_id"], "escaneada")
     cci = await kb_get(prop["emp_id"], "financiero", "cci")
     condiciones = await cotizacion.condiciones_de(propuesta_id)
-    nombre = (prop["nomenclatura"] or f"propuesta-{propuesta_id}").replace("/", "-")
 
     archivos: list[tuple[str, bytes]] = []
     if prop["fuente"] == "mpt_tambopata":

@@ -345,3 +345,16 @@ async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
         async with connection() as c:
             await c.execute("DELETE FROM propuestas WHERE id=$1", pid)
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+
+
+def test_el_paquete_armado_a_mano_se_sirve_tal_cual(tmp_path, monkeypatch):
+    """Si el usuario firmo a mano, su ZIP manda: la descarga no genera otro."""
+    from web import propuestas
+    monkeypatch.setattr(propuestas, "PAQUETES", tmp_path)
+    assert propuestas.paquete_armado(7) is None
+    with zipfile.ZipFile(tmp_path / "propuesta_7.zip", "w") as z:
+        z.writestr("02_Anexo_05.pdf", b"x")
+        z.writestr("01_Solicitud.pdf", b"x")
+    ruta = propuestas.paquete_armado(7)
+    assert ruta == tmp_path / "propuesta_7.zip"
+    assert propuestas._contenido_zip(ruta) == ["01_Solicitud.pdf", "02_Anexo_05.pdf"]

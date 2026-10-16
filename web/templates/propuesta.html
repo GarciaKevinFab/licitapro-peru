@@ -385,7 +385,10 @@
         <li>Descarga los adjuntos, con la firma y el sello en cada hoja, como se mandan en papel:
           <a class="btn sec" href="/propuestas/{{ p.id }}/paquete">Descargar adjuntos (ZIP)</a>
           <ul class="adjuntos">
-            {% if portal.mpt %}
+            {% if armado %}
+            <li>Armado con tus documentos firmados; lo que no firmaste a mano va sellado en cada hoja:</li>
+            {% for n in armado %}<li>{{ n }}</li>{% endfor %}
+            {% elif portal.mpt %}
             <li>Solicitud de cotización de la municipalidad, llena con tus precios y marcas.</li>
             <li>Anexos 05 al 09 (oferta económica, DJ de notificación, carta de CCI, DJ de
               contratos menores y DJ de prohibiciones), llenos con los datos de la empresa.</li>
@@ -395,6 +398,7 @@
             {% else %}
             <li>01 Cotización y 02 Declaración jurada, llenas en el formato de la entidad.</li>
             {% endif %}
+            {% if not armado %}
             <li>Ficha RUC:
               {% if anexos.ficha %}<a href="/propuestas/{{ p.id }}/anexo/ficha">lista</a>
               {% else %}<span class="pill neutro">falta</span>
@@ -406,6 +410,7 @@
             <li>{% if portal.mpt %}TDR / especificaciones técnicas{% else %}Especificaciones técnicas{% endif %} de la entidad:
               {% if formatos and formatos.eett %}<a href="/propuestas/{{ p.id }}/anexo/eett">listas</a>
               {% else %}<span class="pill neutro">no publicadas aún</span>{% endif %}</li>
+            {% endif %}
           </ul></li>
         <li>Abre el formulario de la entidad:
           <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">{{ portal.boton }}</a>
