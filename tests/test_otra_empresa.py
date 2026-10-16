@@ -89,3 +89,40 @@ async def test_copia_la_cotizacion_a_otra_empresa(usuario, empresa, cliente, mar
             await c.execute("DELETE FROM propuestas WHERE licitacion_id=$1", lic)
             await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
             await c.execute("DELETE FROM empresas WHERE id=$1", otra)
+
+
+@sin_base
+@pytest.mark.asyncio
+async def test_la_licitacion_deja_postular_con_otra_empresa(usuario, empresa, cliente, marca):
+    """Que una empresa ya haya postulado no cierra la puerta a las demas."""
+    from shared.db import connection
+
+    async with connection() as c:
+        otra = await c.fetchval(
+            "INSERT INTO empresas (usuario_id, razon_social, ruc) "
+            "SELECT usuario_id, 'SEGUNDA EMPRESA SAC', '20888888888' FROM empresas WHERE id=$1 "
+            "RETURNING id", empresa)
+        lic = await c.fetchval(
+            """INSERT INTO licitaciones (id, fuente, tipo, nomenclatura, entidad, objeto)
+               VALUES ($1, 'mpt_tambopata', 'cotizacion', 'E/M-2-2026-MPT', 'MPT', 'O')
+               RETURNING id""", f"prueba_lic_otra_{marca}")
+        pid = await c.fetchval(
+            "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
+            "VALUES ($1, $2, 'enviado') RETURNING id", lic, empresa)
+        await c.execute(
+            "INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad, unidad, "
+            "precio_unitario) VALUES ($1, 1, 'PAPEL', 50, 'EMP', 19)", pid)
+        await c.execute("DELETE FROM intentos_acceso")
+    try:
+        await cliente.post("/entrar", data={"email": usuario["email"],
+                                            "password": usuario["password"]})
+        pagina = (await cliente.get(f"/licitacion/{lic}")).text
+        assert "Enviada</span>" in pagina
+        assert f'action="/propuestas/{pid}/otra-empresa"' in pagina
+        assert "SEGUNDA EMPRESA SAC" in pagina
+        assert "Empezar en blanco" in pagina
+    finally:
+        async with connection() as c:
+            await c.execute("DELETE FROM propuestas WHERE licitacion_id=$1", lic)
+            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+            await c.execute("DELETE FROM empresas WHERE id=$1", otra)
