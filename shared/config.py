@@ -81,18 +81,36 @@ def normalizar(texto: str) -> str:
     """
     if not texto:
         return ""
+    # Atajo: sin caracteres fuera de ASCII no hay tildes que quitar. Es el
+    # caso de casi todo lo que publica OSCE (trae "?" en vez de la tilde), y
+    # el recorrido letra por letra de abajo era lo mas caro del panel.
+    if texto.isascii():
+        return texto.lower()
     descompuesto = unicodedata.normalize("NFKD", texto)
     sin_tildes = "".join(c for c in descompuesto if not unicodedata.combining(c))
     return sin_tildes.lower()
 
 
-@lru_cache(maxsize=512)
-def _patron(clave: str) -> re.Pattern:
-    """Patron con limites de palabra, cacheado por keyword ya normalizada."""
-    # El sufijo opcional cubre el plural castellano ("prenda" -> "prendas",
-    # "servidor" -> "servidores"). Sin el, exigir limites de palabra dejaba
-    # pasar todos los plurales, que en estos textos son la forma habitual.
-    return re.compile(r"(?<!\w)" + re.escape(clave) + r"(?:es|s)?(?!\w)")
+@lru_cache(maxsize=256)
+def _patron_de(keywords: tuple[str, ...]) -> re.Pattern | None:
+    """Un solo patron para toda la lista, con las keywords ya normalizadas.
+
+    Antes cada fila normalizaba otra vez cada keyword y corria una busqueda por
+    keyword: en el panel eran ~47 mil normalizaciones y otras tantas busquedas
+    para mil filas. Ahora la lista se prepara una vez y cada fila es una sola
+    busqueda. Mismo resultado: la alternancia prueba todas las keywords en cada
+    posicion, y las mas largas van primero.
+
+    El sufijo opcional cubre el plural castellano ("prenda" -> "prendas",
+    "servidor" -> "servidores"). Sin el, exigir limites de palabra dejaba
+    pasar todos los plurales, que en estos textos son la forma habitual.
+    """
+    claves = sorted({c for kw in keywords if (c := normalizar(kw).strip())},
+                    key=len, reverse=True)
+    if not claves:
+        return None
+    alternativas = "|".join(re.escape(c) for c in claves)
+    return re.compile(r"(?<!\w)(?:" + alternativas + r")(?:es|s)?(?!\w)")
 
 
 def match_keywords(texto: str, keywords: list[str]) -> bool:
@@ -104,12 +122,8 @@ def match_keywords(texto: str, keywords: list[str]) -> bool:
     """
     if not keywords:
         return True
-    texto_norm = normalizar(texto)
-    for kw in keywords:
-        clave = normalizar(kw).strip()
-        if clave and _patron(clave).search(texto_norm):
-            return True
-    return False
+    patron = _patron_de(tuple(keywords))
+    return bool(patron and patron.search(normalizar(texto)))
 
 
 # Un monto real trae marca de moneda ("S/ 5000") o estructura numerica

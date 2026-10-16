@@ -415,7 +415,7 @@ def _horas(fecha) -> int | None:
     return int((fecha - fechas.ahora()).total_seconds() // 3600)
 
 
-async def _resumen(usuario_id: int) -> dict:
+async def _resumen(usuario_id: int, suyas=None, vigentes=None) -> dict:
     """Resumen del usuario: cuenta sobre SU seleccion, no sobre el pozo entero.
 
     El pozo de licitaciones es compartido -- son datos publicos -- pero el
@@ -426,9 +426,8 @@ async def _resumen(usuario_id: int) -> dict:
     # completa, que trae las 500 de mas puntaje con vencidas incluidas: las
     # que cerraban hoy quedaban fuera de esas 500 y el panel decia "0
     # vigentes" encima de una tabla con siete.
-    suyas, vigentes = await asyncio.gather(
-        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False),
-        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=True))
+    if suyas is None or vigentes is None:
+        suyas, vigentes = await _las_del_usuario(usuario_id)
     ahora = fechas.ahora()
     urgentes = [l for l in vigentes
                 if l["fecha_cierre"] and l["fecha_cierre"] < ahora + timedelta(days=3)]
@@ -451,10 +450,21 @@ async def _resumen(usuario_id: int) -> dict:
 POR_PAGINA = 30
 
 
+async def _las_del_usuario(usuario_id: int) -> tuple[list, list]:
+    """(todas, vigentes) de la cuenta, cada una leida y filtrada UNA vez.
+
+    El panel las pedia tres veces -- la tabla y los dos contadores -- y cada
+    pasada volvia a correr las keywords sobre cientos de filas.
+    """
+    return await asyncio.gather(
+        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=False),
+        licitaciones_para_usuario(usuario_id, limite=1000, solo_vigentes=True))
+
+
 async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
                         score_min: int = 0, solo_vigentes: bool = True,
                         con_banderas: bool = False,
-                        pagina: int = 1) -> tuple[list[dict], int]:
+                        pagina: int = 1, filas=None) -> tuple[list[dict], int]:
     """Filtros de la interfaz aplicados SOBRE el conjunto ya scopeado.
 
     El scoping por inquilino ocurre primero y una sola vez, en
@@ -468,8 +478,9 @@ async def _licitaciones(usuario_id: int, q: str = "", region: str = "",
     fila 31 de la pagina 2 es la que antes ocupaba la posicion 31.
     """
     from shared.config import normalizar
-    filas = await licitaciones_para_usuario(usuario_id, limite=500,
-                                            solo_vigentes=solo_vigentes)
+    if filas is None:
+        filas = await licitaciones_para_usuario(usuario_id, limite=1000,
+                                                solo_vigentes=solo_vigentes)
     if q:
         aguja = normalizar(q)
         filas = [f for f in filas
@@ -710,10 +721,14 @@ async def panel(request: Request, q: str = "", region: str = "",
         return RedirectResponse("/entrar?siguiente=/panel", status_code=303)
     uid = usuario["id"]
     vigentes = _vigentes_efectivo(request, vigentes)
-    # La tabla y los contadores no dependen uno del otro: a la vez.
-    (filas, total), resumen, primeros_pasos = await asyncio.gather(
-        _licitaciones(uid, q, region, score_min, bool(vigentes), bool(banderas), pagina),
-        _resumen(uid), _primeros_pasos(uid))
+    # Las licitaciones de la cuenta se leen una vez y sirven a la tabla y a
+    # los contadores; los primeros pasos van a la vez.
+    (suyas, las_vigentes), primeros_pasos = await asyncio.gather(
+        _las_del_usuario(uid), _primeros_pasos(uid))
+    filas, total = await _licitaciones(uid, q, region, score_min, bool(vigentes),
+                                       bool(banderas), pagina,
+                                       filas=las_vigentes if vigentes else suyas)
+    resumen = await _resumen(uid, suyas, las_vigentes)
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "resumen": resumen,
