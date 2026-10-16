@@ -74,10 +74,18 @@ table.datos td.monto{white-space:nowrap}
 </div>
 {% endblock %}
 {% block contenido %}
-  {% if primeros_pasos %}
+  {% if primeros_pasos and primeros_pasos.total - primeros_pasos.hechos == 1 %}
+  {# Con un solo paso pendiente, una linea basta: la tarjeta grande se comia
+     la mitad de la pantalla cada vez que se entraba a ver licitaciones. #}
+  {% set falta = primeros_pasos.pasos | rejectattr('hecho') | first %}
+  <section class="arranque compacto" aria-label="Te falta un paso">
+    <div class="arr-txt"><b>Te falta un paso: {{ falta.titulo | lower }}.</b> <span>{{ falta.detalle }}</span></div>
+    <a class="btn sec" href="{{ falta.enlace }}">{{ falta.accion }}</a>
+  </section>
+  {% elif primeros_pasos %}
   <section class="arranque" aria-labelledby="arr-titulo">
     <div class="arr-cab">
-      <h2 id="arr-titulo">Te faltan {{ primeros_pasos.total - primeros_pasos.hechos }} paso(s) para
+      <h2 id="arr-titulo">Te faltan {{ primeros_pasos.total - primeros_pasos.hechos }} pasos para
           que esto trabaje por ti</h2>
       <span class="arr-cuenta">{{ primeros_pasos.hechos }}/{{ primeros_pasos.total }}</span>
     </div>
@@ -110,7 +118,9 @@ table.datos td.monto{white-space:nowrap}
     <div class="t {% if resumen.urgentes %}alerta{% endif %}">
       <div class="n">{{ resumen.urgentes }}</div><div class="l">cierran en 3 días o menos</div></div>
     <div class="t"><div class="n">{{ resumen.total }}</div><div class="l">en seguimiento</div></div>
-    <div class="t"><div class="n">{{ resumen.historico }}</div><div class="l">referencias de precio</div></div>
+    {# Antes: "referencias de precio", casi siempre 0 y sin accion posible.
+       Lo que si pide accion es lo que esta a medio preparar. #}
+    <a class="t" href="/propuestas"><div class="n">{{ resumen.por_enviar }}</div><div class="l">propuestas por enviar</div></a>
   </section>
 
   <form class="filtros" hx-get="/parts/tabla" hx-target="#tabla"

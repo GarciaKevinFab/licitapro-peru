@@ -150,7 +150,7 @@
   <div class="tarjeta">
     <dl class="datos-ficha metas">
       <div><dt>Empresa</dt><dd><b>{{ p.razon_social }}</b></dd></div>
-      <div><dt>Estado</dt><dd><span class="pill {% if p.estado in ('ganada','adjudicado') %}ok{% elif p.estado == 'listo' %}ac{% elif p.estado == 'enviado' %}info{% else %}neutro{% endif %}">{{ p.estado }}</span>
+      <div><dt>Estado</dt><dd><span class="pill {{ p.estado | clase_estado }}">{{ p.estado | estado_legible }}</span>
         {% if not (portal and items) and p.estado not in ('ganada','adjudicado') %}
         <form method="post" action="/propuestas/{{ p.id }}/enviada" class="en-linea">
           <input type="hidden" name="enviada" value="{{ 0 if p.estado == 'enviado' else 1 }}">
@@ -169,6 +169,44 @@
   {% set paso_docs = p.propuesta_tecnica_path or p.propuesta_economica_path %}
   {% set paso_zip = armado or (p.expediente_zip_path and not portal) %}
   {% set ns = namespace(actual=false) %}
+  {% if portal and items %}
+  {# Una cotizacion que se envia por el portal de la entidad tiene tres pasos,
+     y en cada momento solo uno importa. Esta tarjeta dice cual y deja su
+     boton a mano; antes habia que bajar por seis tarjetas para encontrarlo. #}
+  {% set faltan = items | selectattr('precio_unitario', 'none') | list %}
+  {% set paso = 3 if p.estado in ('enviado', 'ganada', 'adjudicado') else (1 if faltan else 2) %}
+  <div class="tarjeta siguiente" id="siguiente">
+    <ol class="tres-pasos" aria-label="Pasos para enviar">
+      {% for n, texto in [(1, 'Marca y precio'), (2, 'Subir al portal'), (3, 'Enviada')] %}
+      <li class="{% if n < paso or (n == 3 and paso == 3) %}listo{% elif n == paso %}actual{% endif %}"><span>{{ n }}</span>{{ texto }}</li>
+      {% endfor %}
+    </ol>
+    {% if paso == 1 %}
+      <h2>Pon marca y precio a {{ faltan | length }} ítem{{ 's' if faltan | length != 1 }}</h2>
+      <p class="sub">Con todos los precios puestos, la cotización y los anexos salen llenos en el formato de la entidad.</p>
+      <div class="btn-grupo"><a class="btn" href="#cotizacion">Ir a la cotización</a></div>
+    {% elif paso == 2 %}
+      <h2>Descarga el ZIP y súbelo al portal de la entidad</h2>
+      <p class="sub">Lleva todo firmado y sellado. Cierra el
+        <b>{{ p.fecha_cierre.strftime('%d/%m a las %H:%M') if p.fecha_cierre else '—' }}</b>{% if p.fecha_cierre %} (hora de Lima){% endif %}.</p>
+      <div class="btn-grupo">
+        <a class="btn" href="/propuestas/{{ p.id }}/paquete">Descargar ZIP</a>
+        <a class="btn sec" href="{{ portal.enviar }}" target="_blank" rel="noopener">{{ portal.boton }}</a>
+        <a class="btn fantasma" href="#envio">Ver los datos para copiar</a>
+      </div>
+      <form method="post" action="/propuestas/{{ p.id }}/enviada" class="mt-14">
+        <input type="hidden" name="enviada" value="1">
+        <span class="ayuda">¿Ya la subiste y el portal lo confirmó?</span>
+        <button type="submit" class="sec chico">Marcar como enviada</button></form>
+    {% else %}
+      <h2>Enviada</h2>
+      <p class="sub">Ahora toca esperar la respuesta de la entidad. Si la marcaste por error, puedes deshacerlo.</p>
+      <form method="post" action="/propuestas/{{ p.id }}/enviada">
+        <input type="hidden" name="enviada" value="0">
+        <button type="submit" class="fantasma chico">Desmarcar envío</button></form>
+    {% endif %}
+  </div>
+  {% else %}
   <div class="tarjeta">
     <h2>Avance</h2>
     <ul class="pasos">
@@ -190,7 +228,11 @@
       {% endfor %}
     </ul>
   </div>
+  {% endif %}
 
+  {# Sin nada pendiente, en una cotizacion por portal esta tarjeta solo decia
+     "no hay preguntas": ruido. Se muestra cuando de verdad falta algo. #}
+  {% if pendientes or not (portal and items) %}
   <div class="tarjeta" id="preguntas">
     <div class="cab-tarjeta">
       <h2>Lo que falta</h2>
@@ -236,6 +278,7 @@
       </div>
     {% endfor %}
   </div>
+  {% endif %}
 
 
   {% if items or menor %}
@@ -322,6 +365,7 @@
     {# Los formatos de la entidad. Los baja solos la PC puente del portal de la
        entidad (licitacion_documentos); subir a mano queda como plan B, para una
        entidad que no los publica o un formato que vino mal. #}
+    {% if portal %}<details class="mt-14 avanzado"><summary>Descargas sueltas y formatos de la entidad</summary>{% endif %}
     <div class="formatos mt-14">
       <h3>Formatos de la entidad</h3>
       {% for tipo, nombre in (('sc', 'Solicitud de cotización'), ('dj', 'Declaración jurada'),
@@ -381,8 +425,10 @@
          tus datos de contacto.{% endif %}
       «Con firma escaneada» lleva estampadas tu firma y tu sello, que se suben una sola vez en
       <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
+    {% endif %}
+    {% if portal %}</details>{% endif %}
 
-    {% if portal %}
+    {% if items and portal %}
     {# El portal pide el envio en su formulario, con reCAPTCHA: eso lo hace el
        usuario. Aqui se le deja todo listo para copiar y adjuntar. #}
     <div class="envio-portal mt-14" id="envio">
@@ -448,7 +494,6 @@
          fabricante) va por tu cuenta si la piden.</p>
     </div>
     {% endif %}
-    {% endif %}
   </div>
   {% endif %}
 
@@ -490,16 +535,9 @@
   {# Con portal, lo que se sube es el ZIP de "Enviar por el portal": el
      expediente de SEACE (carta, pacto, cotizacion generica) no sirve ahi y
      confundia. En la SC 6023 se descargo ese en vez del firmado. #}
-  {% if portal %}
-  <div class="tarjeta" id="expediente">
-    <h2>Expediente</h2>
-    <p class="sub">Esta convocatoria se envía por el portal de la entidad: el ZIP que subes es el de
-       «Enviar por el portal», con {{ 'tus documentos firmados' if armado else 'la cotización y la DJ en el formato de la entidad' }}.</p>
-    <div class="btn-grupo">
-      <a class="btn" href="/propuestas/{{ p.id }}/paquete">Descargar ZIP para el portal</a>
-    </div>
-  </div>
-  {% else %}
+  {# Con portal no hay expediente de SEACE: el ZIP que se sube es el del
+     paso 2 de arriba. Esta tarjeta repetida confundio en la SC 6023. #}
+  {% if not portal %}
   <div class="tarjeta" id="expediente">
     <h2>Expediente</h2>
 
@@ -558,6 +596,8 @@
   </div>
   {% endif %}
 
+  {# La Municipalidad no pide DJ suelta: van sus anexos dentro del ZIP. #}
+  {% if not (portal and portal.mpt) %}
   <div class="tarjeta" id="firma">
     <h2>Declaración jurada para firmar</h2>
     {% if formato_dj == 'goremad' %}
@@ -597,5 +637,6 @@
        sello? Se suben en
        <a href="/empresas/{{ p.emp_id }}/editar">los datos de la empresa</a>.</p>
   </div>
+  {% endif %}
 </main>
 {% endblock %}

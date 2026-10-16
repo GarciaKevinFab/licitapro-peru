@@ -581,7 +581,9 @@ async def marcar_enviada(request: Request, propuesta_id: int, enviada: int = For
             await conn.execute(
                 "UPDATE propuestas SET estado='listo', updated_at=NOW() WHERE id=$1 "
                 "AND estado='enviado'", propuesta_id)
-    return _volver(propuesta_id, aviso="Marcada como enviada." if enviada
+    # Vuelve arriba, a la tarjeta del paso, que es lo que acaba de cambiar.
+    return _volver(propuesta_id, ancla="siguiente",
+                   aviso="Marcada como enviada." if enviada
                    else "Desmarcada: vuelve a estar lista para enviar.")
 
 
@@ -676,10 +678,10 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
 
 # ─── Cotizacion por items ────────────────────────────────
 
-def _volver(propuesta_id: int, **query) -> RedirectResponse:
+def _volver(propuesta_id: int, ancla: str = "cotizacion", **query) -> RedirectResponse:
     clave, texto = next(iter(query.items()))
     return RedirectResponse(
-        f"/propuestas/{propuesta_id}?{clave}={quote_plus(texto)}#cotizacion",
+        f"/propuestas/{propuesta_id}?{clave}={quote_plus(texto)}#{ancla}",
         status_code=303)
 
 
