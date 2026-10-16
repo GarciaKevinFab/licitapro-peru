@@ -142,7 +142,11 @@ def main() -> int:
     _preparar_log()
     log.info("--- inicio %s ---", fechas.ahora().strftime("%Y-%m-%d %H:%M:%S"))
     try:
-        codigo = asyncio.run(_principal())
+        # Desde la mudanza la base esta en el VPS y se llega por tunel SSH
+        # (tools/tunel_puente.py). Sin PUENTE_TUNEL_SSH en el .env no se abre.
+        from tools.tunel_puente import tunel
+        with tunel():
+            codigo = asyncio.run(_principal())
     except Exception:
         # Se registra y se devuelve fallo para que el Programador de tareas lo
         # marque en rojo. Terminar en 0 tras un error es como esta fuente
