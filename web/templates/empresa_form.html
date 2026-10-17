@@ -28,6 +28,14 @@ form.emp fieldset:last-of-type{margin-bottom:0}
 .ayuda[data-ruc-estado]:empty{display:none}
 .ayuda[data-ruc-estado]{font-family:var(--f-mono);font-size:11.5px}
 
+/* Hoja membretada: la vista previa es la hoja convertida, que es lo que de
+   verdad sale en los documentos, a un ancho que deja leer la cabecera. */
+.membrete{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:18px;align-items:start}
+.membrete .hoja{border:1px solid var(--line-soft);border-radius:var(--r);background:#fff;overflow:hidden}
+.membrete .hoja img{display:block;width:100%;height:auto}
+.membrete .hoja.sin{aspect-ratio:210/297;display:grid;place-items:center;background:var(--panel-2)}
+.membrete ul{margin:6px 0 12px;padding-left:18px;font-size:13px;line-height:1.55}
+@media (max-width:640px){.membrete{grid-template-columns:1fr}.membrete .hoja{max-width:240px}}
 /* Logo, firma y sello: tres cajas con vista previa. La imagen va sobre un
    fondo claro a proposito: una firma negra o un sello azul sobre grafito no se
    ven, y asi es como van a salir en el papel. */
@@ -234,6 +242,45 @@ td .dos-lineas{display:flex;flex-direction:column}
       La imagen se vuelve a codificar al guardarla, lo que descarta metadatos
       como la ubicación donde se tomó la foto.
     </p>
+  </div>
+
+  <div class="tarjeta" id="membrete">
+    <h2>Hoja membretada</h2>
+    <p class="sub">El Word con el membrete de la empresa. La cotización, la declaración
+       jurada propia, la carta de presentación y el pacto de integridad salen impresos
+       sobre esta hoja.</p>
+    <div class="membrete">
+      {% if membrete %}
+        <div class="hoja"><img src="/empresas/{{ empresa.id }}/membrete.png" alt="Hoja membretada de {{ empresa.razon_social }}"></div>
+      {% else %}
+        <div class="hoja sin"><span class="img-nada">sin cargar</span></div>
+      {% endif %}
+      <div>
+        {% if membrete %}
+          <p class="sub mb-0">Así quedó convertida. Si una imagen tapa un texto o algo se
+             movió, corrígelo en el Word y vuelve a subirlo.</p>
+        {% endif %}
+        <ul>
+          <li>Llevan esta hoja los documentos que escribe la empresa.</li>
+          <li>Los formatos de la entidad (la SC del GOREMAD o del SIGA, los anexos de la
+              Municipalidad) se llenan sobre su propio papel, sin membrete.</li>
+        </ul>
+        <form method="post" action="/empresas/{{ empresa.id }}/membrete"
+              enctype="multipart/form-data" class="img-form">
+          <input type="file" name="archivo" required
+                 accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                 aria-label="Archivo Word de la hoja membretada">
+          <button type="submit" class="sec chico">{% if membrete %}Reemplazar{% else %}Subir{% endif %}</button>
+        </form>
+        {% if membrete %}
+          <form method="post" action="/empresas/{{ empresa.id }}/membrete/borrar" class="mt-14">
+            <button type="submit" class="peligro chico">Quitar</button>
+          </form>
+        {% endif %}
+        <p class="ayuda mt-14">Word (.docx), máximo 10 MB. Basta la hoja vacía con su
+           encabezado y pie: el texto lo pone el sistema.</p>
+      </div>
+    </div>
   </div>
   {% else %}
     <div class="mensaje info">Guarda la empresa primero y podrás cargar su logo, firma

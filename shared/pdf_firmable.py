@@ -183,6 +183,8 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     con_dnie=True deja el recuadro preparado para la firma digital.
     con_dnie=False incrusta la firma escaneada y el sello, si los hay.
     """
+    from shared import membrete as hoja
+
     empresa = dict(empresa)
     imagenes = await rutas_de(empresa["id"])
     est = _estilos()
@@ -190,14 +192,22 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     SALIDA.mkdir(parents=True, exist_ok=True)
     ruta = SALIDA / nombre_archivo
 
+    # CON HOJA MEMBRETADA: el texto va dentro del hueco que deja su cabecera y
+    # su pie, y al final cada pagina se pone encima de la hoja. La cabecera
+    # que dibujamos nosotros (logo + razon social + RUC) sobra: la hoja de la
+    # empresa ya lo dice, y repetirlo debajo se ve como un papel con dos
+    # membretes.
+    membrete = hoja.de(empresa["id"])
+    arriba, abajo = hoja.margenes_pt(membrete, 2 * cm, 2 * cm)
+
     doc = SimpleDocTemplate(
         str(ruta), pagesize=A4,
         leftMargin=2.5 * cm, rightMargin=2.5 * cm,
-        topMargin=2 * cm, bottomMargin=2 * cm,
+        topMargin=arriba, bottomMargin=abajo,
         title=titulo, author=empresa.get("razon_social") or "")
 
     hoy = fechas.hoy()
-    partes = _cabecera(empresa, imagenes, est)
+    partes = [] if membrete else _cabecera(empresa, imagenes, est)
     partes.append(Paragraph(titulo, est["titulo"]))
     if subtitulo:
         partes.append(Paragraph(subtitulo, est["sub"]))
@@ -215,5 +225,7 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
         + _bloque_firma(empresa, imagenes, est, con_dnie)))
 
     doc.build(partes)
-    log.info("PDF generado: %s (dnie=%s)", ruta, con_dnie)
+    if membrete:
+        hoja.estampar(ruta, membrete)
+    log.info("PDF generado: %s (dnie=%s, membrete=%s)", ruta, con_dnie, bool(membrete))
     return str(ruta)

@@ -27,6 +27,7 @@ from prep_bot.document_gen import (
 )
 from shared import fechas
 from shared.db import connection, get_empresa
+from shared.membrete import documento_word
 
 log = logging.getLogger("prep.autofill.annexes")
 
@@ -190,11 +191,10 @@ async def _generar_anexo(anexo: dict, propuesta_id: int, empresa_id: int,
 async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Declaración Jurada de plazo de entrega."""
 
-    from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
-    doc = Document()
+    doc = documento_word(empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 
@@ -224,7 +224,6 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
 
 async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, output_dir) -> str:
     """Genera Carta de Compromiso del Personal Clave."""
-    from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
@@ -234,7 +233,7 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
             empresa_id,
         )
 
-    doc = Document()
+    doc = documento_word(empresa_id)
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 
@@ -261,11 +260,10 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
 async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, output_dir) -> str:
     """Genera Pacto de Integridad."""
 
-    from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
-    doc = Document()
+    doc = documento_word(empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 

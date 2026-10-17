@@ -2,7 +2,6 @@
 import logging
 import os
 
-from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
@@ -10,6 +9,7 @@ from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection, get_empresa
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
+from shared.membrete import documento_word
 
 log = logging.getLogger("prep.docgen")
 
@@ -29,7 +29,7 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
 
-    doc = Document()
+    doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -109,7 +109,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
 
-    doc = Document()
+    doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -176,7 +176,7 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
             empresa_id,
         )
 
-    doc = Document()
+    doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(10)
@@ -216,7 +216,7 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
 
-    doc = Document()
+    doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)

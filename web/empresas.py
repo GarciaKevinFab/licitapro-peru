@@ -19,9 +19,11 @@ from fastapi.responses import (
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
+    Response,
 )
 
 from shared import fechas
+from shared import membrete as hoja_membretada
 from shared.archivos import (
     TIPOS as TIPOS_IMAGEN,
 )
@@ -139,6 +141,7 @@ async def _vista_editar(request: Request, usuario, empresa_id: int,
         "departamentos": DEPARTAMENTOS, "pre": pre,
         "imagenes": await rutas_de(empresa_id),
         "tipos_imagen": TIPOS_IMAGEN,
+        "membrete": hoja_membretada.de(empresa_id),
         "experiencia": experiencia, "equipo": equipo,
         "vencimientos": vencimientos, "hoy": fechas.hoy(),
         "aviso": aviso, "error": error,
@@ -582,6 +585,61 @@ async def ver_imagen(request: Request, empresa_id: int, tipo: str):
     if not ruta:
         return PlainTextResponse("Sin imagen", status_code=404)
     return FileResponse(ruta, media_type="image/png")
+
+
+# ─── Hoja membretada ─────────────────────────────────────
+
+@router.post("/empresas/{empresa_id}/membrete")
+async def subir_membrete(request: Request, empresa_id: int,
+                         archivo: UploadFile = File(...)):  # noqa: B008
+    """El Word membretado de la empresa: el papel de sus cotizaciones y cartas.
+
+    Se convierte a PDF al subirlo (LibreOffice tarda unos segundos), asi cada
+    documento despues solo se pone encima de la hoja ya convertida.
+    """
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+    try:
+        await hoja_membretada.guardar(empresa_id, await archivo.read())
+    except hoja_membretada.MembreteInvalido as e:
+        return RedirectResponse(
+            f"/empresas/{empresa_id}/editar?error={quote_plus(str(e))}#membrete",
+            status_code=303)
+    return RedirectResponse(
+        f"/empresas/{empresa_id}/editar?aviso={quote_plus('Hoja membretada guardada.')}#membrete",
+        status_code=303)
+
+
+@router.post("/empresas/{empresa_id}/membrete/borrar")
+async def quitar_membrete(request: Request, empresa_id: int):
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return RedirectResponse("/empresas?error=Esa+empresa+no+es+tuya", status_code=303)
+    hoja_membretada.borrar(empresa_id)
+    return RedirectResponse(
+        f"/empresas/{empresa_id}/editar?aviso={quote_plus('Hoja membretada quitada.')}#membrete",
+        status_code=303)
+
+
+@router.get("/empresas/{empresa_id}/membrete.png")
+async def ver_membrete(request: Request, empresa_id: int):
+    """Vista previa de la hoja tal como sale en los documentos. Autenticada,
+    como el logo y la firma: lleva RUC, direccion y telefonos."""
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if not await empresa_es_de(empresa_id, usuario["id"]):
+        return PlainTextResponse("No autorizado", status_code=403)
+    png = hoja_membretada.miniatura_png(empresa_id)
+    if not png:
+        return PlainTextResponse("Sin hoja membretada", status_code=404)
+    return Response(png, media_type="image/png",
+                    headers={"Cache-Control": "private, no-store"})
 
 
 # ─── Autocompletar por RUC ───────────────────────────────
