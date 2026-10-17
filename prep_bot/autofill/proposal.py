@@ -14,13 +14,13 @@ QUE PASABA ANTES: NO SE GENERABA NUNCA
 import logging
 import os
 
-from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 from shared import ia
 from shared.config import ANTHROPIC_KEY, format_monto
 from shared.db import get_empresa
+from shared.membrete import documento_word
 
 log = logging.getLogger("prep.autofill.proposal")
 
@@ -91,7 +91,7 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
         contenido = _generar_plantilla(licitacion, empresa, datos)
 
     # Crear documento DOCX
-    doc = Document()
+    doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
