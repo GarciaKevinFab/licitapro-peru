@@ -99,6 +99,17 @@ def test_se_mide_la_cabecera_y_el_pie_y_no_la_marca_de_agua(tmp_path):
     assert 48 <= bandas["pie_pt"] <= 52
 
 
+def test_el_filete_bajo_la_cabecera_cuenta_aunque_quede_a_30_pt(tmp_path):
+    """Logo y datos en una tabla y, 30 pt mas abajo, la linea de color que los
+    subraya: el texto tiene que empezar debajo de la linea, no encima."""
+    c = canvas.Canvas(str(tmp_path / "h.pdf"), pagesize=A4)
+    c.rect(40, ALTO - 90, 500, 70, fill=1, stroke=0)          # bloque: 20..90 pt
+    c.setLineWidth(1.5)
+    c.line(40, ALTO - 121, 540, ALTO - 121)                    # filete a 121 pt
+    c.save()
+    assert membrete.medir(tmp_path / "h.pdf")["cabecera_pt"] >= 121
+
+
 def test_una_hoja_sin_pie_mide_cero_abajo(tmp_path):
     _hoja_pdf(tmp_path / "h.pdf", pie=0)
     assert membrete.medir(tmp_path / "h.pdf")["pie_pt"] == 0
