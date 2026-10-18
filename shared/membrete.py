@@ -51,8 +51,13 @@ TAMANO_MAXIMO = 10 * 1024 * 1024
 _UMBRAL = 235
 # Un hueco de esta altura sin tinta termina la cabecera (o el pie). Los
 # renglones de una misma cabecera quedan a menos; la marca de agua del centro
-# de la hoja, mucho mas lejos.
-_HUECO_PT = 18
+# de la hoja, mucho mas lejos (mas de 100 pt en la de Soluciones Informaticas).
+#
+# Era 18 pt y se quedaba corto: una cabecera con el logo y los datos en una
+# tabla deja unos 30 pt hasta el filete que la subraya, la medicion cortaba
+# antes del filete y el titulo del documento salia encima de la linea
+# (2026-10-17, con las hojas rehechas de K&A y Minimarket San Juan).
+_HUECO_PT = 40
 # La cabecera y el pie tienen que EMPEZAR en esta fraccion de la hoja, desde
 # su borde. Lo que empieza mas adentro es marca de agua o cuerpo.
 _ALCANCE = 0.35
