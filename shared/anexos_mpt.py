@@ -11,8 +11,9 @@ QUE SON
     07  Carta de autorizacion de CCI CCI, banco, titular y RUC
     08  DJ de contratos menores      nombre y DNI del representante
     09  DJ de prohibiciones          razon social y DNI del representante
-    10  Requisitos minimos           experiencia y formacion: depende de cada
-                                     TDR y no se llena aqui (ver ANEXOS_A_MANO)
+    10  Requisitos minimos           capacidad legal (RUC y RNP) y la experiencia
+                                     registrada de la empresa; "No aplica" si no
+                                     tiene. El TDR manda: revisarlo antes de enviar
 
 COMO SE LLENAN
 
@@ -60,8 +61,8 @@ ANEXOS = {
     "07": "Anexo_07_Carta_Autorizacion_CCI",
     "08": "Anexo_08_DJ_Contratos_Menores",
     "09": "Anexo_09_DJ_Prohibiciones",
+    "10": "Anexo_10_Requisitos_Minimos",
 }
-ANEXOS_A_MANO = {"10": "Anexo 10 - Cumplimiento de los requisitos mínimos (según el TDR)"}
 PUNTOS = "……………………"
 
 
@@ -350,8 +351,81 @@ def _anexo_09(doc, d: dict) -> None:
     _firmar(doc.tables[0], e, d["hoy"], d["imagen"])
 
 
+# Anexo 10. El TDR de la MPT pide en sus numerales 5.1 a 5.4 RUC y RNP vigentes
+# (siempre), y capacidad legal, experiencia y personal clave "segun
+# corresponda"; para bienes suele decir "No aplica" en los tres. El 2026-10-18
+# se armo a mano para Minimarket San Juan (E/M 4182) y Soluciones Informaticas
+# lo habia firmado declarando su venta a la UNAMAD aunque no se pedia.
+#
+#   Capacidad legal: se remite al RUC y al RNP, que van adjuntos.
+#   Experiencia: la registrada en la empresa (tabla `experiencia`), hasta las
+#   seis filas de la plantilla y con su total. Declararla no resta aunque el
+#   TDR no la pida; si no hay ninguna, "No aplica".
+#   Experiencia personal, formacion y capacitacion: son para servicios y
+#   consultorias; se dejan en blanco.
+#
+# El TDR viene escaneado y no se lee: si una convocatoria SI exige experiencia
+# minima o capacidad legal, el usuario lo ve en su TDR y corrige el anexo.
+FILAS_EXPERIENCIA = 6
+
+
+def _anexo_10(doc, d: dict) -> None:
+    from shared.cotizacion import monto
+    for p in doc.paragraphs:
+        _sustituir(p, r"\[DETALLE LOS DOCUMENTOS QUE SUSTENTEN LA CAPACIDAD LEGAL\]",
+                   "Se adjuntan la Ficha RUC y la constancia del RNP vigentes.")
+    tabla = doc.tables[0]
+    filas = [f for f in tabla.rows[1:] if f.cells[0].text.strip().isdigit()]
+    experiencia = list(d.get("experiencia") or [])[:FILAS_EXPERIENCIA]
+    if not experiencia:
+        _poner(filas[0].cells[1], "No aplica según los términos de referencia",
+               negrita=False, tamano=8)
+    for fila, e in zip(filas, experiencia, strict=False):
+        fecha = e.get("fecha_fin") or e.get("fecha_inicio")
+        valores = [e.get("entidad_contratante") or "", e.get("objeto_contrato") or "",
+                   e.get("numero_contrato") or "",
+                   _fecha_corta(e.get("fecha_inicio") or fecha),
+                   _fecha_corta(fecha) if e.get("conformidad") else "",
+                   monto(e["monto"]) if e.get("monto") is not None else ""]
+        for celda, valor in zip(fila.cells[1:], valores, strict=False):
+            _poner(celda, valor, negrita=False, tamano=7)
+    if experiencia:
+        total = sum(float(e.get("monto") or 0) for e in experiencia)
+        _poner(tabla.rows[-1].cells[-1], monto(total), negrita=True, tamano=8)
+    _firma_al_pie(doc, d["imagen"])
+
+
+def _fecha_corta(valor) -> str:
+    return valor.strftime("%d/%m/%Y") if hasattr(valor, "strftime") else (valor or "")
+
+
+def _firma_al_pie(doc, imagen: str | None) -> None:
+    """Firma y sello encima de "FIRMA", en la misma hoja que las tablas.
+
+    La plantilla deja renglones vacios antes de "FIRMA": con la imagen
+    encima, la firma saltaba sola a una tercera hoja, separada de lo que
+    firma. Se quitan y la imagen va a 3,6 cm."""
+    from docx.shared import Cm, Pt
+    if not imagen:
+        return
+    firma = next((p for p in doc.paragraphs if p.text.strip() == "FIRMA"), None)
+    if firma is None:
+        return
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    previo = firma._p.getprevious()
+    while (previo is not None and previo.tag == f"{w}p"
+           and not "".join(previo.itertext()).strip()
+           and previo.find(f".//{w}drawing") is None):
+        quitar, previo = previo, previo.getprevious()
+        quitar.getparent().remove(quitar)
+    nuevo = firma.insert_paragraph_before()
+    nuevo.alignment = 1
+    nuevo.paragraph_format.space_before = nuevo.paragraph_format.space_after = Pt(0)
+    nuevo.add_run().add_picture(imagen, width=Cm(3.6))
+
+
 _LLENADORES = {"05": _anexo_05, "06": _anexo_06, "07": _anexo_07, "08": _anexo_08,
-               "09": _anexo_09}
+               "09": _anexo_09, "10": _anexo_10}
 
 
 def llenar_docx(numero: str, datos: dict) -> bytes:

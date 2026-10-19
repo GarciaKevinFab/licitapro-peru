@@ -1067,10 +1067,21 @@ def _contenido_zip(ruta: Path) -> list[str]:
         return sorted(z.namelist())
 
 
+async def _experiencia(empresa_id: int) -> list[dict]:
+    """La experiencia registrada de la empresa, la mas reciente primero."""
+    async with connection() as conn:
+        filas = await conn.fetch(
+            """SELECT entidad_contratante, objeto_contrato, numero_contrato, monto,
+                      fecha_inicio, fecha_fin, conformidad
+                 FROM experiencia WHERE empresa_id=$1
+                ORDER BY fecha_fin DESC NULLS LAST, monto DESC NULLS LAST""", empresa_id)
+    return [dict(f) for f in filas]
+
+
 async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict,
                       cci: str | None, imagenes: dict) -> list[tuple[str, bytes]]:
     """La postulacion a la Municipalidad de Tambopata, en el orden que piden:
-    la SC del SIGA llena, los anexos 05 a 09 llenos, y lo que acredita al
+    la SC del SIGA llena, los anexos 05 a 10 llenos, y lo que acredita al
     postor (ficha RUC, RNP) con el TDR, todo firmado y sellado.
 
     La SC es obligatoria: sin ella no hay oferta. Los demas van si estan."""
@@ -1091,6 +1102,8 @@ async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict
         "partida": empresa.get("partida_registral")
                    or await kb_get(emp_id, "legal", "partida_registral"),
         "hoy": fechas.hoy(), "imagenes": imagenes,
+        # El Anexo 10 declara la experiencia registrada de la empresa.
+        "experiencia": await _experiencia(emp_id),
     }
     anexos, aviso = await anexos_mpt.anexos_pdf(datos)
     if aviso:

@@ -263,6 +263,55 @@ def test_los_anexos_salen_llenos_con_los_datos_del_postor(plantillas_del_repo):
            "12345678" in _texto(llenar_docx("09", _datos()))
 
 
+EXPERIENCIA = [
+    {"entidad_contratante": "GOBIERNO REGIONAL DE MADRE DE DIOS",
+     "objeto_contrato": "ADQUISICION DE MATERIALES DE LIMPIEZA", "numero_contrato": "O/C 536-2026",
+     "monto": 24181.0, "fecha_inicio": date(2026, 3, 2), "fecha_fin": date(2026, 3, 10),
+     "conformidad": True},
+    {"entidad_contratante": "MUNICIPALIDAD PROVINCIAL DE TAMBOPATA",
+     "objeto_contrato": "ADQUISICION DE ACIDO MURIATICO", "numero_contrato": "O/C 792-2025",
+     "monto": 4361.0, "fecha_inicio": date(2025, 7, 2), "fecha_fin": date(2025, 7, 22),
+     "conformidad": False},
+]
+
+
+def test_el_anexo_10_declara_la_experiencia_registrada(plantillas_del_repo):
+    """Como lo firmo Soluciones Informaticas a mano: cliente, objeto, comprobante,
+    fechas e importe, con su total. La conformidad solo si la hubo."""
+    from shared.anexos_mpt import llenar_docx
+    t = _texto(llenar_docx("10", _datos(experiencia=EXPERIENCIA)))
+    for v in ("GOBIERNO REGIONAL DE MADRE DE DIOS", "ADQUISICION DE MATERIALES DE LIMPIEZA",
+              "O/C 536-2026", "02/03/2026", "10/03/2026", "24,181.00",
+              "MUNICIPALIDAD PROVINCIAL DE TAMBOPATA", "4,361.00", "28,542.00",
+              "Se adjuntan la Ficha RUC y la constancia del RNP vigentes."):
+        assert v in t, v
+    assert "22/07/2025" not in t           # sin conformidad, la fecha va en blanco
+    assert "[DETALLE" not in t and "No aplica" not in t
+
+
+def test_sin_experiencia_el_anexo_10_dice_no_aplica(plantillas_del_repo):
+    from shared.anexos_mpt import llenar_docx
+    t = _texto(llenar_docx("10", _datos()))
+    assert "No aplica según los términos de referencia" in t
+
+
+def test_la_firma_del_anexo_10_no_queda_sola_en_otra_hoja(plantillas_del_repo, tmp_path):
+    """La plantilla deja renglones vacios antes de FIRMA: con la imagen encima la
+    firma saltaba a una tercera hoja (E/M 4182, 2026-10-18). Se quitan."""
+    import docx
+    from PIL import Image
+
+    from shared.anexos_mpt import llenar_docx
+    sello = tmp_path / "sello.png"
+    Image.new("RGB", (300, 120), "blue").save(sello)
+    d = docx.Document(io.BytesIO(llenar_docx("10", _datos(imagenes={"sello": str(sello)}))))
+    textos = [p.text.strip() for p in d.paragraphs]
+    i = textos.index("FIRMA")
+    anterior = d.paragraphs[i - 1]
+    assert anterior._p.xpath(".//w:drawing")          # la imagen va justo antes
+    assert textos[i - 2] != ""                         # y antes de ella, nada vacio
+
+
 def test_con_sello_la_firma_se_estampa_encima_sin_mover_la_hoja(plantillas_del_repo, tmp_path):
     import docx
     from PIL import Image
