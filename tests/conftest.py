@@ -78,19 +78,33 @@ os.environ.setdefault("LICITAPRO_LIMITE_PETICIONES", "off")
 #      docker-compose.yml. En el CI no cambia nada: alli no hay DATABASE_URL y
 #      las piezas apuntan al contenedor del runner.
 #
-#   2. Se COMPRUEBA el destino final y se aborta si es una base gestionada.
-#      La primera capa no basta: alguien podria tener POSTGRES_HOST apuntando
-#      directamente a Supabase. Se reutiliza `_es_gestionado` del propio
-#      proyecto para no inventar una segunda definicion de "esto es
-#      produccion" que se desincronice con la de verdad.
+#   2. Se COMPRUEBA el destino final contra una LISTA BLANCA y se aborta si no
+#      esta en ella. La primera capa no basta: alguien podria tener
+#      POSTGRES_HOST apuntando directamente a la base de verdad.
+#
+#      POR QUE LISTA BLANCA Y NO `_es_gestionado`
+#
+#        Antes se reutilizaba `shared.db._es_gestionado`, que decide por
+#        PREFIJO: "local" es todo lo que empieza por localhost, 127., db o
+#        postgres. `db.<ref>.supabase.co` empieza por "db", asi que la base de
+#        Supabase contaba como local. Y al reves, `localhost` no garantiza
+#        nada: con el tunel SSH abierto, localhost:5442 ES produccion (el
+#        Postgres del VPS, ver tools/tunel_puente.py; en la PC puente llega
+#        por el 15432). Por eso se exige el host EXACTO y se vetan esos
+#        puertos aunque el host sea local.
+#
+#      Y el puerto por defecto es el 5434, el del Postgres de pruebas de este
+#      proyecto: el 5433 lo ocupa el Postgres de OTRO proyecto en esta maquina,
+#      y las pruebas creaban y borraban cuentas en una base ajena.
 #
 #   Y se ABORTA, no se salta. Saltar dejaria la suite en verde sin haber
 #   probado nada, que es la forma silenciosa de este mismo problema.
 #
-#   Para correr a proposito contra otra base -- una rama de Supabase creada
-#   para pruebas, por ejemplo -- se usa DATABASE_URL_PRUEBAS. Hay que
-#   nombrarla a mano, y eso es el punto: el riesgo no esta en quien lo decide,
-#   esta en quien no sabe que lo esta haciendo.
+#   Para correr a proposito contra otra base local -- otro nombre de base, otro
+#   usuario -- se usa DATABASE_URL_PRUEBAS. Hay que nombrarla a mano, y eso es
+#   el punto: el riesgo no esta en quien lo decide, esta en quien no sabe que
+#   lo esta haciendo. Esa via pasa por la misma lista blanca: ninguna URL
+#   remota, ni siquiera nombrada a mano.
 #
 #   Lo unico que esa via NO deja pasar es la URL de produccion. Se compara
 #   contra el `.env` LEYENDO EL ARCHIVO, sin meterlo en el entorno: copiar y
@@ -107,7 +121,22 @@ if _URL_PRUEBAS and _URL_PRODUCCION and _URL_PRUEBAS.strip() == _URL_PRODUCCION.
 
 os.environ["DATABASE_URL"] = _URL_PRUEBAS
 
-from shared.db import _es_gestionado
+# Se importa ANTES de mirar el destino: `shared.db` llama a `load_dotenv()`, y
+# un POSTGRES_HOST o POSTGRES_PORT del .env que entrara despues de la
+# comprobacion cambiaria la base a la que se conecta la app sin que el
+# blindaje lo hubiera visto.
+import shared.db  # noqa: E402,F401
+
+# El puerto por defecto de get_pool es el 5433 (el de docker-compose). Se fija
+# aqui en el entorno, no solo en la comprobacion: si no, el blindaje miraria el
+# 5434 y la app se conectaria al 5433.
+os.environ.setdefault("POSTGRES_PORT", "5434")
+
+# Hosts que son esta maquina o el contenedor de la base del compose/CI, por su
+# nombre EXACTO. Nada de prefijos: ver el bloque de arriba.
+HOSTS_PERMITIDOS = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "db"})
+# Puertos locales que en realidad son produccion a traves del tunel SSH.
+PUERTOS_VETADOS = frozenset({5442, 15432})
 
 
 def _destino_de_las_pruebas() -> tuple[str, int]:
@@ -117,17 +146,27 @@ def _destino_de_las_pruebas() -> tuple[str, int]:
         partes = urlparse(url)
         return (partes.hostname or ""), (partes.port or 5432)
     return os.getenv("POSTGRES_HOST", "localhost"), int(
-        os.getenv("POSTGRES_PORT", "5433"))
+        os.getenv("POSTGRES_PORT", "5434"))
+
+
+def motivo_para_abortar(host: str, puerto: int) -> str | None:
+    """Por que las pruebas NO pueden correr contra host:puerto, o None si pueden."""
+    if (host or "").strip().lower() not in HOSTS_PERMITIDOS:
+        return (f"Las pruebas apuntan a {host!r}, que no es una base local "
+                f"(se admiten solo {', '.join(sorted(HOSTS_PERMITIDOS))}).")
+    if puerto in PUERTOS_VETADOS:
+        return (f"Las pruebas apuntan a {host}:{puerto}, el puerto del tunel SSH "
+                f"a la base de PRODUCCION del VPS.")
+    return None
 
 
 _HOST, _PUERTO = _destino_de_las_pruebas()
 
-if not _URL_PRUEBAS and _es_gestionado(_HOST):
+if (_motivo := motivo_para_abortar(_HOST, _PUERTO)):
     raise pytest.UsageError(
-        f"Las pruebas apuntan a {_HOST!r}, que es una base GESTIONADA "
-        f"(produccion). Se aborta: esta suite crea y borra cuentas. "
-        f"Apunta POSTGRES_HOST al Postgres local (docker-compose.yml), o "
-        f"declara DATABASE_URL_PRUEBAS si de verdad quieres esa URL.")
+        f"{_motivo} Se aborta: esta suite crea y BORRA cuentas. Apunta "
+        f"POSTGRES_HOST/POSTGRES_PORT al Postgres local de pruebas (por defecto "
+        f"localhost:5434), o declara DATABASE_URL_PRUEBAS con una URL local.")
 
 
 def _hay_base() -> bool:

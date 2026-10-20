@@ -96,11 +96,24 @@ def test_todo_sale_naive():
 
 
 def test_se_compara_con_lo_que_devuelve_la_base():
-    """La comprobacion de verdad: comparar y restar sin que salte TypeError."""
-    de_la_base = datetime(2026, 9, 3, 12, 0)  # noqa: DTZ001
-    assert fechas.ahora() > de_la_base
-    assert (fechas.ahora() - de_la_base).days >= 0
-    assert fechas.hoy() >= de_la_base.date()
+    """La comprobacion de verdad: comparar y restar sin que salte TypeError, y
+    que lo que sale tenga sentido.
+
+    Antes el contraste era una fecha fija de septiembre de 2026. `ahora()` es
+    posterior a eso con cualquier reloj -- el de Lima, el de UTC o uno cinco
+    horas adelantado --, asi que la prueba pasaba siempre y no vigilaba nada.
+    Ahora el termino de contraste es "hace un minuto en Lima", leido del reloj
+    del sistema con su zona y guardado naive, como lo devolveria la base.
+    """
+    from zoneinfo import ZoneInfo
+
+    lima = datetime.now(ZoneInfo("America/Lima")).replace(tzinfo=None)
+    de_la_base = lima - timedelta(minutes=1)
+    # Con la hora de UTC (5 h por delante) o la de un reloj sin zona, esto falla.
+    assert de_la_base < fechas.ahora() < lima + timedelta(minutes=1)
+    assert timedelta(seconds=50) < fechas.ahora() - de_la_base < timedelta(minutes=2)
+    # Al filo de la medianoche el "hoy" puede caer en cualquiera de los dos dias.
+    assert fechas.hoy() in {de_la_base.date(), (lima + timedelta(minutes=1)).date()}
 
 
 def test_fija_es_la_fecha_que_se_escribe():

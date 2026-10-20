@@ -429,14 +429,28 @@ async def test_el_nonce_cambia_en_cada_peticion(cliente):
     assert f'<style nonce="{a}">' in primera.text
 
 
+def _plantillas() -> list:
+    """Las plantillas HTML, buscadas desde la raiz del repo y no desde el cwd.
+
+    Con `Path("web/templates")` relativo, lanzar pytest desde otra carpeta
+    (tests/, un IDE, otro worktree) hacia que el glob no encontrara nada, la
+    lista de culpables saliera vacia y las dos pruebas pasaran sin mirar ni un
+    archivo. Por eso tambien se exige que haya alguna.
+    """
+    import pathlib
+    raiz = pathlib.Path(__file__).resolve().parent.parent
+    plantillas = sorted((raiz / "web" / "templates").glob("*.html"))
+    assert plantillas, f"no se encontro ninguna plantilla en {raiz / 'web' / 'templates'}"
+    return plantillas
+
+
 async def test_no_quedan_atributos_style_en_las_plantillas():
     """Un nonce no cubre los atributos style=: solo vale para elementos <style>.
 
     Asi que si alguien vuelve a meter uno, el navegador lo ignora en silencio y
     el elemento se descoloca sin ningun error visible.
     """
-    import pathlib
-    culpables = [f.name for f in pathlib.Path("web/templates").glob("*.html")
+    culpables = [f.name for f in _plantillas()
                  if 'style="' in f.read_text(encoding="utf-8")]
     assert not culpables, f"estilos embebidos en: {culpables}"
 
@@ -453,10 +467,9 @@ async def test_las_cabeceras_acompanan_a_los_errores(cliente):
 async def test_no_quedan_manejadores_embebidos_en_las_plantillas():
     """Si alguien vuelve a meter un onclick=, la CSP lo bloquea en silencio y el
     boton deja de funcionar sin ningun error visible. Mejor detenerlo aqui."""
-    import pathlib
     import re
     culpables = []
-    for f in pathlib.Path("web/templates").glob("*.html"):
+    for f in _plantillas():
         if re.search(r' on[a-z]+="', f.read_text(encoding="utf-8")):
             culpables.append(f.name)
     assert not culpables, f"manejadores embebidos en: {culpables}"
