@@ -132,15 +132,18 @@ def _texto_ocr(contenido: bytes) -> str:
     import pypdfium2 as pdfium
     import pytesseract
 
-    documento = pdfium.PdfDocument(contenido)
-    try:
-        partes = []
-        for i in range(min(len(documento), MAX_PAGINAS)):
-            imagen = documento[i].render(scale=DPI_OCR / 72).to_pil()
-            partes.append(pytesseract.image_to_string(imagen, lang="spa"))
-        return "\n".join(partes)
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    # Se pinta con el candado de pdfium (no es segura entre hilos) y el OCR,
+    # que es lo lento, va fuera: no hace falta retener a los demas.
+    with CANDADO:
+        documento = pdfium.PdfDocument(contenido)
+        try:
+            imagenes = [documento[i].render(scale=DPI_OCR / 72).to_pil()
+                        for i in range(min(len(documento), MAX_PAGINAS))]
+        finally:
+            documento.close()
+    return "\n".join(pytesseract.image_to_string(im, lang="spa") for im in imagenes)
 
 
 def leer_constancia_rnp(contenido: bytes) -> dict:

@@ -151,12 +151,15 @@ def medir(ruta_pdf: Path | str) -> dict:
     """Alto de la cabecera y del pie, en puntos, de la primera hoja."""
     import pypdfium2 as pdfium
 
-    documento = pdfium.PdfDocument(str(ruta_pdf))
-    try:
-        # Escala 1 = 72 ppp: un pixel por punto basta para medir.
-        imagen = documento[0].render(scale=1, grayscale=True).to_pil().convert("L")
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    with CANDADO:
+        documento = pdfium.PdfDocument(str(ruta_pdf))
+        try:
+            # Escala 1 = 72 ppp: un pixel por punto basta para medir.
+            imagen = documento[0].render(scale=1, grayscale=True).to_pil().convert("L")
+        finally:
+            documento.close()
     ancho, alto = imagen.size
     datos = imagen.tobytes()
     tinta = [min(datos[f * ancho:(f + 1) * ancho]) < _UMBRAL for f in range(alto)]
@@ -371,13 +374,16 @@ def miniatura_png(empresa_id: int, ancho_px: int = 420) -> bytes | None:
     membrete = de(empresa_id)
     if not membrete:
         return None
-    documento = pdfium.PdfDocument(str(membrete["pdf"]))
-    try:
-        pagina = documento[0]
-        escala = ancho_px / pagina.get_width()
-        imagen = pagina.render(scale=escala).to_pil()
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    with CANDADO:
+        documento = pdfium.PdfDocument(str(membrete["pdf"]))
+        try:
+            pagina = documento[0]
+            escala = ancho_px / pagina.get_width()
+            imagen = pagina.render(scale=escala).to_pil()
+        finally:
+            documento.close()
     salida = io.BytesIO()
     imagen.save(salida, format="PNG", optimize=True)
     return salida.getvalue()

@@ -816,12 +816,15 @@ def _mapas_de_tinta(contenido: bytes) -> list:
     ve. Si la pagina no se puede pintar, se sigue sin mapa."""
     try:
         import pypdfium2 as pdfium
-        doc = pdfium.PdfDocument(contenido)
-        try:
-            return [doc[i].render(scale=_ESCALA_TINTA).to_pil().convert("L")
-                    for i in range(len(doc))]
-        finally:
-            doc.close()
+
+        from shared.pdfium_candado import CANDADO
+        with CANDADO:
+            doc = pdfium.PdfDocument(contenido)
+            try:
+                return [doc[i].render(scale=_ESCALA_TINTA).to_pil().convert("L")
+                        for i in range(len(doc))]
+            finally:
+                doc.close()
     except Exception as e:  # noqa: BLE001
         log.info("Sin mapa de tinta para sellar: %s", e)
         return []
