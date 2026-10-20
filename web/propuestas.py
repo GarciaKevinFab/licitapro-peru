@@ -31,7 +31,7 @@ import logging
 import os
 import re
 import unicodedata
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -64,6 +64,20 @@ router = APIRouter()
 TOPE_PRECIO = Decimal("1000000000")
 TOPE_CANTIDAD = Decimal("1000000000")
 _DESBORDE = "Ese número es demasiado grande: revisa precios y cantidades."
+
+
+def _enorme(crudo) -> bool:
+    """Un numero bien escrito pero que no cabe ("1E+30").
+
+    `cotizacion.a_decimal` devuelve None tanto para la basura como para lo que
+    no cabe en la base. Al usuario conviene decirle cual de las dos es: "no es
+    un numero valido" ante un 1E+30 confunde, porque si lo es.
+    """
+    try:
+        d = Decimal(str(crudo).strip().replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return False
+    return d.is_finite() and abs(d) > TOPE_PRECIO
 
 
 def _plantillas(request: Request):
@@ -909,6 +923,8 @@ async def guardar_items(request: Request, propuesta_id: int):
     for n, it in enumerate(await cotizacion.items_de(propuesta_id), 1):
         crudo = form.get(f"precio_{it['id']}", "")
         precio = cotizacion.a_decimal(crudo)
+        if _enorme(crudo):
+            return _volver(propuesta_id, error=f"El precio del ítem {n}: {_DESBORDE}")
         if str(crudo).strip() and precio is None:
             return _volver(propuesta_id,
                            error=f"El precio del ítem {n} no es un número válido")
@@ -940,6 +956,8 @@ async def agregar_item(request: Request, propuesta_id: int,
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
     cant = cotizacion.a_decimal(cantidad)
+    if _enorme(cantidad):
+        return _volver(propuesta_id, error=_DESBORDE)
     if not descripcion.strip() or not cant:
         return _volver(propuesta_id,
                        error="El ítem necesita descripción y una cantidad mayor que cero")
