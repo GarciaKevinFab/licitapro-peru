@@ -27,8 +27,8 @@ import sys
 
 sys.path.insert(0, os.getcwd())
 
-import httpx
 
+from radar_bot.scrapers import red_segura
 from radar_bot.scrapers.orchestrator import HEADERS, _guardar_documentos, _leer_detalle
 from shared.db import connection
 
@@ -53,8 +53,8 @@ async def _traer(aplicar: bool, limite: int | None) -> None:
         return
 
     con_sc = 0
-    async with httpx.AsyncClient(timeout=40, headers=HEADERS,
-                                 follow_redirects=True, verify=False) as client:
+    async with red_segura.cliente(timeout=40, headers=HEADERS,
+                                 follow_redirects=True) as client:
         for i, f in enumerate(filas, 1):
             docs: list[dict] = []
             await _leer_detalle(client, f["url"], docs)

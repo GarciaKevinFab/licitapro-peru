@@ -34,8 +34,8 @@ import sys
 # en sys.path. Mismo arreglo que reparar_departamentos.py.
 sys.path.insert(0, os.getcwd())
 
-import httpx
 
+from radar_bot.scrapers import red_segura
 from radar_bot.scrapers.orchestrator import HEADERS, _leer_detalle
 from shared.db import connection
 
@@ -54,8 +54,8 @@ async def _rellenar(aplicar: bool, solo_vigentes: bool, limite: int | None) -> N
     print(f"{len(filas)} filas sin detalle")
 
     escritas = vacias = 0
-    async with httpx.AsyncClient(timeout=30, headers=HEADERS,
-                                 follow_redirects=True, verify=False) as client:
+    async with red_segura.cliente(timeout=30, headers=HEADERS,
+                                 follow_redirects=True) as client:
         for i, f in enumerate(filas, 1):
             detalle = await _leer_detalle(client, f["url"])
             if not detalle:
