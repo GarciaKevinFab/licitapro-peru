@@ -33,6 +33,7 @@ Notas de la estructura OCDS, verificadas contra la API:
 """
 import hashlib
 import logging
+import math
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -298,6 +299,35 @@ def _ruc(release: dict, rol: str = "buyer") -> str | None:
     return None
 
 
+def _importe_pen(valor: dict, ocid=None) -> float:
+    """El `amount` de un Value OCDS si esta en soles; 0 si no se puede sumar.
+
+    POR QUE SOLO PEN
+
+      `monto_adjudicado` se compara con el referencial y alimenta las
+      banderas, todo en soles. Sumar 10.000 USD y 5.000 PEN como 15.000 da
+      una cifra que no es de ninguna moneda. No hay tipo de cambio fiable a
+      mano (habria que saber el del dia de la buena pro), asi que el importe
+      en otra moneda se OMITE y se avisa. Sin `currency` se toma PEN: es el
+      valor por defecto del OECE y asi venian todos los releases medidos.
+      Tambien se omiten los que no son numero finito ("NaN", "inf").
+    """
+    moneda = (valor.get("currency") or "PEN").upper()
+    if moneda != "PEN":
+        log.warning("OCDS %s: importe adjudicado en %s omitido (solo se suma PEN)",
+                    ocid, moneda)
+        return 0.0
+    try:
+        importe = float(valor.get("amount"))
+    except (TypeError, ValueError):
+        log.warning("OCDS %s: importe adjudicado no numerico %r", ocid, valor.get("amount"))
+        return 0.0
+    if not math.isfinite(importe):
+        log.warning("OCDS %s: importe adjudicado no finito %r", ocid, valor.get("amount"))
+        return 0.0
+    return importe
+
+
 def _adjudicacion(release: dict) -> dict:
     """Postores, ganador y monto adjudicado. Vacio si aun no se resolvio.
 
@@ -311,16 +341,16 @@ def _adjudicacion(release: dict) -> dict:
 
     monto = 0.0
     for a in release.get("awards") or []:
-        valor = (a.get("value") or {}).get("amount")
-        if valor:
-            monto += float(valor)
+        valor = a.get("value") or {}
+        if valor.get("amount"):
+            monto += _importe_pen(valor, release.get("ocid"))
         else:
             # Algunos awards no traen `value` propio y el importe vive en los
             # items. Sumarlos evita perder la cifra en esos casos.
             for it in a.get("items") or []:
-                total = (it.get("totalValue") or {}).get("amount")
-                if total:
-                    monto += float(total)
+                total = it.get("totalValue") or {}
+                if total.get("amount"):
+                    monto += _importe_pen(total, release.get("ocid"))
 
     datos = {}
     # Solo se informa el numero de postores si el proceso ya se adjudico: en una

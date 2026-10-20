@@ -259,7 +259,9 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
     detalle_error: str | None = None
     cortes_seguidos = 0
 
-    async with httpx.AsyncClient(timeout=45, headers=HEADERS, verify=False) as cliente:
+    # TLS verificado: prod6.seace.gob.pe presenta una cadena valida (Entrust,
+    # medido el 2026-10-20). El verify=False que habia no esquivaba nada.
+    async with httpx.AsyncClient(timeout=45, headers=HEADERS) as cliente:
         await _verificar_codigos(cliente)
         for codigo, departamento in await _orden_regiones():
             if cortes_seguidos >= CORTES_SEGUIDOS_MAX:
@@ -296,8 +298,24 @@ async def scrape_oece_menores(user_id: int = 0) -> list[dict]:
                                                  id_contrato=item["idContrato"])
                             await asyncio.sleep(PAUSA_DETALLE)
                         except Exception as e:  # noqa: BLE001
+                            # UNA FILA NUEVA SIN DETALLE NO SE GUARDA
+                            #
+                            #   El detalle se pide solo para las filas que aun
+                            #   no estan en la base. Si se guardaba igual (la
+                            #   entidad y el objeto truncados a 38 caracteres,
+                            #   sin provincia ni categoria), la proxima pasada
+                            #   ya la veia "conocida" y nunca le volvia a pedir
+                            #   el detalle: quedaba mutilada para siempre. Sin
+                            #   guardarla, la siguiente pasada la trata como
+                            #   nueva y lo reintenta.
                             errores += 1
-                            log.debug("detalle %s: %s", item.get("idContrato"), e)
+                            if not detalle_error:
+                                detalle_error = (f"detalle {item.get('idContrato')}: "
+                                                 f"{type(e).__name__}")
+                            log.warning("OECE menores: detalle de %s fallo (%s: %s); "
+                                        "la fila se reintenta la proxima pasada",
+                                        item.get("idContrato"), type(e).__name__, e)
+                            continue
                     try:
                         lic = parsear(item, departamento, detalle)
                         if not lic:

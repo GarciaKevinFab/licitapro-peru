@@ -57,6 +57,7 @@ API = BASE + "/api/v1/convocatorias"
 PORTAL = BASE + "/servicios/contratacion-bienes-servicios"
 ENTIDAD = "Municipalidad Provincial de Tambopata"
 FUENTE = "mpt_tambopata"
+DOMINIOS = ("munitambopata.gob.pe",)
 ABIERTAS = {"ACTIVA", "AMPLIADA"}
 POR_PAGINA = 100
 MAX_PAGINAS = 4      # ~400 convocatorias: las abiertas son las mas recientes
@@ -142,7 +143,9 @@ def descripcion_desde_sc(contenido: bytes) -> str | None:
     try:
         items = leer_items_siga(contenido)
     except Exception as e:  # noqa: BLE001
-        log.info("MPT: la SC no se pudo leer: %s", e)
+        # warning y no info: una SC que no se lee deja la propuesta sin items,
+        # y eso es lo que el cliente ve primero.
+        log.warning("MPT: la SC no se pudo leer: %s: %s", type(e).__name__, e)
         return None
     lineas = []
     for it in items:
@@ -158,7 +161,9 @@ async def _completar(client, data: dict) -> None:
     """Guarda la SC y el TDR, y los items de la SC si la fila aun no los tiene."""
     from radar_bot.scrapers.orchestrator import _guardar_documentos
     from shared.db import connection, contenido_documento
-    await _guardar_documentos(client, data["id"], data["_documentos"])
+    # Las URL vienen del JSON de la API: solo se bajan si son del dominio de
+    # la MPT (red_segura), y nunca de un host al que redirija.
+    await _guardar_documentos(client, data["id"], data["_documentos"], DOMINIOS)
     async with connection() as conn:
         tiene = await conn.fetchval("SELECT descripcion FROM licitaciones WHERE id=$1",
                                     data["id"])
