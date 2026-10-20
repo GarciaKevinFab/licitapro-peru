@@ -39,6 +39,8 @@ LA CUENTA SE CREA EN EL MISMO PASO QUE EL PAGO
 """
 import logging
 import os
+import time
+from collections import defaultdict, deque
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import quote
 
@@ -49,7 +51,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from shared import culqi
 from shared.db import connection, crear_usuario
 from shared.seguridad import hashear_password, password_debil
-from shared.suscripciones import activar_por_culqi, cambiar_plan
+from shared.suscripciones import activar_por_culqi, cambiar_plan, datos_culqi
 from web.auth import usuario_actual
 from web.suscripcion import _con_error, iniciar_cobro
 
@@ -266,6 +268,81 @@ def _config_culqi(plan: dict, periodo: str, importe: dict, plan_id: str | None) 
     }
 
 
+# ─── Freno por correo para el pago con tarjeta ──────────
+#
+# CONTRA QUE ES
+#
+#   POST /comprar/culqi se puede llamar SIN sesion, y cada llamada lleva un
+#   token de tarjeta que acaba en `crear_tarjeta`, que es donde Culqi valida la
+#   tarjeta. Eso lo convierte en un oraculo para "card-testing": quien tiene
+#   una lista de tarjetas robadas las prueba aqui una a una para saber cuales
+#   siguen vivas, y las comisiones y la reputacion del comercio las pagamos
+#   nosotros.
+#
+#   web/limites.py ya frena por IP (10 POST a /comprar por hora). Esto anade un
+#   tope por CORREO, que es lo que el atacante tiene que repetir si reparte el
+#   ataque entre muchas IPs y lo que identifica a una cuenta concreta. No para a
+#   quien cambie de correo en cada intento -- para eso esta el de IP --, pero si
+#   al que machaca una misma cuenta.
+#
+# POR QUE AQUI Y EN MEMORIA
+#
+#   El mismo razonamiento que web/limites.py: un solo proceso uvicorn, un
+#   contador en memoria es exacto. No se reutiliza su clase porque aquella es
+#   un middleware ASGI que solo ve la IP y la ruta, y el correo va dentro del
+#   formulario.
+
+INTENTOS_TARJETA_POR_CORREO = 5
+VENTANA_TARJETA = 3600
+
+
+class _FrenoPorClave:
+    """Ventana deslizante por clave: `permitir` cuenta y dice si cabe."""
+
+    def __init__(self, cuantas: int, ventana: float):
+        self.cuantas, self.ventana = cuantas, ventana
+        self._marcas: dict[str, deque] = defaultdict(deque)
+
+    def permitir(self, clave: str) -> bool:
+        ahora = time.monotonic()
+        marcas = self._marcas[clave]
+        while marcas and marcas[0] <= ahora - self.ventana:
+            marcas.popleft()
+        if len(marcas) >= self.cuantas:
+            return False
+        marcas.append(ahora)
+        # Las claves vacias se tiran para que el diccionario no crezca con un
+        # correo nuevo por intento y no baje nunca.
+        for vacia in [c for c, m in self._marcas.items() if not m]:
+            del self._marcas[vacia]
+        return True
+
+    def reiniciar(self) -> None:
+        self._marcas.clear()
+
+
+_FRENO_TARJETA = _FrenoPorClave(INTENTOS_TARJETA_POR_CORREO, VENTANA_TARJETA)
+
+
+def _clave_correo(correo: str) -> str:
+    """El correo normalizado, sin el `+etiqueta` que lo multiplicaria gratis."""
+    correo = (correo or "").strip().lower()
+    local, _, dominio = correo.partition("@")
+    return f"{local.split('+', 1)[0]}@{dominio}"
+
+
+# El mismo texto para "ese correo ya tiene cuenta" en los dos checkouts. Esta
+# redactado en condicional a proposito: el checkout es publico y no debe
+# confirmar a quien pregunte si un correo esta registrado.
+AVISO_CUENTA_EXISTENTE = ("Si ese correo ya tiene una cuenta, entra con tu "
+                          "contraseña y terminamos la compra.")
+
+# Candado por usuario para no crear dos suscripciones en Culqi. Ver
+# `comprar_con_culqi`. El primer entero separa este candado de cualquier otro
+# pg_advisory que se use con el mismo id de usuario.
+_ESPACIO_CANDADO = 0x4C503143  # "LP1C"
+
+
 # ─── Escaparate ──────────────────────────────────────────
 
 @router.get("/precios", response_class=HTMLResponse)
@@ -360,20 +437,23 @@ async def confirmar(request: Request, plan: str = Form(...),
         if not usuario:
             # Ya tiene cuenta: no es un error, es un cliente que vuelve. Se le
             # manda a entrar y se le devuelve a ESTE checkout, no al panel, para
-            # que no tenga que volver a buscar lo que ya habia elegido.
-            aviso = ("Ya tienes una cuenta con ese correo. Entra y terminamos "
-                     "la compra.")
+            # que no tenga que volver a buscar lo que ya habia elegido. El
+            # texto no afirma que la cuenta exista: ver AVISO_CUENTA_EXISTENTE.
             return RedirectResponse(
                 f"/entrar?siguiente={quote(volver_a, safe='')}"
-                f"&error={quote(aviso)}",
+                f"&error={quote(AVISO_CUENTA_EXISTENTE)}",
                 status_code=303)
         request.session["usuario_id"] = usuario["id"]
         log.info("Cuenta creada desde el checkout publico para el plan %s", plan)
 
+    # Bajar de plan se aplica ya; subir queda pendiente de ESTE cobro, que
+    # lleva el plan en la orden y lo aplica al confirmarse. Antes se cambiaba
+    # la fila aqui y quien abandonaba la pasarela se quedaba con el plan caro.
     if not await cambiar_plan(usuario["id"], plan, periodo):
         return con_error("Plan o periodo no válido.")
 
-    return await iniciar_cobro(request, usuario, volver_a=volver_a)
+    return await iniciar_cobro(request, usuario, volver_a=volver_a,
+                               plan=plan, periodo=periodo)
 
 
 # ─── Checkout recurrente con Culqi ───────────────────────
@@ -409,7 +489,22 @@ async def comprar_con_culqi(request: Request, plan: str = Form(...),
       aqui. Se cierra cancelando la suscripcion recien creada, que es lo que
       deja al cliente como estaba. No es perfecto -- el primer cobro puede
       haberse hecho y habria que devolverlo a mano -- pero es visible en el log
-      con el `sxn_` y el correo, en vez de callado.
+      con el `sxn_` y el correo, en vez de callado. Y se cierra ante CUALQUIER
+      fallo despues de crearla, no solo ante un `False`: una excepcion de la
+      base a medio asentar dejaba el cobro vivo y sin cuenta activa.
+
+    UNA SOLA SUSCRIPCION POR CUENTA, AUNQUE SE PULSE DOS VECES
+
+      Un doble clic mandaba dos POST, y los dos creaban su suscripcion en
+      Culqi: dos cobros recurrentes por el mismo plan. Los pasos 4 y 5 van
+      ahora bajo `pg_advisory_xact_lock` por usuario, y dentro del candado se
+      mira si la cuenta ya tiene un `sxn_`: el segundo POST espera a que el
+      primero termine, lo encuentra y no crea otra.
+
+      El candado vive en una transaccion que se mantiene abierta mientras Culqi
+      responde. Es una conexion del pool ocupada unos segundos por compra, y la
+      activacion se hace en ESA misma conexion (`activar_por_culqi(conn=...)`):
+      pedir una segunda teniendo la primera es como se cuelga el pool.
     """
     if periodo not in PERIODOS:
         periodo = "mensual"
@@ -456,6 +551,24 @@ async def comprar_con_culqi(request: Request, plan: str = Form(...),
     correo = usuario["email"] if usuario else email.strip()
     monto = _precio(elegido, periodo)
 
+    # El freno va DESPUES de las validaciones locales (que no tocan Culqi) y
+    # ANTES de la primera llamada que valida la tarjeta: lo que se raciona es
+    # justo el oraculo.
+    if not _FRENO_TARJETA.permitir(_clave_correo(correo)):
+        log.warning("Freno de intentos de tarjeta para %s", _clave_correo(correo))
+        return con_error("Demasiados intentos de pago seguidos. Espera un rato "
+                         "y vuelve a intentarlo, o escríbenos.")
+
+    if usuario:
+        # Con cobro automatico ya vivo no se crea otro: cambiar de plan se hace
+        # desde /suscripcion, que cancela el viejo antes. Es la comprobacion
+        # barata; la que cierra la carrera del doble clic va bajo el candado.
+        previo = await datos_culqi(usuario["id"])
+        if (previo or {}).get("culqi_subscription_id"):
+            return RedirectResponse(_con_error(
+                "/suscripcion", "Ya tienes un cobro automático activo. Para "
+                "cambiar de plan hazlo desde aquí."), status_code=303)
+
     # ─── 2. Cliente y tarjeta: todavia no se cobra ──────
     try:
         cliente = await culqi.crear_cliente(correo, nombre=nombre.strip())
@@ -476,43 +589,69 @@ async def comprar_con_culqi(request: Request, plan: str = Form(...),
             # Ya tiene cuenta: no es un error, es un cliente que vuelve. Se le
             # manda a entrar y se le devuelve a ESTE checkout. No se ha cobrado
             # nada: el cus_/crd_ creado arriba se reaprovecha o se queda
-            # inerte en Culqi, que no cuesta nada.
-            aviso = ("Ya tienes una cuenta con ese correo. Entra y terminamos "
-                     "la compra.")
+            # inerte en Culqi, que no cuesta nada. El texto no afirma que la
+            # cuenta exista: ver AVISO_CUENTA_EXISTENTE.
             return RedirectResponse(
                 f"/entrar?siguiente={quote(volver_a, safe='')}"
-                f"&error={quote(aviso)}",
+                f"&error={quote(AVISO_CUENTA_EXISTENTE)}",
                 status_code=303)
         request.session["usuario_id"] = usuario["id"]
         log.info("Cuenta creada desde el checkout de Culqi para el plan %s", plan)
 
-    # ─── 4. La suscripcion: AQUI se cobra ───────────────
+    # ─── 4 y 5. Bajo candado: crear alli y asentar aqui ─
+    suscripcion = None
     try:
-        suscripcion = await culqi.crear_suscripcion(
-            tarjeta["id"], plan_id,
-            metadata={"usuario_id": usuario["id"], "plan_codigo": plan,
-                      "periodo": periodo, "producto": "licitapro"})
-    except culqi.ErrorCulqi as e:
-        log.warning("Culqi rechazo la suscripcion de %s: %s",
-                    correo, e.merchant_message)
-        return con_error(e.user_message)
+        async with connection() as conn, conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock($1, $2)",
+                               _ESPACIO_CANDADO, usuario["id"])
+            ya = await conn.fetchval(
+                "SELECT culqi_subscription_id FROM suscripciones WHERE usuario_id=$1",
+                usuario["id"])
+            if ya:
+                # El otro POST del doble clic gano: ya hay cobro automatico.
+                log.info("Suscripcion de Culqi repetida evitada para %s (ya %s)",
+                         correo, ya)
+                return RedirectResponse(
+                    "/suscripcion?aviso=Tu+cobro+automatico+ya+esta+activo",
+                    status_code=303)
 
-    # ─── 5. Asentarlo aqui, o deshacerlo alli ──────────
-    marca, ultimos = culqi.marca_y_ultimos(tarjeta)
-    asentado = await activar_por_culqi(
-        usuario_id=usuario["id"], plan_codigo=plan, periodo=periodo,
-        monto=monto, customer_id=cliente["id"], card_id=tarjeta["id"],
-        subscription_id=suscripcion["id"], marca=marca, ultimos=ultimos,
-        respuesta={"origen": "checkout", "suscripcion": suscripcion})
+            # ─── 4. La suscripcion: AQUI se cobra ───────
+            try:
+                suscripcion = await culqi.crear_suscripcion(
+                    tarjeta["id"], plan_id,
+                    metadata={"usuario_id": usuario["id"], "plan_codigo": plan,
+                              "periodo": periodo, "producto": "licitapro"})
+            except culqi.ErrorCulqi as e:
+                log.warning("Culqi rechazo la suscripcion de %s: %s",
+                            correo, e.merchant_message)
+                return con_error(e.user_message)
 
-    if not asentado:
-        log.error("Suscripcion %s creada en Culqi para %s y NO asentada aqui: "
-                  "se cancela en Culqi", suscripcion["id"], correo)
+            # ─── 5. Asentarlo aqui, o deshacerlo alli ──
+            marca, ultimos = culqi.marca_y_ultimos(tarjeta)
+            asentado = await activar_por_culqi(
+                usuario_id=usuario["id"], plan_codigo=plan, periodo=periodo,
+                monto=monto, customer_id=cliente["id"], card_id=tarjeta["id"],
+                subscription_id=suscripcion["id"], marca=marca, ultimos=ultimos,
+                respuesta={"origen": "checkout", "suscripcion": suscripcion},
+                conn=conn)
+            if not asentado:
+                raise RuntimeError("activar_por_culqi no encontro la fila local")
+    except Exception as fallo:
+        # Antes de crear la suscripcion no hay nada que deshacer en Culqi: se
+        # deja subir el error como cualquier otro.
+        if suscripcion is None:
+            raise
+        # Cualquier cosa despues de crearla -- activacion que no encuentra la
+        # fila, base caida, el COMMIT que falla -- deja un cobro recurrente vivo
+        # en Culqi sin cuenta activa aqui. Se cancela alli.
+        log.error("Suscripcion %s creada en Culqi para %s y NO asentada aqui "
+                  "(%s): se cancela en Culqi", suscripcion.get("id"), correo, fallo)
         try:
             await culqi.cancelar_suscripcion(suscripcion["id"])
-        except culqi.ErrorCulqi as e:
+        except Exception as e:  # noqa: BLE001
             log.error("Y tampoco se pudo cancelar %s: %s. REVISAR A MANO en el "
-                      "panel de Culqi.", suscripcion["id"], e.merchant_message)
+                      "panel de Culqi.", suscripcion.get("id"),
+                      getattr(e, "merchant_message", e))
         return con_error("No pudimos activar tu plan. No se te cobrará; "
                          "escríbenos y lo resolvemos.")
 

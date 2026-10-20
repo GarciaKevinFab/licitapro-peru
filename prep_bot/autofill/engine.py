@@ -1,10 +1,15 @@
-"""Motor de auto-fill — Llena anexos usando knowledge_base + datos empresa."""
+"""Motor de auto-fill — Llena anexos usando knowledge_base + datos empresa.
+
+Aqui vivian tambien una carta de presentacion y una declaracion jurada "de
+respaldo" que nadie llamaba: firmaban con el representante en blanco, ponian
+"Lima" como lugar aunque la empresa fuera de Puerto Maldonado y fechaban con
+strftime('%B') ("October"). Las que van al expediente son las de
+prep_bot/document_gen.py; las de aqui se quitaron para que nadie las use por
+error.
+"""
 import logging
 import os
 
-from docx import Document
-
-from shared import fechas
 from shared.db import connection, get_empresa, kb_get, kb_set
 
 log = logging.getLogger("prep.autofill")
@@ -131,104 +136,3 @@ async def autofill_propuesta(propuesta_id: int, empresa_id: int) -> dict:
         "faltantes": faltantes,
         "datos": datos,
     }
-
-
-async def generar_carta_presentacion(datos: dict, licitacion: dict) -> str:
-    """Genera carta de presentación usando template o desde cero."""
-    
-    doc = Document()
-    
-    # Encabezado
-    doc.add_paragraph(f"Lima, {fechas.hoy().strftime('%d de %B de %Y')}")
-    doc.add_paragraph("")
-    doc.add_paragraph("Señores")
-    doc.add_paragraph(f"{licitacion.get('entidad', '')}")
-    doc.add_paragraph("Presente.-")
-    doc.add_paragraph("")
-    
-    # Referencia
-    ref = licitacion.get("nomenclatura", licitacion.get("id", ""))
-    doc.add_paragraph(f"Ref.: {ref}")
-    doc.add_paragraph(f"Objeto: {licitacion.get('objeto', '')}")
-    doc.add_paragraph("")
-    
-    # Cuerpo
-    razon = datos.get("carta_presentacion.razon_social", "")
-    ruc = datos.get("carta_presentacion.ruc", "")
-    rep = datos.get("carta_presentacion.representante_legal", "")
-    dni = datos.get("carta_presentacion.dni_representante", "")
-    
-    doc.add_paragraph(
-        f"De nuestra consideración:\n\n"
-        f"El que suscribe, {rep}, identificado con DNI N° {dni}, "
-        f"representante legal de {razon}, con RUC N° {ruc}, "
-        f"en atención al procedimiento de selección de la referencia, "
-        f"presenta la siguiente propuesta técnica y económica para la "
-        f"contratación del servicio/bien indicado.\n\n"
-        f"Declaramos que nuestra propuesta cumple con los requisitos "
-        f"establecidos en las bases del procedimiento y nos comprometemos "
-        f"a ejecutar el contrato en los términos y condiciones establecidos."
-    )
-    
-    doc.add_paragraph("")
-    doc.add_paragraph("Atentamente,")
-    doc.add_paragraph("")
-    doc.add_paragraph("")
-    doc.add_paragraph("______________________________")
-    doc.add_paragraph(f"{rep}")
-    doc.add_paragraph(f"DNI: {dni}")
-    doc.add_paragraph(f"{razon}")
-    doc.add_paragraph(f"RUC: {ruc}")
-    
-    # Guardar
-    output_dir = os.getenv("EXPEDIENTES_DIR", "/app/data/expedientes")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"carta_presentacion_{licitacion['id']}.docx")
-    doc.save(output_path)
-    
-    return output_path
-
-
-async def generar_declaracion_jurada(datos: dict, licitacion: dict) -> str:
-    """Genera declaración jurada estándar."""
-    doc = Document()
-    
-    razon = datos.get("declaracion_jurada.razon_social", "")
-    ruc = datos.get("declaracion_jurada.ruc", "")
-    rep = datos.get("declaracion_jurada.representante_legal", "")
-    dni = datos.get("declaracion_jurada.dni_representante", "")
-    
-    doc.add_heading("DECLARACIÓN JURADA", level=1)
-    doc.add_paragraph("")
-    doc.add_paragraph(
-        f"Yo, {rep}, identificado(a) con DNI N° {dni}, "
-        f"representante legal de {razon}, con RUC N° {ruc}, "
-        f"DECLARO BAJO JURAMENTO que:"
-    )
-    doc.add_paragraph("")
-    
-    declaraciones = [
-        "No tengo impedimento para participar en el procedimiento de selección ni para contratar con el Estado.",
-        "Conozco, acepto y me someto a las bases, condiciones y reglas del procedimiento de selección.",
-        "Soy responsable de la veracidad de los documentos e información que presento.",
-        "Me comprometo a mantener la oferta durante el procedimiento de selección y a suscribir el contrato en caso de obtener la buena pro.",
-        "Conozco las sanciones contenidas en la Ley de Contrataciones del Estado y su Reglamento.",
-        "Participamos en el presente procedimiento de selección en forma independiente, sin mediar consulta, comunicación, acuerdo, arreglo o convenio con ningún proveedor.",
-    ]
-    
-    for i, decl in enumerate(declaraciones, 1):
-        doc.add_paragraph(f"{i}. {decl}")
-    
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Lima, {fechas.hoy().strftime('%d de %B de %Y')}")
-    doc.add_paragraph("")
-    doc.add_paragraph("______________________________")
-    doc.add_paragraph(f"{rep}")
-    doc.add_paragraph(f"DNI: {dni}")
-    
-    output_dir = os.getenv("EXPEDIENTES_DIR", "/app/data/expedientes")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"declaracion_jurada_{licitacion['id']}.docx")
-    doc.save(output_path)
-    
-    return output_path

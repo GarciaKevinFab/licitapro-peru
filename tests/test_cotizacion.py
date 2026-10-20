@@ -282,11 +282,17 @@ async def test_los_items_de_otra_propuesta_no_se_tocan(cliente, usuario, empresa
     try:
         await cotizacion.sembrar(mia)
         ajeno = (await cotizacion.items_de(mia))[0]["id"]
-        # Otra propuesta del mismo usuario intenta escribir en ese item.
+        # Otra propuesta del mismo usuario intenta escribir en ese item. Va a
+        # otra licitacion: una empresa no puede tener dos propuestas a la misma
+        # (indice unico de la migracion 0020).
         async with connection() as c:
+            await c.execute(
+                """INSERT INTO licitaciones (id, fuente, tipo, entidad, objeto)
+                   VALUES ($1, 'gore_portals', 'cotizacion', 'ENTIDAD', 'Otra compra')""",
+                f"{lic}_b")
             otra = await c.fetchval(
                 "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
-                "VALUES ($1, $2, 'iniciado') RETURNING id", lic, empresa)
+                "VALUES ($1, $2, 'iniciado') RETURNING id", f"{lic}_b", empresa)
         await cotizacion.guardar(otra, {ajeno: ("Marca intrusa", Decimal(1))}, {})
         assert (await cotizacion.items_de(mia))[0]["marca"] is None
         # La presentacion se guarda aparte de la marca y vuelve con el item; la
@@ -304,5 +310,6 @@ async def test_los_items_de_otra_propuesta_no_se_tocan(cliente, usuario, empresa
         assert len(await cotizacion.items_de(mia)) == 1
     finally:
         async with connection() as c:
-            await c.execute("DELETE FROM propuestas WHERE licitacion_id=$1", lic)
-            await c.execute("DELETE FROM licitaciones WHERE id=$1", lic)
+            await c.execute("DELETE FROM propuestas WHERE licitacion_id = ANY($1)",
+                            [lic, f"{lic}_b"])
+            await c.execute("DELETE FROM licitaciones WHERE id = ANY($1)", [lic, f"{lic}_b"])

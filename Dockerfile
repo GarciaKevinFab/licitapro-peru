@@ -32,6 +32,9 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Lo que NO entra (el .env con las claves, data/ con los documentos de los
+# clientes, .git, las pruebas) lo decide .dockerignore. Leerlo antes de tocar
+# esta linea.
 COPY . .
 
 # Usuario sin privilegios: si alguien escapa del proceso, no es root.
@@ -44,15 +47,33 @@ EXPOSE 8200
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8200/salud || exit 1
 
-# --proxy-headers hace que uvicorn lea X-Forwarded-Proto y X-Forwarded-For del
-# proxy. Sin eso, detras de Caddy toda peticion se ve como http y viniendo de
-# la IP del proxy: las URLs absolutas saldrian en http, y el freno a los
-# intentos de acceso contaria todos los fallos contra una sola IP -- la del
-# proxy --, con lo que el primer atacante dejaria bloqueados a todos.
+# --proxy-headers hace que uvicorn lea X-Forwarded-Proto y X-Forwarded-For,
+# pero SOLO de las conexiones que vienen de una IP de FORWARDED_ALLOW_IPS.
 #
-# --forwarded-allow-ips=* es aceptable AQUI y solo aqui: este contenedor no
-# asoma a internet. Publica en 127.0.0.1 y solo lo alcanza Caddy por la red
-# interna de compose. Expuesto directo, ese comodin permitiria falsear la IP
-# de origen.
+# AQUI HUBO --forwarded-allow-ips=*, Y ERA UN AGUJERO
+#
+#   El argumento era "este contenedor no asoma a internet". Cierto, pero da
+#   igual: la cabecera no la escribe el proxy, la ARRASTRA. Cloudflare anade
+#   al final de X-Forwarded-For lo que ve y deja delante lo que mandara el
+#   cliente. Con `*` uvicorn se fiaba de toda la cadena y tomaba la primera
+#   IP, la inventada: el freno a los intentos de acceso (web/auth.py) se
+#   saltaba con una IP nueva por intento, o se usaba para bloquear la de otro.
+#
+# POR QUE 127.0.0.1
+#
+#   En produccion no hay Caddy: cloudflared corre en el HOST y entra por
+#   127.0.0.1:8200, y docker-proxy le pasa la conexion al contenedor desde la
+#   puerta de enlace de la red de docker. Ninguna de esas IPs es 127.0.0.1, asi
+#   que uvicorn no se fia de nadie y `request.client` es esa puerta de enlace.
+#   No importa: la IP real la da CF-Connecting-IP, que Cloudflare pisa siempre
+#   y nadie de fuera puede elegir (web/limites.ip_del_cliente). Y el esquema
+#   que ve la app pasa a ser http, que tampoco importa: ninguna URL absoluta
+#   sale de la peticion -- salen de LICITAPRO_DOMINIO (web/app._base_url).
+#
+#   Va como variable de entorno, que uvicorn lee por su cuenta, y no fijo en el
+#   CMD: el despliegue con Caddy del compose (Caddyfile) tiene el proxy en otro
+#   contenedor y ahi hay que poner su IP o su subred. Se cambia en el compose,
+#   sin reconstruir la imagen. Nunca `*`.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
 CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8200", \
-     "--proxy-headers", "--forwarded-allow-ips=*"]
+     "--proxy-headers"]

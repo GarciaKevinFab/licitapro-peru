@@ -22,10 +22,14 @@ NADA DE AQUI COMPRUEBA QUIEN LLAMA
   llama tiene derecho. Ponerla dos veces no protege mas y obliga a arrastrar
   la sesion hasta la capa de datos.
 """
+import asyncio
 import logging
+import os
 import re
 import secrets
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 import asyncpg
 
@@ -171,7 +175,7 @@ async def ingresos_del_mes() -> float:
         total = await conn.fetchval(
             """SELECT COALESCE(SUM(monto), 0) FROM pagos_suscripcion
                 WHERE estado = 'pagado'
-                  AND confirmado_en >= date_trunc('month', CURRENT_DATE)""")
+                  AND confirmado_en >= date_trunc('month', (NOW() AT TIME ZONE 'America/Lima'))""")
     return float(total or 0)
 
 
@@ -317,7 +321,7 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
                       COALESCE(SUM(tokens_entrada), 0) AS tokens_entrada,
                       COALESCE(SUM(tokens_salida), 0) AS tokens_salida
                  FROM analisis_ia
-                WHERE usuario_id = $1 AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+                WHERE usuario_id = $1 AND creado_en >= date_trunc('month', (NOW() AT TIME ZONE 'America/Lima'))""",
             usuario_id)
         correo_avisos = await conn.fetchval(
             "SELECT email_notificaciones FROM user_config WHERE usuario_id = $1", usuario_id)
@@ -353,6 +357,161 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
 CONSERVAR = {"reclamaciones"}
 
 
+# ─── Archivos de la cuenta en disco ──────────────────────
+
+def _borrar_dentro(ruta: Path, raiz: Path) -> int:
+    """Borra el archivo o la carpeta `ruta` si cae dentro de `raiz`. Cuantos archivos.
+
+    La comprobacion de `raiz` no es paranoia: varias de estas rutas salen de la
+    base, y un valor manipulado no puede convertir el borrado de una cuenta en
+    el borrado de cualquier archivo del servidor.
+    """
+    try:
+        p, r = ruta.resolve(), raiz.resolve()
+        if p != r and r not in p.parents:
+            log.warning("No se borra %s: esta fuera de %s", ruta, raiz)
+            return 0
+        if p.is_dir():
+            n = sum(1 for x in p.rglob("*") if x.is_file())
+            shutil.rmtree(p)
+            return n
+        if p.is_file():
+            p.unlink()
+            return 1
+    except OSError as e:
+        # Se registra y se sigue: un archivo que no se pudo borrar no puede
+        # dejar al usuario sin ejercer su derecho. Queda el rastro para
+        # limpiarlo a mano.
+        log.error("No se pudo borrar %s: %s", ruta, e)
+    return 0
+
+
+def _directorios_de_propuestas() -> dict[str, Path]:
+    """Donde guardan sus archivos las propuestas, leido de los modulos que escriben.
+
+    Se importan las constantes en vez de repetir las rutas: si un dia cambia
+    donde se guardan los paquetes, el borrado lo sigue sin que nadie se acuerde
+    de venir aqui.
+    """
+    from shared.llenar_formatos import DIR as FORMATOS
+    from shared.pdf_firmable import SALIDA as EXPEDIENTES
+    try:
+        from web.propuestas import PAQUETES
+    except ImportError:  # un bot sin las dependencias de la web
+        PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
+    plantillas = Path(os.getenv("TEMPLATES_DIR", "templates")) / "output"
+    return {"formatos": FORMATOS, "expedientes": EXPEDIENTES,
+            "paquetes": PAQUETES, "plantillas": plantillas}
+
+
+def _archivo_de_la_propuesta(nombre: str, pid: int) -> bool:
+    """Si un archivo de la carpeta de expedientes es de esta propuesta.
+
+    Por nombre, y con los prefijos que de verdad se generan (cotizacion-<id>,
+    declaracion-jurada-formato-<id>, anexo-<id>-sc, envio-<id>.zip,
+    dj_plazo_<id>.docx...). No vale "cualquier nombre con el numero": los
+    `Expediente_<nomenclatura>_<ruc>.zip` llevan cifras de otros y se borrarian
+    expedientes ajenos.
+    """
+    return bool(
+        re.match(rf"^(?:cotizacion|declaracion-jurada)(?:-formato)?-{pid}(?![0-9])", nombre)
+        or re.match(rf"^(?:anexo|envio)-{pid}(?![0-9])", nombre)
+        or re.match(rf"^(?:anexo_\d+|dj_plazo|compromiso_personal|pacto_integridad)_{pid}\.",
+                    nombre))
+
+
+async def borrar_archivos_de_cuenta(usuario_id: int) -> int:
+    """Borra del disco todo lo que la cuenta dejo ahi. Devuelve cuantos archivos.
+
+    POR QUE ESTA LISTA: antes solo se borraban logo, firma y sello, y se
+    quedaban en el disco la hoja membretada (con RUC, direccion y telefonos),
+    la ficha RUC (con el DNI del representante), la constancia del RNP, los
+    formatos subidos y los ZIP de envio con la firma escaneada dentro. La Ley
+    29733 pide suprimir el dato, no la fila que apuntaba a el.
+
+    Va ANTES del DELETE de la cuenta, por el mismo motivo que en `borrar_cuenta`:
+    despues ya no quedan las ids ni las rutas.
+    """
+    from shared import constancia_rnp, ficha_ruc
+    from shared import membrete as hoja_membretada
+    from shared.archivos import TIPOS as TIPOS_IMAGEN
+    from shared.archivos import borrar_imagen, rutas_de
+
+    async with connection() as conn:
+        empresas = [r["id"] for r in await conn.fetch(
+            "SELECT id FROM empresas WHERE usuario_id = $1", usuario_id)]
+        propuestas = await conn.fetch(
+            """SELECT id, expediente_zip_path, propuesta_tecnica_path,
+                      propuesta_economica_path
+                 FROM propuestas WHERE empresa_id = ANY($1::int[])""", empresas)
+        # Rutas guardadas que comparte una propuesta de OTRA cuenta (el ZIP
+        # `Expediente_<nom>_None.zip` de dos empresas sin RUC): esas no se tocan.
+        rutas = [r[c] for r in propuestas
+                 for c in ("expediente_zip_path", "propuesta_tecnica_path",
+                           "propuesta_economica_path") if r[c]]
+        ajenas = {f["ruta"] for f in await conn.fetch(
+            """SELECT unnest(ARRAY[expediente_zip_path, propuesta_tecnica_path,
+                                   propuesta_economica_path]) AS ruta
+                 FROM propuestas
+                WHERE empresa_id <> ALL($1::int[])
+                  AND (expediente_zip_path = ANY($2::text[])
+                       OR propuesta_tecnica_path = ANY($2::text[])
+                       OR propuesta_economica_path = ANY($2::text[]))""",
+            empresas, rutas)} if rutas else set()
+
+    total = 0
+    for eid in empresas:
+        # Se cuenta ANTES de borrar: borrar_imagen no devuelve nada, y
+        # `rutas_de` comprueba el disco.
+        presentes = await rutas_de(eid)
+        for tipo in TIPOS_IMAGEN:
+            try:
+                await borrar_imagen(eid, tipo)
+                total += tipo in presentes
+            except Exception as e:  # noqa: BLE001
+                log.error("No se pudo borrar la imagen %s de la empresa %s: %s", tipo, eid, e)
+
+        def _documentos_empresa(eid=eid) -> int:
+            n = 0
+            docx, pdf, medidas = hoja_membretada._rutas(eid)
+            for ruta, raiz in ((docx, hoja_membretada.DIR), (pdf, hoja_membretada.DIR),
+                               (medidas, hoja_membretada.DIR),
+                               (ficha_ruc.ruta_pdf(eid), ficha_ruc.DIR_PDF),
+                               (constancia_rnp.ruta_pdf(eid), constancia_rnp.DIR_PDF)):
+                n += _borrar_dentro(ruta, raiz)
+            return n
+
+        total += await asyncio.to_thread(_documentos_empresa)
+
+    dirs = _directorios_de_propuestas()
+
+    def _archivos_propuestas() -> int:
+        n = 0
+        ids = [p["id"] for p in propuestas]
+        for pid in ids:
+            n += _borrar_dentro(dirs["formatos"] / f"propuesta_{int(pid)}", dirs["formatos"])
+            n += _borrar_dentro(dirs["paquetes"] / f"propuesta_{int(pid)}.zip", dirs["paquetes"])
+        for clave in ("expedientes", "plantillas"):
+            carpeta = dirs[clave]
+            if not ids or not carpeta.is_dir():
+                continue
+            for archivo in carpeta.iterdir():
+                if any(_archivo_de_la_propuesta(archivo.name, pid) for pid in ids):
+                    n += _borrar_dentro(archivo, carpeta)
+        for ruta in rutas:
+            if ruta in ajenas:
+                continue
+            p = Path(ruta)
+            raiz = next((d for d in dirs.values() if d.resolve() in p.resolve().parents), None)
+            if raiz is not None:
+                n += _borrar_dentro(p, raiz)
+        return n
+
+    total += await asyncio.to_thread(_archivos_propuestas)
+    log.info("Archivos de la cuenta %s borrados del disco: %d", usuario_id, total)
+    return total
+
+
 async def borrar_cuenta_completa(usuario_id: int) -> dict:
     """Borra la cuenta y TODO lo que cuelga de ella, en una transaccion.
 
@@ -372,29 +531,21 @@ async def borrar_cuenta_completa(usuario_id: int) -> dict:
       seguir funcionando. Una lista de tablas a mano se desincroniza; una
       cascada olvidada se ve como un 500 delante del dueno.
 
-    Los archivos de disco (logos, firmas, sellos) se borran ANTES y fuera de
+    Los archivos de disco (logos, firmas, sellos, membrete, ficha RUC,
+    constancia del RNP, formatos, paquetes y expedientes; ver
+    `borrar_archivos_de_cuenta`) se borran ANTES y fuera de
     la transaccion, por el mismo motivo que en `borrar_cuenta`: despues del
     DELETE ya no quedan las rutas. Un archivo que no se puede borrar se
     registra y no frena el resto.
 
     Devuelve {tabla: filas_borradas, "archivos": n, "borrada": bool}.
     """
-    from shared.archivos import TIPOS as TIPOS_IMAGEN
-    from shared.archivos import borrar_imagen, rutas_de
-
     resumen: dict = {"archivos": 0, "borrada": False}
 
     async with connection() as conn:
         empresas = [r["id"] for r in await conn.fetch(
             "SELECT id FROM empresas WHERE usuario_id = $1", usuario_id)]
-    for eid in empresas:
-        presentes = await rutas_de(eid)
-        for tipo in TIPOS_IMAGEN:
-            try:
-                await borrar_imagen(eid, tipo)
-                resumen["archivos"] += tipo in presentes
-            except Exception as e:  # noqa: BLE001
-                log.error("No se pudo borrar la imagen %s de la empresa %s: %s", tipo, eid, e)
+    resumen["archivos"] = await borrar_archivos_de_cuenta(usuario_id)
 
     async with connection() as conn, conn.transaction():
         # Los ids se fijan ANTES de empezar a borrar: si se resolvieran

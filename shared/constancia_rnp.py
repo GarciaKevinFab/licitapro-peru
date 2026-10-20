@@ -51,8 +51,19 @@ CAPITULOS = {
     "EJECUTOR DE OBRAS": "Ejecutor de Obras",
     "CONSULTOR DE OBRAS": "Consultor de Obras",
 }
-_RE_CAPITULO = re.compile("|".join(CAPITULOS))
+# Sin distinguir mayusculas y tolerando espacios de mas entre palabras. POR
+# QUE: el OCR de Tesseract a veces lee "Proveedor de Bienes" o parte la linea
+# con dos espacios, y entonces el capitulo no aparecia y la constancia se
+# rechazaba como "sin ningun capitulo vigente".
+_RE_CAPITULO = re.compile(
+    "|".join(r"\s+".join(map(re.escape, c.split())) for c in CAPITULOS),
+    re.IGNORECASE)
 _RE_FECHA = r"(\d{2}/\d{2}/\d{4})"
+# El RUC siempre con su etiqueta delante. POR QUE: la reserva anterior tomaba
+# el primer numero de 11 digitos que empezara como un RUC, y en una constancia
+# hay otros (el codigo de verificacion, el numero de tramite): la constancia
+# podia "ser" de un RUC que no era el de la empresa y pasar el control.
+_RE_RUC = re.compile(r"\bRUC\b[^\d\n]{0,15}((?:10|15|16|17|20)\d{9})\b", re.IGNORECASE)
 
 
 def _fecha(texto: str | None) -> date | None:
@@ -72,9 +83,7 @@ def parsear_texto(texto: str) -> dict:
     if "REGISTRO NACIONAL" not in plano.upper():
         raise ConstanciaInvalida("Ese PDF no parece una constancia del RNP.")
 
-    ruc = re.search(r"RUC\s*N\s*\S{0,2}\s*(\d{11})", plano)
-    if not ruc:
-        ruc = re.search(r"\b((?:10|15|16|17|20)\d{9})\b", plano)
+    ruc = re.search(r"RUC\s*N\s*\S{0,2}\s*(\d{11})", plano) or _RE_RUC.search(plano)
 
     # Cada capitulo, con el tramo de texto hasta el siguiente.
     marcas = list(_RE_CAPITULO.finditer(plano))
@@ -84,7 +93,7 @@ def parsear_texto(texto: str) -> dict:
         desde = re.search(r"Desde\s*" + _RE_FECHA, tramo)
         hasta = re.search(r"Hasta\s*" + _RE_FECHA, tramo)
         capitulos.append({
-            "capitulo": CAPITULOS[m.group(0)],
+            "capitulo": CAPITULOS[" ".join(m.group(0).upper().split())],
             "desde": _fecha(desde.group(1) if desde else None),
             "hasta": _fecha(hasta.group(1) if hasta else None),
         })
@@ -93,6 +102,12 @@ def parsear_texto(texto: str) -> dict:
             "No se encontró ningún capítulo vigente en la constancia.")
 
     vencimientos = [c["hasta"] for c in capitulos if c["hasta"]]
+    # "Indeterminada" se afirma solo si se leyo la vigencia de cada capitulo
+    # y ninguna trae "Hasta". POR QUE: antes un OCR que no leia NINGUNA fecha
+    # daba tambien "vigencia indeterminada", y una constancia vencida se
+    # presentaba como "no vence". No haber leido la fecha no es lo mismo que
+    # que la fecha no exista.
+    leida = all(c["desde"] or c["hasta"] for c in capitulos)
     return {
         "ruc": ruc.group(1) if ruc else None,
         "capitulos": capitulos,
@@ -101,7 +116,9 @@ def parsear_texto(texto: str) -> dict:
         "rnp_categoria": ", ".join(c["capitulo"] for c in capitulos),
         # La que vence antes manda; None si todas son indeterminadas.
         "rnp_vigencia": min(vencimientos) if vencimientos else None,
-        "indeterminada": not vencimientos,
+        "indeterminada": leida and not vencimientos,
+        # False cuando algun capitulo salio sin fecha: hay que revisarla a mano.
+        "vigencia_leida": leida,
     }
 
 
@@ -115,15 +132,18 @@ def _texto_ocr(contenido: bytes) -> str:
     import pypdfium2 as pdfium
     import pytesseract
 
-    documento = pdfium.PdfDocument(contenido)
-    try:
-        partes = []
-        for i in range(min(len(documento), MAX_PAGINAS)):
-            imagen = documento[i].render(scale=DPI_OCR / 72).to_pil()
-            partes.append(pytesseract.image_to_string(imagen, lang="spa"))
-        return "\n".join(partes)
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    # Se pinta con el candado de pdfium (no es segura entre hilos) y el OCR,
+    # que es lo lento, va fuera: no hace falta retener a los demas.
+    with CANDADO:
+        documento = pdfium.PdfDocument(contenido)
+        try:
+            imagenes = [documento[i].render(scale=DPI_OCR / 72).to_pil()
+                        for i in range(min(len(documento), MAX_PAGINAS))]
+        finally:
+            documento.close()
+    return "\n".join(pytesseract.image_to_string(im, lang="spa") for im in imagenes)
 
 
 def leer_constancia_rnp(contenido: bytes) -> dict:
@@ -156,7 +176,10 @@ def leer_constancia_rnp(contenido: bytes) -> dict:
 # usuario la sube para rellenar la empresa, se guarda tambien el archivo: asi
 # el paquete de envio la incluye sin pedirsela otra vez.
 
-DIR_PDF = Path(os.getenv("RNP_DIR", "data/rnp"))
+# Anclado a la raiz del proyecto: relativo al cwd, un proceso lanzado desde
+# otra carpeta guardaba la constancia donde el paquete de envio no la busca.
+DIR_PDF = Path(os.getenv("RNP_DIR")
+               or Path(__file__).resolve().parents[1] / "data" / "rnp")
 
 
 def ruta_pdf(empresa_id: int) -> Path:
@@ -164,6 +187,16 @@ def ruta_pdf(empresa_id: int) -> Path:
 
 
 def guardar_pdf(empresa_id: int, contenido: bytes) -> None:
+    """Guarda con reemplazo atomico: o la constancia vieja o la nueva entera."""
+    import tempfile
+
     destino = ruta_pdf(empresa_id)
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_bytes(contenido)
+    fd, temporal = tempfile.mkstemp(dir=destino.parent, prefix=".tmp_", suffix=".pdf")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenido)
+        os.replace(temporal, destino)
+    except BaseException:
+        Path(temporal).unlink(missing_ok=True)
+        raise

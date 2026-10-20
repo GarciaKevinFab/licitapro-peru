@@ -30,14 +30,55 @@
 #   revision no pasa.
 
 {$LICITAPRO_DOMINIO::80} {
+	# TOPE AL CUERPO DE LA PETICION, ANTES DE QUE LLEGUE A PYTHON
+	#
+	#   El panel corre en UN solo proceso uvicorn. Un POST de 2 GB contra
+	#   cualquier ruta de subida se leia entero en memoria antes de que el
+	#   codigo mirara el tamano, y ese proceso es el de todos los clientes.
+	#   Aqui se corta en la puerta: Caddy responde 413 sin pasarlo.
+	#
+	#   15 MB deja sitio al archivo mas grande que se acepta (10 MB, los
+	#   formatos de shared/llenar_formatos.MAX_BYTES; los PDF de
+	#   web/empresas.MAX_PDF y las imagenes de shared/archivos.MAX_BYTES son de
+	#   5 MB) mas la envoltura del multipart. Si se sube alguno de esos limites
+	#   por encima, subir este con el.
+	request_body {
+		max_size 15MB
+	}
+
+	# CF-Connecting-IP SOLO SI LA PONE CLOUDFLARE
+	#
+	#   La aplicacion toma la IP del cliente de esa cabecera
+	#   (web/limites.ip_del_cliente), porque Cloudflare la pisa siempre y nadie
+	#   de fuera la puede elegir. Pero Caddy SI asoma a internet: quien le hable
+	#   directo, sin pasar por Cloudflare, podria mandarla inventada. Se borra
+	#   cuando la conexion no viene de un rango de Cloudflare.
+	#
+	#   Los rangos son los mismos que los de `trusted_proxies` de abajo. Si se
+	#   refrescan alli, refrescarlos aqui.
+	@sin_cloudflare {
+		not {
+			remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22
+			remote_ip 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20
+			remote_ip 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13
+			remote_ip 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+			remote_ip 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32
+			remote_ip 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		}
+	}
+	request_header @sin_cloudflare -Cf-Connecting-Ip
+
 	# El panel corre en la red interna de compose, asi que se llega por el
 	# nombre del servicio y no hace falta que publique puerto al exterior.
 	reverse_proxy web:8200 {
 		# CON CLOUDFLARE DELANTE, ESTO NO ES OPCIONAL.
 		#
 		# La aplicacion guarda la IP en `intentos_acceso` para frenar la fuerza
-		# bruta contra las contrasenas. La saca de `request.client.host`, que
-		# uvicorn rellena desde X-Forwarded-For.
+		# bruta contra las contrasenas. La saca de CF-Connecting-IP y, sin ella,
+		# de la conexion -- que uvicorn rellena desde X-Forwarded-For solo si el
+		# proxy esta en FORWARDED_ALLOW_IPS (ver Dockerfile). En este despliegue
+		# el proxy es el contenedor de Caddy: hay que poner su subred en
+		# FORWARDED_ALLOW_IPS del servicio web, nunca `*`.
 		#
 		# Sin esta lista, Caddy ve como cliente al borde de Cloudflare y pone
 		# ESA ip en la cabecera. Resultado: todos los usuarios que salen por el

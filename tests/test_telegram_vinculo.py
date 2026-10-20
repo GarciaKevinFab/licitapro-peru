@@ -53,7 +53,12 @@ async def test_un_codigo_caducado_no_se_ensena(usuario, cliente):
     await cliente.post("/configuracion/telegram/vincular")
     async with connection() as c:
         token = await c.fetchval(
-            """UPDATE usuarios SET telegram_token_expira = NOW() - INTERVAL '1 minute'
+            # Hora de pared de Lima, como la escribe la app (ver
+            # shared/seguridad.py). NOW() a secas guarda la hora de la sesion,
+            # que con POSTGRES_ZONA_SESION=UTC va cinco horas por delante.
+            """UPDATE usuarios
+                  SET telegram_token_expira = (NOW() AT TIME ZONE 'America/Lima')
+                                              - INTERVAL '1 minute'
                 WHERE id=$1 RETURNING telegram_token""", usuario["id"])
 
     html = (await cliente.get("/configuracion")).text

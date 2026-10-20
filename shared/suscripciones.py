@@ -7,7 +7,7 @@ Estados y como se pasa de uno a otro:
     activa     -> vencida     llego la renovacion sin cobro exitoso
     vencida    -> activa      pago confirmado (reintento o manual)
     vencida    -> suspendida  pasaron los dias de gracia
-    cualquiera -> cancelada   el usuario cancela
+    cualquiera -> cancelada   el usuario cancela (conserva el acceso hasta `vence`)
 
 Por que gracia y no corte inmediato: una tarjeta rebota por mil motivos
 (limite, vencimiento, el banco), y cortarle el servicio a alguien que si quiere
@@ -34,6 +34,27 @@ ACCESO_PERMITIDO = ("prueba", "activa", "vencida")
 # Plan al que se cae cuando se agota la gracia, en vez de perder el acceso.
 PLAN_GRATUITO = "gratis"   # 'vencida' sigue en gracia
 
+# LA HORA DE LIMA, TAMBIEN DENTRO DE POSTGRES
+#
+#   Las columnas de fecha de `suscripciones` y `pagos_suscripcion` son
+#   `timestamp` SIN zona y el resto del sistema guarda en ellas la hora de pared
+#   de Lima (ver shared/fechas.py). Pero la sesion de Postgres de produccion
+#   corre en UTC, asi que un `NOW()` a secas escribe la hora de Greenwich.
+#
+#   Mezclar las dos cosas no revienta: regala cinco horas. `vence` se escribia
+#   con `NOW() + 30 dias` (UTC) y se leia contra `fechas.ahora()` (Lima), y
+#   cada suscripcion vencia cinco horas mas tarde de lo pagado; `activar_manual`,
+#   en cambio, escribia en Lima. Dos relojes en la misma columna.
+#
+#   Todas las lecturas y escrituras de este modulo pasan por esta expresion, que
+#   da la hora de Lima sin zona corra donde corra la base. Las filas viejas
+#   escritas en UTC quedan, como mucho, cinco horas largas: no se migran.
+#
+#   La unica excepcion es `created_at`, que lo rellena el DEFAULT de la tabla
+#   con el reloj de la sesion: donde se compara (la ventana de adopcion de
+#   `aplicar_cargo_culqi`) se compara contra ese mismo reloj, `NOW()`.
+AHORA_SQL = "(NOW() AT TIME ZONE 'America/Lima')"
+
 
 def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str:
     """El estado que de verdad aplica hoy, a partir del guardado y la fecha.
@@ -49,6 +70,28 @@ def estado_efectivo_de(estado: str, vence, ahora: datetime | None = None) -> str
     if estado == "vencida" and vence and vence + timedelta(days=DIAS_GRACIA) < ahora:
         estado = "suspendida"
     return estado
+
+
+def tiene_acceso(estado_efectivo: str, vence, ahora: datetime | None = None) -> bool:
+    """Si un estado ya resuelto deja usar el producto.
+
+    POR QUE `cancelada` NO CORTA AL INSTANTE
+
+      Cancelar se anunciaba como "conservas el acceso hasta el fin del periodo"
+      y cortaba en el acto: `cancelada` no estaba en ACCESO_PERMITIDO. El
+      cliente que cancelaba un dia despues de pagar perdia los 29 restantes,
+      justo lo contrario de lo que la pantalla le acababa de prometer.
+
+      Ahora `cancelada` con `vence` por delante sigue dentro. Cuando `vence`
+      pasa, se corta como antes; no hay gracia, porque nadie va a reintentar un
+      cobro que el propio cliente pidio parar.
+    """
+    if estado_efectivo in ACCESO_PERMITIDO:
+        return True
+    if estado_efectivo == "cancelada":
+        ahora = ahora or fechas.ahora()
+        return bool(vence and vence >= ahora)
+    return False
 
 
 async def estado_suscripcion(usuario_id: int) -> dict:
@@ -102,7 +145,7 @@ async def estado_suscripcion(usuario_id: int) -> dict:
         # Sin plan gratuito en la tabla se mantiene el corte: es preferible
         # bloquear a conceder por accidente un acceso sin limites conocidos.
 
-    d["acceso"] = estado in ACCESO_PERMITIDO
+    d["acceso"] = tiene_acceso(estado, vence, ahora)
     return d
 
 
@@ -121,8 +164,10 @@ async def crear_suscripcion_prueba(usuario_id: int, plan: str = "pro") -> None:
     """Da de alta la prueba al registrarse. Sin esto la cuenta nace sin plan."""
     async with connection() as conn:
         await conn.execute(
-            """INSERT INTO suscripciones (usuario_id, plan_codigo, estado, periodo, vence)
-               VALUES ($1, $2, 'prueba', 'mensual', NOW() + ($3 || ' days')::interval)
+            f"""INSERT INTO suscripciones
+                   (usuario_id, plan_codigo, estado, periodo, inicia, vence)
+               VALUES ($1, $2, 'prueba', 'mensual', {AHORA_SQL},
+                       {AHORA_SQL} + ($3 || ' days')::interval)
                ON CONFLICT (usuario_id) DO NOTHING""",
             usuario_id, plan, str(DIAS_PRUEBA))
 
@@ -157,12 +202,27 @@ async def limite_regiones(usuario_id: int) -> int | None:
 
 # ─── Cobros ──────────────────────────────────────────────
 
-async def registrar_intento(usuario_id: int, monto, numero_orden: str) -> int | None:
+async def registrar_intento(usuario_id: int, monto, numero_orden: str,
+                            plan_codigo: str | None = None,
+                            periodo: str | None = None) -> int | None:
     """Crea el pago en 'pendiente'. None si ese numero de orden ya existia.
 
     La unicidad de izipay_order_number es la idempotencia: si el usuario pulsa
     dos veces o el webhook llega repetido, no se duplica el cobro.
+
+    EL PLAN VIAJA CON LA ORDEN
+
+      `plan_codigo` y `periodo` son lo que se esta comprando. Se guardan en la
+      propia fila del pago (`respuesta.pedido`) y `confirmar_pago` los aplica
+      al confirmarse el cobro. Asi un cambio a un plan mas caro solo llega a la
+      cuenta cuando el dinero llega a la pasarela, y no al pulsar "Elegir".
+      Va en el JSON y no en columnas nuevas para no exigir una migracion.
     """
+    import json
+    pedido = None
+    if plan_codigo and periodo:
+        pedido = json.dumps({"pedido": {"plan_codigo": plan_codigo,
+                                        "periodo": periodo}})
     async with connection() as conn:
         susc_id = await conn.fetchval(
             "SELECT id FROM suscripciones WHERE usuario_id=$1", usuario_id)
@@ -170,11 +230,26 @@ async def registrar_intento(usuario_id: int, monto, numero_orden: str) -> int | 
             return None
         return await conn.fetchval(
             """INSERT INTO pagos_suscripcion
-                   (suscripcion_id, monto, estado, izipay_order_number)
-               VALUES ($1, $2, 'pendiente', $3)
+                   (suscripcion_id, monto, estado, izipay_order_number, respuesta)
+               VALUES ($1, $2, 'pendiente', $3, $4::jsonb)
                ON CONFLICT (izipay_order_number) DO NOTHING
                RETURNING id""",
-            susc_id, monto, numero_orden)
+            susc_id, monto, numero_orden, pedido)
+
+
+async def orden_del_usuario(numero_orden: str, usuario_id: int) -> bool:
+    """Si esa orden de Izipay es de una suscripcion de ese usuario.
+
+    La usa el retorno del navegador: el numero de orden llega en un formulario
+    que manda el cliente, y sin esta comprobacion cualquiera con sesion podria
+    tocar la orden de otro.
+    """
+    async with connection() as conn:
+        return bool(await conn.fetchval(
+            """SELECT 1 FROM pagos_suscripcion ps
+                 JOIN suscripciones s ON s.id = ps.suscripcion_id
+                WHERE ps.izipay_order_number = $1 AND s.usuario_id = $2""",
+            numero_orden, usuario_id))
 
 
 async def confirmar_pago(numero_orden: str, transaction_id: str | None,
@@ -185,48 +260,112 @@ async def confirmar_pago(numero_orden: str, transaction_id: str | None,
     webhook llega dos veces, la segunda no vuelve a extender el periodo.
     """
     import json
-    async with connection() as conn:
+    async with connection() as conn, conn.transaction():
+        # La CTE lee el pedido ANTES de que el UPDATE pise `respuesta` con lo
+        # que manda la pasarela; el pedido se conserva dentro del JSON nuevo.
         pago = await conn.fetchrow(
-            """UPDATE pagos_suscripcion
-                  SET estado='pagado', confirmado_en=NOW(),
-                      izipay_transaction_id=$2, respuesta=$3
-                WHERE izipay_order_number=$1 AND estado <> 'pagado'
-             RETURNING id, suscripcion_id""",
+            f"""WITH previo AS (
+                    SELECT id, respuesta FROM pagos_suscripcion
+                     WHERE izipay_order_number=$1 AND estado <> 'pagado'
+                       FOR UPDATE)
+                UPDATE pagos_suscripcion p
+                   SET estado='pagado', confirmado_en={AHORA_SQL},
+                       izipay_transaction_id=$2,
+                       respuesta = COALESCE($3::jsonb, '{{}}'::jsonb)
+                                   || jsonb_build_object('pedido',
+                                                         previo.respuesta->'pedido')
+                  FROM previo
+                 WHERE p.id = previo.id
+             RETURNING p.id, p.suscripcion_id,
+                       previo.respuesta->'pedido' AS pedido""",
             numero_orden, transaction_id,
-            json.dumps(respuesta) if respuesta else None)
+            json.dumps(respuesta, default=str) if respuesta else None)
         if not pago:
             log.info("Pago %s ya confirmado o inexistente: no se repite", numero_orden)
             return False
 
+        pedido = pago["pedido"]
+        if isinstance(pedido, str):
+            pedido = json.loads(pedido)
+        pedido = pedido if isinstance(pedido, dict) else {}
+        plan_pedido = pedido.get("plan_codigo")
+        periodo_pedido = pedido.get("periodo")
+        if periodo_pedido not in DIAS_POR_PERIODO:
+            plan_pedido = periodo_pedido = None
+
         susc = await conn.fetchrow(
             "SELECT periodo FROM suscripciones WHERE id=$1", pago["suscripcion_id"])
-        dias = 365 if (susc and susc["periodo"] == "anual") else 30
+        periodo = periodo_pedido or (susc["periodo"] if susc else "mensual")
+        dias = _dias_de(periodo)
         # Se extiende desde el vencimiento si aun no paso; si ya paso, desde hoy.
-        # Asi renovar antes de tiempo no regala dias ni los quita.
+        # Asi renovar antes de tiempo no regala dias ni los quita. El plan y el
+        # periodo comprados se aplican AQUI, con el cobro ya confirmado: es lo
+        # que impide subir de plan sin pagar (ver `cambiar_plan`).
         await conn.execute(
-            """UPDATE suscripciones
-                  SET estado='activa',
-                      intentos_fallidos=0,
-                      vence = GREATEST(COALESCE(vence, NOW()), NOW())
-                              + ($2 || ' days')::interval
-                WHERE id=$1""",
-            pago["suscripcion_id"], str(dias))
+            f"""UPDATE suscripciones
+                   SET estado='activa',
+                       intentos_fallidos=0,
+                       cancelada_en=NULL,
+                       plan_codigo=COALESCE($3, plan_codigo),
+                       periodo=COALESCE($4, periodo),
+                       vence = GREATEST(COALESCE(vence, {AHORA_SQL}), {AHORA_SQL})
+                               + ($2 || ' days')::interval
+                 WHERE id=$1""",
+            pago["suscripcion_id"], str(dias), plan_pedido, periodo_pedido)
     log.info("Pago %s confirmado; suscripcion %s extendida %s dias",
              numero_orden, pago["suscripcion_id"], dias)
     return True
 
 
-async def registrar_intento_fallido(usuario_id: int) -> None:
-    """Suma un intento fallido y suspende al pasarse del maximo."""
-    async with connection() as conn:
+async def registrar_intento_fallido(usuario_id: int, *,
+                                    charge_id: str | None = None,
+                                    monto=None, event_id: str | None = None,
+                                    respuesta: dict | None = None) -> bool:
+    """Suma un intento fallido y suspende al pasarse del maximo.
+
+    Devuelve True si lo conto, False si ese cargo ya estaba contado.
+
+    IDEMPOTENTE POR CARGO CUANDO HAY CARGO
+
+      Culqi reintenta el aviso que no recibe 200, y antes cada reenvio del MISMO
+      cargo rechazado sumaba un intento: cuatro avisos de un solo rechazo y la
+      cuenta quedaba suspendida. Con `charge_id`, el rechazo se asienta como un
+      pago 'fallido' con ese `chr_`, y el indice unico parcial de
+      `culqi_charge_id` decide si es nuevo. Solo si la fila entra se suma el
+      intento, y las dos cosas van en la misma transaccion.
+
+      Sin `charge_id` (el renovador de Izipay) se cuenta como siempre: alli
+      cada llamada es un cobro distinto.
+    """
+    import json
+    async with connection() as conn, conn.transaction():
+        if charge_id:
+            nuevo = await conn.fetchval(
+                f"""INSERT INTO pagos_suscripcion
+                        (suscripcion_id, monto, moneda, estado, metodo,
+                         culqi_charge_id, culqi_event_id, respuesta, confirmado_en)
+                    SELECT s.id, $2, 'PEN', 'fallido', 'culqi', $3, $4, $5::jsonb,
+                           {AHORA_SQL}
+                      FROM suscripciones s WHERE s.usuario_id = $1
+                    -- Mismo predicado que el indice parcial: ver activar_por_culqi.
+                    ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+                    DO NOTHING
+                    RETURNING id""",
+                usuario_id, monto if monto is not None else 0, charge_id, event_id,
+                json.dumps(respuesta, default=str) if respuesta else None)
+            if not nuevo:
+                log.info("Cargo rechazado %s ya contado: no se suma otra vez",
+                         charge_id)
+                return False
         await conn.execute(
-            """UPDATE suscripciones
-                  SET intentos_fallidos = intentos_fallidos + 1,
-                      ultimo_intento = NOW(),
-                      estado = CASE WHEN intentos_fallidos + 1 >= $2
-                                    THEN 'suspendida' ELSE estado END
-                WHERE usuario_id = $1""",
+            f"""UPDATE suscripciones
+                   SET intentos_fallidos = intentos_fallidos + 1,
+                       ultimo_intento = {AHORA_SQL},
+                       estado = CASE WHEN intentos_fallidos + 1 >= $2
+                                     THEN 'suspendida' ELSE estado END
+                 WHERE usuario_id = $1""",
             usuario_id, MAX_INTENTOS)
+    return True
 
 
 async def guardar_token_tarjeta(usuario_id: int, token: str,
@@ -241,17 +380,80 @@ async def guardar_token_tarjeta(usuario_id: int, token: str,
             usuario_id, cifrar(token), marca, ultimos)
 
 
-async def cambiar_plan(usuario_id: int, plan_codigo: str, periodo: str) -> bool:
+# Lo que devuelve `cambiar_plan`. La cadena vacia es falsa a proposito: los
+# que solo preguntaban "¿ha ido bien?" con `if not ...` siguen funcionando.
+PLAN_INVALIDO = ""
+PLAN_APLICADO = "aplicado"
+PLAN_PENDIENTE_DE_PAGO = "pendiente_de_pago"
+
+
+async def plan_valido(plan_codigo: str, periodo: str) -> bool:
+    """Si el plan existe, esta activo y el periodo es uno de los conocidos."""
+    if periodo not in ("mensual", "anual"):
+        return False
     async with connection() as conn:
-        existe = await conn.fetchval(
+        return bool(await conn.fetchval(
             "SELECT EXISTS(SELECT 1 FROM planes WHERE codigo=$1 AND activo=TRUE)",
-            plan_codigo)
-        if not existe or periodo not in ("mensual", "anual"):
-            return False
+            plan_codigo))
+
+
+async def cambiar_plan(usuario_id: int, plan_codigo: str, periodo: str) -> str:
+    """Cambia de plan SOLO si no es subir a uno mas caro. Ver las constantes.
+
+    POR QUE SUBIR NO SE APLICA AQUI
+
+      Antes esto era un UPDATE a secas, y `POST /suscripcion/elegir` lo llamaba
+      antes de cobrar nada: un cliente activo en Basico pulsaba "Elegir" en
+      Empresa y tenia Empresa hasta su siguiente vencimiento sin haber pagado
+      la diferencia. Igual por `/comprar`, abandonando la pasarela.
+
+      Ahora subir de plan (precio mensual mayor que el del plan actual) devuelve
+      PLAN_PENDIENTE_DE_PAGO y NO toca la fila. Quien llama abre el cobro con
+      ese plan, y es `confirmar_pago` quien lo aplica cuando el dinero llega.
+
+    BAJAR SE APLICA AL INSTANTE, Y ES UNA DECISION
+
+      Bajar (o quedarse en el mismo plan, o solo cambiar de periodo) se aplica
+      ya. Aplicarlo al vencer exigiria guardar un "plan siguiente" en una
+      columna nueva y un proceso que lo active, y lo que se gana es poco: quien
+      baja pierde capacidades que ya habia pagado, pero lo hace porque lo pide,
+      y el siguiente cobro ya sale al precio nuevo. No se devuelve dinero por
+      los dias que quedan del plan caro.
+
+      Cambiar solo de periodo (mensual <-> anual) no da nada por adelantado:
+      el periodo decide el importe y los dias del PROXIMO cobro.
+    """
+    if not await plan_valido(plan_codigo, periodo):
+        return PLAN_INVALIDO
+    async with connection() as conn:
+        precios = await conn.fetchrow(
+            """SELECT pn.precio_mensual AS nuevo, pa.precio_mensual AS actual
+                 FROM planes pn
+                 LEFT JOIN suscripciones s ON s.usuario_id = $1
+                 LEFT JOIN planes pa ON pa.codigo = s.plan_codigo
+                WHERE pn.codigo = $2""",
+            usuario_id, plan_codigo)
+        nuevo = (precios["nuevo"] if precios else None) or 0
+        actual = (precios["actual"] if precios else None) or 0
+        if nuevo > actual:
+            return PLAN_PENDIENTE_DE_PAGO
         await conn.execute(
             "UPDATE suscripciones SET plan_codigo=$2, periodo=$3 WHERE usuario_id=$1",
             usuario_id, plan_codigo, periodo)
-    return True
+    return PLAN_APLICADO
+
+
+async def plan_y_precio(plan_codigo: str, periodo: str) -> dict | None:
+    """Nombre e importe de un plan activo para un periodo. None si no hay."""
+    async with connection() as conn:
+        fila = await conn.fetchrow(
+            """SELECT nombre, precio_mensual, precio_anual FROM planes
+                WHERE codigo=$1 AND activo=TRUE""", plan_codigo)
+    if not fila:
+        return None
+    return {"nombre": fila["nombre"],
+            "monto": fila["precio_anual"] if periodo == "anual"
+            else fila["precio_mensual"]}
 
 
 async def activar_manual(usuario_id: int, plan_codigo: str, estado: str, periodo: str,
@@ -279,22 +481,23 @@ async def activar_manual(usuario_id: int, plan_codigo: str, estado: str, periodo
             "SELECT id FROM suscripciones WHERE usuario_id=$1", usuario_id)
         if susc_id:
             await conn.execute(
-                """UPDATE suscripciones
+                f"""UPDATE suscripciones
                       SET plan_codigo=$2, estado=$3, periodo=$4, vence=$5,
                           intentos_fallidos=0,
-                          cancelada_en=CASE WHEN $3='cancelada' THEN NOW() ELSE NULL END
+                          cancelada_en=CASE WHEN $3='cancelada' THEN {AHORA_SQL}
+                                            ELSE NULL END
                     WHERE id=$1""",
                 susc_id, plan_codigo, estado, periodo, vence)
         else:
             susc_id = await conn.fetchval(
-                """INSERT INTO suscripciones (usuario_id, plan_codigo, estado, periodo, inicia, vence)
-                   VALUES ($1, $2, $3, $4, NOW(), $5) RETURNING id""",
+                f"""INSERT INTO suscripciones (usuario_id, plan_codigo, estado, periodo, inicia, vence)
+                   VALUES ($1, $2, $3, $4, {AHORA_SQL}, $5) RETURNING id""",
                 usuario_id, plan_codigo, estado, periodo, vence)
         if monto is not None and float(monto) > 0:
             await conn.execute(
-                """INSERT INTO pagos_suscripcion
+                f"""INSERT INTO pagos_suscripcion
                        (suscripcion_id, monto, moneda, estado, metodo, respuesta, confirmado_en)
-                   VALUES ($1, $2, 'PEN', 'pagado', 'manual', $3, NOW())""",
+                   VALUES ($1, $2, 'PEN', 'pagado', 'manual', $3, {AHORA_SQL})""",
                 susc_id, monto, json.dumps({"nota": nota, "por": por}))
     log.info("Suscripcion de %s puesta a mano: %s/%s hasta %s por %s",
              usuario_id, plan_codigo, estado, vence, por)
@@ -302,12 +505,18 @@ async def activar_manual(usuario_id: int, plan_codigo: str, estado: str, periodo
 
 
 async def cancelar(usuario_id: int) -> None:
-    """Cancela sin cortar el acceso: se conserva hasta el fin del periodo pagado."""
+    """Cancela sin cortar el acceso: se conserva hasta el fin del periodo pagado.
+
+    `vence` NO se toca: es la fecha hasta la que `tiene_acceso` deja entrar a
+    una cuenta cancelada. Lo que desaparece es la tarjeta, para que nada la
+    vuelva a cobrar.
+    """
     async with connection() as conn:
         await conn.execute(
-            """UPDATE suscripciones
-                  SET estado='cancelada', cancelada_en=NOW(), token_tarjeta=NULL
-                WHERE usuario_id=$1""",
+            f"""UPDATE suscripciones
+                   SET estado='cancelada', cancelada_en={AHORA_SQL},
+                       token_tarjeta=NULL
+                 WHERE usuario_id=$1""",
             usuario_id)
 
 
@@ -319,7 +528,7 @@ async def renovaciones_pendientes() -> list[dict]:
     """
     async with connection() as conn:
         filas = await conn.fetch(
-            """SELECT s.id, s.usuario_id, s.periodo, s.token_tarjeta,
+            f"""SELECT s.id, s.usuario_id, s.periodo, s.token_tarjeta,
                       s.intentos_fallidos, u.email,
                       CASE WHEN s.periodo='anual' THEN p.precio_anual
                            ELSE p.precio_mensual END AS monto
@@ -335,10 +544,10 @@ async def renovaciones_pendientes() -> list[dict]:
                   -- suspendiendo a un usuario que no debe nada.
                   AND COALESCE(CASE WHEN s.periodo='anual' THEN p.precio_anual
                                     ELSE p.precio_mensual END, 0) > 0
-                  AND s.vence < NOW()
+                  AND s.vence < {AHORA_SQL}
                   AND s.intentos_fallidos < $1
                   AND (s.ultimo_intento IS NULL
-                       OR s.ultimo_intento < NOW() - INTERVAL '1 day')
+                       OR s.ultimo_intento < {AHORA_SQL} - INTERVAL '1 day')
                 ORDER BY s.vence""",
             MAX_INTENTOS)
     return [dict(f) for f in filas]
@@ -384,6 +593,13 @@ async def suscripcion_por_culqi(subscription_id: str | None = None,
 
       Devolver None NO es un error: puede ser un aviso de otro comercio o de
       otro producto. Quien llama lo registra y contesta 200.
+
+    EL ORDEN SE IMPONE EN LA CONSULTA, NO SE DA POR SUPUESTO
+
+      Era un `WHERE a OR b OR c LIMIT 1` sin ORDER BY: si el sxn_ era de una
+      cuenta y el correo de otra, Postgres devolvia la que encontrara primero,
+      y el cobro podia acabar extendiendo la suscripcion de quien no pago. Ahora
+      gana la coincidencia mas especifica y, a igualdad, el id mas bajo.
     """
     condiciones, valores = [], []
     if subscription_id:
@@ -397,6 +613,8 @@ async def suscripcion_por_culqi(subscription_id: str | None = None,
         condiciones.append(f"LOWER(u.email) = ${len(valores)}")
     if not condiciones:
         return None
+    # Cada condicion vale su posicion en la lista de arriba: 0 gana a 1.
+    prioridad = " ".join(f"WHEN {c} THEN {i}" for i, c in enumerate(condiciones))
 
     async with connection() as conn:
         fila = await conn.fetchrow(
@@ -406,6 +624,7 @@ async def suscripcion_por_culqi(subscription_id: str | None = None,
                   FROM suscripciones s
                   JOIN usuarios u ON u.id = s.usuario_id
                  WHERE {' OR '.join(condiciones)}
+                 ORDER BY CASE {prioridad} END, s.id
                  LIMIT 1""",
             *valores)
     return dict(fila) if fila else None
@@ -428,8 +647,14 @@ async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
                             subscription_id: str, marca: str | None = None,
                             ultimos: str | None = None,
                             charge_id: str | None = None,
-                            respuesta: dict | None = None) -> bool:
+                            respuesta: dict | None = None,
+                            conn=None) -> bool:
     """Deja la cuenta activa tras contratar en Culqi, y registra el pago inicial.
+
+    `conn` permite hacerlo dentro de la transaccion de quien llama: el checkout
+    la abre para sostener el candado por usuario mientras crea la suscripcion
+    en Culqi (ver web/comprar.py), y pedir aqui una segunda conexion del pool
+    teniendo ya una es como se cuelga el pool entero.
 
     TODO EN UNA TRANSACCION, Y NO POR PULCRITUD
 
@@ -447,13 +672,20 @@ async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
       extender: ver `aplicar_cargo_culqi`, que reconoce este pago y lo adopta
       en vez de contarlo dos veces.
     """
+    if conn is None:
+        async with connection() as propia:
+            return await activar_por_culqi(
+                usuario_id, plan_codigo, periodo, monto, customer_id, card_id,
+                subscription_id, marca, ultimos, charge_id, respuesta, conn=propia)
+
     import json
     dias = _dias_de(periodo)
-    async with connection() as conn, conn.transaction():
+    async with conn.transaction():
         susc_id = await conn.fetchval(
-            """UPDATE suscripciones
+            f"""UPDATE suscripciones
                   SET plan_codigo=$2, periodo=$3, estado='activa',
-                      inicia=NOW(), vence=NOW() + ($4 || ' days')::interval,
+                      inicia={AHORA_SQL},
+                      vence={AHORA_SQL} + ($4 || ' days')::interval,
                       cancelada_en=NULL, intentos_fallidos=0,
                       culqi_customer_id=$5, culqi_card_id=$6,
                       culqi_subscription_id=$7,
@@ -469,10 +701,10 @@ async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
             return False
 
         await conn.execute(
-            """INSERT INTO pagos_suscripcion
+            f"""INSERT INTO pagos_suscripcion
                    (suscripcion_id, monto, moneda, estado, metodo,
                     culqi_charge_id, respuesta, confirmado_en)
-               VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, NOW())
+               VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, {AHORA_SQL})
                -- El WHERE no sobra: el indice de culqi_charge_id es PARCIAL, y
                -- sin repetir su predicado Postgres no lo reconoce como arbitro
                -- ("there is no unique or exclusion constraint matching the ON
@@ -487,6 +719,47 @@ async def activar_por_culqi(usuario_id: int, plan_codigo: str, periodo: str,
     log.info("Suscripcion de Culqi %s activada para el usuario %s (%s/%s, %s dias)",
              subscription_id, usuario_id, plan_codigo, periodo, dias)
     return True
+
+
+async def _adoptar_o_insertar(conn, suscripcion_id: int, monto, charge_id: str,
+                              event_id: str | None, cuerpo: str | None):
+    """'adoptado', el id del pago nuevo, o None si otro aviso gano la carrera.
+
+    Parte de `aplicar_cargo_culqi`, que explica los casos.
+    """
+    # ¿Es el aviso del cobro inicial que el checkout ya asento? Se busca el
+    # pago de Culqi mas reciente sin cargo asociado. La ventana de 2 dias
+    # evita adoptar un pago viejo por accidente: un aviso que tarda dos
+    # dias en llegar ya no es el del alta. `created_at` lo escribe el DEFAULT
+    # de la tabla con el reloj de la sesion, asi que se compara con `NOW()`.
+    adoptado = await conn.fetchval(
+        """UPDATE pagos_suscripcion
+              SET culqi_charge_id=$2, culqi_event_id=$3,
+                  respuesta=COALESCE(respuesta, $4)
+            WHERE id = (SELECT id FROM pagos_suscripcion
+                         WHERE suscripcion_id=$1 AND metodo='culqi'
+                           AND estado='pagado'
+                           AND culqi_charge_id IS NULL
+                           AND created_at > NOW() - INTERVAL '2 days'
+                         ORDER BY created_at DESC LIMIT 1)
+         RETURNING id""",
+        suscripcion_id, charge_id, event_id, cuerpo)
+    if adoptado:
+        log.info("Cargo %s adoptado por el pago inicial de la suscripcion %s: "
+                 "el periodo ya se concedio en el checkout",
+                 charge_id, suscripcion_id)
+        return "adoptado"
+
+    return await conn.fetchval(
+        f"""INSERT INTO pagos_suscripcion
+               (suscripcion_id, monto, moneda, estado, metodo,
+                culqi_charge_id, culqi_event_id, respuesta, confirmado_en)
+           VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, $5, {AHORA_SQL})
+           -- Mismo predicado que el indice parcial: ver activar_por_culqi.
+           ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
+           DO NOTHING
+           RETURNING id""",
+        suscripcion_id, monto, charge_id, event_id, cuerpo)
 
 
 async def aplicar_cargo_culqi(suscripcion_id: int, monto, charge_id: str,
@@ -524,42 +797,29 @@ async def aplicar_cargo_culqi(suscripcion_id: int, monto, charge_id: str,
     import json
     cuerpo = json.dumps(respuesta) if respuesta else None
     async with connection() as conn, conn.transaction():
-        if await conn.fetchval(
-                "SELECT 1 FROM pagos_suscripcion WHERE culqi_charge_id=$1",
-                charge_id):
+        previo = await conn.fetchrow(
+            "SELECT id, estado FROM pagos_suscripcion WHERE culqi_charge_id=$1",
+            charge_id)
+        if previo and previo["estado"] == "pagado":
             return "repetido"
-
-        # ¿Es el aviso del cobro inicial que el checkout ya asento? Se busca el
-        # pago de Culqi mas reciente sin cargo asociado. La ventana de 2 dias
-        # evita adoptar un pago viejo por accidente: un aviso que tarda dos
-        # dias en llegar ya no es el del alta.
-        adoptado = await conn.fetchval(
-            """UPDATE pagos_suscripcion
-                  SET culqi_charge_id=$2, culqi_event_id=$3,
-                      respuesta=COALESCE(respuesta, $4)
-                WHERE id = (SELECT id FROM pagos_suscripcion
-                             WHERE suscripcion_id=$1 AND metodo='culqi'
-                               AND culqi_charge_id IS NULL
-                               AND created_at > NOW() - INTERVAL '2 days'
-                             ORDER BY created_at DESC LIMIT 1)
-             RETURNING id""",
-            suscripcion_id, charge_id, event_id, cuerpo)
-        if adoptado:
-            log.info("Cargo %s adoptado por el pago inicial de la suscripcion %s: "
-                     "el periodo ya se concedio en el checkout",
-                     charge_id, suscripcion_id)
-            return "adoptado"
-
-        nuevo = await conn.fetchval(
-            """INSERT INTO pagos_suscripcion
-                   (suscripcion_id, monto, moneda, estado, metodo,
-                    culqi_charge_id, culqi_event_id, respuesta, confirmado_en)
-               VALUES ($1, $2, 'PEN', 'pagado', 'culqi', $3, $4, $5, NOW())
-               -- Mismo predicado que el indice parcial: ver activar_por_culqi.
-               ON CONFLICT (culqi_charge_id) WHERE culqi_charge_id IS NOT NULL
-               DO NOTHING
-               RETURNING id""",
-            suscripcion_id, monto, charge_id, event_id, cuerpo)
+        if previo:
+            # Ese chr_ entro antes como rechazo (ver registrar_intento_fallido) y
+            # la API lo da ahora por cobrado. Se corrige la MISMA fila en vez de
+            # insertar otra -- el indice unico no admitiria una segunda -- y no
+            # se busca adopcion: un cargo que fue rechazo no es el del alta.
+            nuevo = await conn.fetchval(
+                f"""UPDATE pagos_suscripcion
+                       SET estado='pagado', monto=$2, confirmado_en={AHORA_SQL},
+                           culqi_event_id=COALESCE($3, culqi_event_id),
+                           respuesta=COALESCE($4::jsonb, respuesta)
+                     WHERE id=$1 AND estado <> 'pagado'
+                 RETURNING id""",
+                previo["id"], monto, event_id, cuerpo)
+        else:
+            nuevo = await _adoptar_o_insertar(conn, suscripcion_id, monto,
+                                              charge_id, event_id, cuerpo)
+            if nuevo == "adoptado":
+                return "adoptado"
         if not nuevo:
             # Otro aviso identico gano la carrera entre el SELECT y el INSERT.
             return "repetido"
@@ -570,11 +830,11 @@ async def aplicar_cargo_culqi(suscripcion_id: int, monto, charge_id: str,
         # Se extiende desde el vencimiento si aun no paso; si ya paso, desde
         # hoy. Asi un cobro adelantado no regala dias ni los quita.
         await conn.execute(
-            """UPDATE suscripciones
-                  SET estado='activa', intentos_fallidos=0,
-                      vence = GREATEST(COALESCE(vence, NOW()), NOW())
-                              + ($2 || ' days')::interval
-                WHERE id=$1""",
+            f"""UPDATE suscripciones
+                   SET estado='activa', intentos_fallidos=0,
+                       vence = GREATEST(COALESCE(vence, {AHORA_SQL}), {AHORA_SQL})
+                               + ($2 || ' days')::interval
+                 WHERE id=$1""",
             suscripcion_id, str(dias))
 
     log.info("Cargo %s aplicado: suscripcion %s extendida", charge_id, suscripcion_id)

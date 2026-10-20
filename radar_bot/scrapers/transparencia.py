@@ -15,8 +15,8 @@ class TransparenciaScraper(BaseScraper):
     URL = TRANSPARENCIA_URL
 
     async def _fetch_items(self, client):
-        resp = await client.get(self.URL)
-        if resp.status_code != 200:
+        resp = await self._pedir(client, self.URL)
+        if resp is None:
             return []
         soup = BeautifulSoup(resp.text, "lxml")
         filas = soup.select("table tbody tr, .row-contratacion, #ContentPlaceHolder1_grdContrato tr")

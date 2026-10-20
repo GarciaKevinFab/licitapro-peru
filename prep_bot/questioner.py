@@ -2,12 +2,21 @@
 
 La clave del sistema: pregunta UNA vez, guarda para SIEMPRE.
 Después de 10-15 licitaciones, el bot ya sabe TODO.
+
+NUNCA DOS CONEXIONES A LA VEZ
+
+  `kb_get` y `kb_set` piden su propia conexion al pool. Llamarlas DENTRO de
+  un `async with connection()` retiene una conexion mientras se pide otra: con
+  diez peticiones asi a la vez (el pool tiene diez) cada una espera a una
+  conexion que solo se libera cuando otra termina, y la app se cuelga sin un
+  solo error en el log. Por eso aqui se lee todo primero, se escribe la
+  knowledge_base fuera, y solo entonces se abre la conexion de los INSERT.
 """
 import logging
 
 from prep_bot.autofill.validator import NO_EXIGIDOS_EN_MENORES
 from shared.cotizacion import es_cotizacion_menor
-from shared.db import connection, get_empresa, kb_get, kb_set
+from shared.db import connection, get_empresa, kb_get, kb_set, kb_todos
 
 log = logging.getLogger("prep.questioner")
 
@@ -99,53 +108,65 @@ async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requis
     Returns: lista de preguntas creadas
     """
     empresa = await get_empresa(empresa_id)
-    preguntas_creadas = []
-    campos_completos = 0
-
+    sabido = await kb_todos(empresa_id)
     async with connection() as conn:
         tipo = await conn.fetchval(
             """SELECT l.tipo FROM propuestas p JOIN licitaciones l ON l.id = p.licitacion_id
                 WHERE p.id=$1""", propuesta_id)
-        # Lo que una contratacion menor no pide no se pregunta: el usuario de
-        # una cotizacion de abarrotes no tiene por que buscar su partida
-        # registral para algo que la entidad no va a mirar.
-        campos = [c for c in CAMPOS_EMPRESA
-                  if not (es_cotizacion_menor(tipo) and c[1] in NO_EXIGIDOS_EN_MENORES)]
-        total_campos = len(campos)
-        for cat, clave, pregunta_text, campo_empresa in campos:
-            # 1. Buscar en KB
-            valor = await kb_get(empresa_id, cat, clave)
-            if valor:
-                campos_completos += 1
-                continue
+        equipo = (await conn.fetch(
+            """SELECT nombre_completo, titulo_profesional, especialidad FROM equipo_tecnico
+                WHERE empresa_id=$1 AND disponible=TRUE""", empresa_id)
+            if requisitos_bases else [])
 
-            # 2. Buscar en tabla empresas
-            if campo_empresa and empresa and empresa.get(campo_empresa):
-                await kb_set(empresa_id, cat, clave, str(empresa[campo_empresa]), "tabla_empresas")
-                campos_completos += 1
-                continue
+    # Lo que una contratacion menor no pide no se pregunta: el usuario de
+    # una cotizacion de abarrotes no tiene por que buscar su partida
+    # registral para algo que la entidad no va a mirar.
+    campos = [c for c in CAMPOS_EMPRESA
+              if not (es_cotizacion_menor(tipo) and c[1] in NO_EXIGIDOS_EN_MENORES)]
+    total_campos = len(campos)
+    campos_completos = 0
+    por_aprender: list[tuple[str, str, str, str]] = []
+    por_preguntar: list[dict] = []
+    for cat, clave, pregunta_text, campo_empresa in campos:
+        # 1. Buscar en KB
+        if sabido.get((cat, clave)):
+            campos_completos += 1
+            continue
+        # 2. Buscar en tabla empresas
+        if campo_empresa and empresa and empresa.get(campo_empresa):
+            por_aprender.append((cat, clave, str(empresa[campo_empresa]), "tabla_empresas"))
+            campos_completos += 1
+            continue
+        # 3. Crear pregunta
+        por_preguntar.append({
+            "campo": clave, "pregunta": pregunta_text, "categoria": cat,
+            "contexto": f"Necesario para completar anexos de la propuesta #{propuesta_id}"})
 
-            # 3. Crear pregunta
+    # Preguntas adicionales basadas en requisitos de las bases
+    if requisitos_bases:
+        extras = _preguntas_especificas(requisitos_bases, sabido, equipo, por_aprender)
+        por_preguntar.extend(extras)
+        total_campos += len(extras)
+
+    # La knowledge_base se escribe sin ninguna conexion tomada: kb_set pide la suya.
+    for cat, clave, valor, fuente in por_aprender:
+        await kb_set(empresa_id, cat, clave, valor, fuente)
+
+    preguntas_creadas = []
+    async with connection() as conn:
+        for preg in por_preguntar:
             preg_id = await conn.fetchval(
                 """INSERT INTO preguntas
                 (propuesta_id, empresa_id, campo_requerido, pregunta,
                  kb_categoria, kb_clave, contexto)
                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
-                propuesta_id, empresa_id, clave, pregunta_text, cat, clave,
-                f"Necesario para completar anexos de la propuesta #{propuesta_id}",
+                propuesta_id, empresa_id, preg["campo"], preg["pregunta"],
+                preg["categoria"], preg["campo"], preg["contexto"],
             )
             preguntas_creadas.append({
-                "id": preg_id, "campo": clave,
-                "pregunta": pregunta_text, "categoria": cat,
+                "id": preg_id, "campo": preg["campo"],
+                "pregunta": preg["pregunta"], "categoria": preg["categoria"],
             })
-
-        # Preguntas adicionales basadas en requisitos de las bases
-        if requisitos_bases:
-            extras = await _generar_preguntas_especificas(
-                propuesta_id, empresa_id, requisitos_bases, conn
-            )
-            preguntas_creadas.extend(extras)
-            total_campos += len(extras)
 
         # Actualizar propuesta
         await conn.execute(
@@ -166,33 +187,33 @@ async def generar_preguntas_propuesta(propuesta_id: int, empresa_id: int, requis
     return preguntas_creadas
 
 
-async def _generar_preguntas_especificas(propuesta_id: int, empresa_id: int,
-                                          requisitos: dict, conn) -> list[dict]:
-    """Genera preguntas específicas basadas en las bases de la licitación."""
+def _preguntas_especificas(requisitos: dict, sabido: dict, equipo: list,
+                           por_aprender: list) -> list[dict]:
+    """Preguntas especificas basadas en las bases de la licitacion.
+
+    No toca la base: lee de `sabido` (la knowledge_base ya leida) y de `equipo`
+    (los profesionales disponibles), y deja en `por_aprender` lo que aprende.
+    Quien llama escribe y crea las preguntas.
+    """
     preguntas = []
 
     # Equipo técnico requerido
-    equipo_req = requisitos.get("equipo_tecnico_requerido", [])
-    for req in equipo_req:
+    for req in requisitos.get("equipo_tecnico_requerido", []):
         cargo = req.get("cargo", "profesional")
         clave = f"equipo_{cargo.lower().replace(' ', '_')}"
-
-        valor = await kb_get(empresa_id, "equipo", clave)
-        if valor:
+        if sabido.get(("equipo", clave)):
             continue
 
-        # Buscar en equipo_tecnico
+        # Buscar en equipo_tecnico, como hacia el ILIKE '%titulo%'.
         titulo_req = req.get("titulo", "")
-        match = await conn.fetchrow(
-            """SELECT nombre_completo, titulo_profesional FROM equipo_tecnico
-            WHERE empresa_id=$1 AND disponible=TRUE
-            AND (titulo_profesional ILIKE $2 OR especialidad ILIKE $2)
-            LIMIT 1""",
-            empresa_id, f"%{titulo_req}%",
-        )
+        aguja = titulo_req.lower()
+        match = next((m for m in equipo
+                      if aguja in (m["titulo_profesional"] or "").lower()
+                      or aguja in (m["especialidad"] or "").lower()), None)
         if match:
-            await kb_set(empresa_id, "equipo", clave,
-                         f"{match['nombre_completo']} | {match['titulo_profesional']}", "tabla_equipo")
+            por_aprender.append((
+                "equipo", clave,
+                f"{match['nombre_completo']} | {match['titulo_profesional']}", "tabla_equipo"))
             continue
 
         anos = req.get("experiencia_anos", 0)
@@ -201,42 +222,31 @@ async def _generar_preguntas_especificas(propuesta_id: int, empresa_id: int,
             f"{f' y {anos} anos de experiencia' if anos else ''}. "
             f"Quien sera? Necesito nombre completo, titulo profesional, colegiatura y anos de experiencia."
         )
-        preg_id = await conn.fetchval(
-            """INSERT INTO preguntas
-            (propuesta_id, empresa_id, campo_requerido, pregunta, kb_categoria, kb_clave, contexto)
-            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
-            propuesta_id, empresa_id, clave, pregunta_text, "equipo", clave,
-            f"Requisito de bases: {cargo}",
-        )
-        preguntas.append({"id": preg_id, "campo": clave, "pregunta": pregunta_text, "categoria": "equipo"})
+        preguntas.append({"campo": clave, "pregunta": pregunta_text, "categoria": "equipo",
+                          "contexto": f"Requisito de bases: {cargo}"})
 
     # Experiencia requerida
     exp_req = requisitos.get("experiencia_requerida", {})
-    if exp_req:
-        clave = "experiencia_principal"
-        valor = await kb_get(empresa_id, "experiencia", clave)
-        if not valor:
-            desc = exp_req.get("descripcion", "experiencia similar")
-            monto_min = exp_req.get("monto_minimo", 0)
-            pregunta_text = (
-                f"Las bases requieren experiencia en: {desc}. "
-                f"{'Monto minimo acumulado: S/' + str(monto_min) + '. ' if monto_min else ''}"
-                f"Tienes contratos similares? Indica cuales con sus montos."
-            )
-            preg_id = await conn.fetchval(
-                """INSERT INTO preguntas
-                (propuesta_id, empresa_id, campo_requerido, pregunta, kb_categoria, kb_clave, contexto)
-                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
-                propuesta_id, empresa_id, clave, pregunta_text, "experiencia", clave,
-                "Experiencia requerida por las bases",
-            )
-            preguntas.append({"id": preg_id, "campo": clave, "pregunta": pregunta_text, "categoria": "experiencia"})
+    if exp_req and not sabido.get(("experiencia", "experiencia_principal")):
+        desc = exp_req.get("descripcion", "experiencia similar")
+        monto_min = exp_req.get("monto_minimo", 0)
+        pregunta_text = (
+            f"Las bases requieren experiencia en: {desc}. "
+            f"{'Monto minimo acumulado: S/' + str(monto_min) + '. ' if monto_min else ''}"
+            f"Tienes contratos similares? Indica cuales con sus montos."
+        )
+        preguntas.append({"campo": "experiencia_principal", "pregunta": pregunta_text,
+                          "categoria": "experiencia",
+                          "contexto": "Experiencia requerida por las bases"})
 
     return preguntas
 
 
 async def procesar_respuesta(pregunta_id: int, respuesta: str) -> dict:
-    """Procesa la respuesta del usuario, guarda en KB, actualiza propuesta."""
+    """Procesa la respuesta del usuario, guarda en KB, actualiza propuesta.
+
+    En tres tramos y no dentro de una sola conexion: `kb_set` pide la suya, y
+    pedirla con otra tomada es lo que agota el pool (ver arriba)."""
     async with connection() as conn:
         preg = await conn.fetchrow("SELECT * FROM preguntas WHERE id=$1", pregunta_id)
         if not preg:
@@ -248,9 +258,13 @@ async def procesar_respuesta(pregunta_id: int, respuesta: str) -> dict:
             pregunta_id, respuesta,
         )
 
-        # Guardar en KB
-        if preg["kb_categoria"] and preg["kb_clave"]:
-            await kb_set(preg["empresa_id"], preg["kb_categoria"], preg["kb_clave"], respuesta)
+    # Guardar en KB
+    en_kb = bool(preg["kb_categoria"] and preg["kb_clave"])
+    if en_kb:
+        await kb_set(preg["empresa_id"], preg["kb_categoria"], preg["kb_clave"], respuesta)
+
+    async with connection() as conn:
+        if en_kb:
             await conn.execute("UPDATE preguntas SET guardada_en_kb=TRUE WHERE id=$1", pregunta_id)
 
         # Actualizar conteo de preguntas pendientes

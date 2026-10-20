@@ -268,29 +268,51 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     
+    # Los botones llegan de mensajes del bot, pero el callback lo puede mandar
+    # cualquiera que escriba al bot: se identifica a la cuenta como en los
+    # comandos. Antes "Licitar" creaba la propuesta SIEMPRE con la empresa 1,
+    # que es de un cliente concreto, pulsara quien pulsara.
+    usuario = await cuenta_de(update)
+    if not usuario and data.startswith(("licitar_", "pasar_")):
+        await query.edit_message_text(
+            "🔒 Este chat no está vinculado a ninguna cuenta. Conéctalo desde "
+            "<b>Configuración</b> en tu panel de LicitaPro.", parse_mode="HTML")
+        return
+
     if data.startswith("licitar_"):
         lid = data.replace("licitar_", "")
-        # Crear propuesta en DB y notificar al PrepBot
-        from shared.db import crear_propuesta, get_empresa
-        empresa = await get_empresa(1)  # Default: K&A
-        prop_id = await crear_propuesta(lid, 1)
-        
+        from shared.db import connection, crear_propuesta
+        async with connection() as conn:
+            existe = await conn.fetchval("SELECT 1 FROM licitaciones WHERE id=$1", lid)
+            empresa = await conn.fetchrow(
+                """SELECT id, razon_social FROM empresas
+                    WHERE usuario_id=$1 AND activa ORDER BY id LIMIT 1""",
+                usuario["id"])
+        if not existe:
+            await query.edit_message_text("⚠️ Esa licitación ya no está disponible.")
+            return
+        if not empresa:
+            await query.edit_message_text(
+                "🏢 Primero registra tu empresa en el panel de LicitaPro "
+                "(<b>Empresas</b>) y vuelve a pulsar Licitar.", parse_mode="HTML")
+            return
+        prop_id = await crear_propuesta(lid, empresa["id"])
+
         await query.edit_message_text(
             f"🚀 <b>¡ACTIVADO!</b> Propuesta #{prop_id}\n\n"
-            f"📋 Licitación: {lid}\n"
-            f"🏢 Empresa: {empresa['razon_social']}\n\n"
-            f"👉 Revisa @LicitaPrepBot para el progreso\n"
-            f"El bot de preparación está trabajando...",
+            f"📋 Licitación: {html.escape(lid)}\n"
+            f"🏢 Empresa: {html.escape(empresa['razon_social'])}\n\n"
+            f"👉 Complétala en el panel de LicitaPro (Propuestas → #{prop_id}). "
+            f"Para postular con otra de tus empresas, usa «Postular con otra "
+            f"empresa» en la ficha.",
             parse_mode="HTML",
         )
-    
+
     elif data.startswith("pasar_"):
-        lid = data.replace("pasar_", "")
-        from shared.db import connection
-        async with connection() as conn:
-            await conn.execute("UPDATE licitaciones SET descartado=TRUE WHERE id=$1", lid)
-        await query.edit_message_text("❌ Licitación descartada.")
-    
+        # Solo se quita del chat. Antes marcaba la licitacion como descartada
+        # en la tabla compartida, y desaparecia para TODOS los clientes.
+        await query.edit_message_text("❌ Licitación ocultada en este chat.")
+
     elif data.startswith("bases_"):
         lid = data.replace("bases_", "")
         from shared.db import connection

@@ -159,10 +159,13 @@ def test_la_ip_sale_de_la_cabecera_y_no_de_la_conexion():
     }
     assert limites.ip_del_cliente(scope) == "198.51.100.4"
 
-    # X-Forwarded-For puede traer una cadena; el cliente es el primero.
+    # X-Forwarded-For NO se lee: su primer elemento lo escribe el cliente, y
+    # con el se falseaba la IP. Manda la conexion, que uvicorn ya resolvio
+    # desde esa cabecera solo si venia de un proxy de confianza.
     assert limites.ip_del_cliente({
         "headers": [(b"x-forwarded-for", b"198.51.100.4, 10.0.0.1")],
-    }) == "198.51.100.4"
+        "client": ("172.21.0.1", 1234),
+    }) == "172.21.0.1"
 
     # Sin cabeceras se cae a la conexion, que en local si es la buena.
     assert limites.ip_del_cliente({"headers": [], "client": ("127.0.0.1", 1)}) == "127.0.0.1"

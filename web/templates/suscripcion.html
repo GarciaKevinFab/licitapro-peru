@@ -153,6 +153,12 @@ table.datos td{vertical-align:middle}
         <div class="mensaje mal mt-16 mb-0">
           Suscripción suspendida. Paga para recuperar el acceso.
         </div>
+      {% elif s.estado_efectivo == 'cancelada' and s.acceso and s.vence %}
+        {# Lo que se prometio al cancelar, dicho con la fecha: cancelar no corta
+           el periodo ya pagado (ver tiene_acceso en shared/suscripciones.py). #}
+        <div class="mensaje aviso mt-16 mb-0">
+          Suscripción cancelada. Conservas el acceso hasta el {{ s.vence.strftime('%d/%m/%Y') }}.
+        </div>
       {% endif %}
       {% if culqi_sxn %}
         {# CON COBRO AUTOMATICO NO SE ENSENA EL BOTON DE PAGAR A MANO

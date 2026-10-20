@@ -24,12 +24,14 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 import httpx
 
+from radar_bot.scrapers import red_segura
 from radar_bot.scrapers.orchestrator import (
     GORE_COTIZACIONES_APAGADOS,
     GORE_COTIZACIONES_PORTALS,
@@ -45,8 +47,11 @@ def _texto(celda) -> str:
 def sondear(url: str) -> None:
     print(f"\n=== {url}")
     try:
-        resp = httpx.get(url, headers=HEADERS, timeout=30,
-                         follow_redirects=True, verify=False)
+        # TLS verificado salvo en los hosts con certificado autofirmado conocido
+        # (red_segura.HOSTS_TLS_AUTOFIRMADO), igual que en los scrapers.
+        host = urlparse(url).hostname or ""
+        resp = httpx.get(url, headers=HEADERS, timeout=30, follow_redirects=True,
+                         verify=host not in red_segura.HOSTS_TLS_AUTOFIRMADO)
     except Exception as e:  # noqa: BLE001
         print(f"  FALLO DE RED: {type(e).__name__}: {e}")
         return

@@ -29,7 +29,14 @@ def comprimir(pdf: bytes, objetivo: int | None = None) -> bytes:
         return pdf
     import pypdfium2 as pdfium
 
-    doc = pdfium.PdfDocument(pdf)
+    from shared.pdfium_candado import CANDADO
+
+    with CANDADO:
+        return _achicar(pdfium.PdfDocument(pdf), pdf, objetivo)
+
+
+def _achicar(doc, pdf: bytes, objetivo: int) -> bytes:
+    """El cuerpo de `comprimir`, con el candado de pdfium ya tomado."""
     mejor = None
     try:
         for escala in _ESCALAS:

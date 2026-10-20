@@ -165,8 +165,16 @@ table.datos td.monto{white-space:nowrap}
    de estilos de esta plantilla (con nonce), y `htmx-indicator` no se usa en
    ninguna plantilla. Se apaga con una meta y no con JS porque script-src
    tampoco admite en linea.
-   La meta va en el bloque `head` de _base.html, donde le corresponde. #}
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+   La meta va en el bloque `head` de _base.html, donde le corresponde.
+
+   Se sirve desde /static y no desde unpkg: con el CDN en script-src, la CSP
+   dejaba ejecutar CUALQUIER paquete de npm publicado alli, no solo htmx. Es
+   la copia exacta de htmx.org@1.9.12/dist/htmx.min.js; el integrity es el
+   hash publicado por htmx para esa version, asi que si alguien cambia el
+   archivo el navegador se niega a ejecutarlo. Al subir de version hay que
+   reemplazar el archivo Y el hash a la vez. #}
+<script src="{{ estatico('htmx.min.js') }}"
+        integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2"></script>
 {% endblock %}
 {% block head %}
 <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>

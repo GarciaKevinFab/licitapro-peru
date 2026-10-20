@@ -22,6 +22,7 @@ desde datosabiertos.gob.pe son generalmente de entidades individuales.
 import hashlib
 import io
 import logging
+import math
 import re
 from datetime import date, datetime
 
@@ -98,7 +99,9 @@ def _parse_monto(val) -> float | None:
         return None
     try:
         v = float(str(val).replace(",", "").strip())
-        return v if v > 0 else None
+        # float() acepta "inf", "nan" e "infinity": una celda asi entraba como
+        # monto (inf > 0) y rompia el filtro por monto y los totales.
+        return v if math.isfinite(v) and v > 0 else None
     except (ValueError, TypeError):
         return None
 

@@ -1,13 +1,17 @@
 """Autenticacion del panel: registro, inicio de sesion y dependencia de usuario.
 
-La sesion viaja en una cookie firmada (SessionMiddleware de Starlette). Solo
-guarda el id del usuario: cualquier otro dato se relee de la base, para que
-desactivar una cuenta surta efecto en la peticion siguiente y no al expirar la
-cookie.
+La sesion viaja en una cookie firmada (SessionMiddleware de Starlette). Guarda
+el id del usuario y una huella corta de su contrasena: cualquier otro dato se
+relee de la base, para que desactivar una cuenta surta efecto en la peticion
+siguiente y no al expirar la cookie. La huella hace lo mismo con el cambio de
+contrasena; ver `_huella`.
 """
+import hashlib
 import logging
+import os
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared.admin_cuentas import anotar_acceso
@@ -20,6 +24,7 @@ from shared.db import (
     limpiar_intentos,
 )
 from shared.seguridad import hashear_password, password_debil, verificar_password
+from web.limites import ip_del_cliente
 
 log = logging.getLogger("web.auth")
 router = APIRouter()
@@ -30,10 +35,65 @@ ERROR_CREDENCIALES = "Correo o contraseña incorrectos."
 # Cuenta desactivada por el dueno del producto. Se muestra solo a quien
 # acierta la contrasena; ver hacer_entrar.
 ERROR_DESACTIVADA = "Cuenta desactivada. Escribe a soporte@sisac.pe."
+# Alta con un correo que ya tiene cuenta. Generico a proposito: ver
+# hacer_registro.
+ERROR_REGISTRO = ("No pudimos crear la cuenta con ese correo. Si ya tienes una, "
+                  "entra o restablece tu contraseña.")
+
+
+# ─── Sesion revocable sin tabla de sesiones ──────────────
+#
+# EL PROBLEMA
+#
+#   La cookie firmada vale 12 horas pase lo que pase. Quien restablecia la
+#   contrasena porque sospechaba que alguien habia entrado en su cuenta seguia
+#   teniendo al intruso dentro hasta que la cookie caducara: cambiar la clave no
+#   cerraba nada.
+#
+# POR QUE UNA HUELLA Y NO UNA TABLA
+#
+#   Una tabla de sesiones exige migracion, una consulta mas por peticion y
+#   limpieza de filas viejas. La huella reutiliza la consulta que
+#   `usuario_actual` ya hace: se guarda en la cookie un trozo del sha256 del
+#   `password_hash` vigente y se compara en cada peticion. Cambia la
+#   contrasena -> cambia el hash (bcrypt lleva sal nueva siempre, aunque la
+#   clave se repita) -> ninguna cookie anterior casa y todas quedan fuera.
+#
+#   Va el sha256 del hash y no el hash: la cookie esta firmada pero NO cifrada,
+#   cualquiera que la tenga lee su contenido. Un trozo de 16 hex de un sha256 no
+#   sirve para atacar la contrasena; el hash bcrypt entero si.
+#
+#   La huella lleva delante el id del usuario. La suplantacion del admin
+#   (web/admin.py) y el alta desde /comprar cambian `usuario_id` sin pasar por
+#   iniciar_sesion; si la huella es de otro usuario, se toma por una sesion
+#   recien abierta y no por una revocada. Ver `usuario_actual`.
+_CLAVE_HUELLA = "huella"
+
+
+def _huella(usuario_id: int, password_hash: str | None) -> str:
+    resumen = hashlib.sha256((password_hash or "").encode()).hexdigest()[:16]
+    return f"{usuario_id}:{resumen}"
+
+
+def iniciar_sesion(request: Request, fila) -> None:
+    """Abre sesion para `fila` (necesita `id` y `password_hash`) desde cero.
+
+    `clear()` primero: la cookie anterior pudo traer datos de otra cuenta o de
+    un visitante anonimo, y heredar la sesion previa al login es la base de la
+    fijacion de sesion. Despues, el id y la huella de la contrasena.
+    """
+    request.session.clear()
+    request.session["usuario_id"] = fila["id"]
+    request.session[_CLAVE_HUELLA] = _huella(fila["id"], fila["password_hash"])
 
 
 async def usuario_actual(request: Request):
-    """Usuario de la sesion, o None. Relee de la BD en cada peticion."""
+    """Usuario de la sesion, o None. Relee de la BD en cada peticion.
+
+    Devuelve un dict SIN `password_hash`: este valor va directo al contexto de
+    casi todas las plantillas, y el hash no tiene nada que hacer en un render.
+    Quien necesite comprobar la contrasena usa `verificar_password_de`.
+    """
     uid = request.session.get("usuario_id")
     if not uid:
         return None
@@ -42,7 +102,31 @@ async def usuario_actual(request: Request):
         # La cuenta se desactivo o se borro mientras la sesion seguia viva.
         request.session.clear()
         return None
-    return fila
+
+    vigente = _huella(fila["id"], fila["password_hash"])
+    guardada = request.session.get(_CLAVE_HUELLA)
+    if not isinstance(guardada, str) or not guardada.startswith(f"{fila['id']}:"):
+        # Sesion sin huella de ESTE usuario: la abrio una ruta que no pasa por
+        # iniciar_sesion (suplantacion del admin, alta en /comprar) o es una
+        # cookie de antes de que existiera la huella. Se sella ahora; las de
+        # antes caducan solas en 12 horas como mucho.
+        request.session[_CLAVE_HUELLA] = vigente
+    elif guardada != vigente:
+        # La contrasena cambio despues de abrir esta sesion: queda revocada.
+        log.info("Sesion revocada por cambio de contrasena del usuario %s",
+                 fila["id"])
+        request.session.clear()
+        return None
+
+    datos = dict(fila)
+    datos.pop("password_hash", None)
+    return datos
+
+
+async def verificar_password_de(usuario_id: int, password: str) -> bool:
+    """Comprueba la contrasena de un usuario sin que el hash pase por las vistas."""
+    fila = await get_usuario(usuario_id)
+    return bool(fila) and verificar_password(password, fila["password_hash"])
 
 
 def _plantillas(request: Request):
@@ -93,7 +177,10 @@ async def hacer_entrar(request: Request, email: str = Form(...),
     existe, que es la mitad de lo que buscaba quien esta probando. El unico
     aviso distinto va al log, que solo vemos nosotros.
     """
-    ip = request.client.host if request.client else None
+    # La IP sale de cf-connecting-ip y no de request.client: ver
+    # web/limites.ip_del_cliente. Con la de la conexion, un X-Forwarded-For
+    # inventado saltaba este freno o bloqueaba la IP de otro.
+    ip = ip_del_cliente(request.scope)
 
     def rechazar():
         return _plantillas(request).TemplateResponse(
@@ -128,7 +215,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
     # Entro bien: sus fallos previos no deben acercarle al bloqueo manana.
     await limpiar_intentos(email, ip)
     await anotar_acceso(fila["id"])
-    request.session["usuario_id"] = fila["id"]
+    iniciar_sesion(request, fila)
     return RedirectResponse(_destino_seguro(siguiente), status_code=303)
 
 
@@ -158,11 +245,17 @@ async def hacer_registro(request: Request, email: str = Form(...),
     if motivo:
         return con_error(motivo)
 
-    fila = await crear_usuario(email, hashear_password(password), nombre.strip() or None)
+    password_hash = hashear_password(password)
+    fila = await crear_usuario(email, password_hash, nombre.strip() or None)
     if not fila:
-        return con_error("Ya existe una cuenta con ese correo.")
+        # Sin decir que el correo ya esta registrado: esa frase convertia el
+        # alta en un comprobador de quien es cliente. El mensaje manda a entrar
+        # o a recuperar, que le sirve igual al dueno legitimo y no le confirma
+        # nada a quien esta probando correos.
+        log.info("Alta rechazada: el correo ya tenia cuenta")
+        return con_error(ERROR_REGISTRO)
 
-    request.session["usuario_id"] = fila["id"]
+    iniciar_sesion(request, {"id": fila["id"], "password_hash": password_hash})
     return RedirectResponse("/configuracion", status_code=303)
 
 
@@ -174,8 +267,22 @@ async def salir(request: Request):
 
 def _destino_seguro(destino: str) -> str:
     """Solo rutas internas: un destino absoluto permitiria usar el login como
-    trampolin hacia un sitio ajeno tras autenticar."""
-    if not destino.startswith("/") or destino.startswith("//"):
+    trampolin hacia un sitio ajeno tras autenticar.
+
+    Mirar solo el principio no basta. `/\\evil.com` empieza por `/` y no por
+    `//`, pero los navegadores tratan la barra invertida como una barra normal
+    y lo resuelven como `//evil.com`: otro sitio. Lo mismo con tabuladores o
+    saltos de linea entre las barras, que el navegador descarta antes de
+    interpretar la URL. Por eso se rechaza cualquier barra invertida o caracter
+    de control, y ademas urlparse no puede ver ni esquema ni host: una ruta, y
+    nada mas que una ruta.
+    """
+    if not destino or not destino.startswith("/") or destino.startswith("//"):
+        return "/"
+    if "\\" in destino or any(ord(c) < 32 or ord(c) == 127 for c in destino):
+        return "/"
+    partes = urlparse(destino)
+    if partes.scheme or partes.netloc:
         return "/"
     return destino
 
@@ -196,8 +303,52 @@ async def form_recuperar(request: Request):
         "recuperar.html", {"request": request, "paso": "pedir"})
 
 
+def _es_desarrollo() -> bool:
+    return os.getenv("LICITAPRO_ENTORNO", "dev") == "dev"
+
+
+def _origen_para_enlaces(request: Request) -> str:
+    """De donde cuelga el enlace del correo de recuperacion.
+
+    NO de request.base_url fuera de desarrollo: ese valor sale de la cabecera
+    Host, que la escribe quien hace la peticion. Pidiendo la recuperacion de la
+    cuenta de otro con `Host: sitio-del-atacante`, el correo legitimo le llegaba
+    a la victima con el token apuntando al servidor del atacante; un clic y el
+    token era suyo. El origen publico configurado no lo controla nadie de fuera.
+
+    En desarrollo si se usa: ahi el sitio es localhost y no hay victima.
+    """
+    if _es_desarrollo():
+        return str(request.base_url).rstrip("/")
+    from web.app import _base_url  # aqui y no arriba: web.app importa este modulo
+    return _base_url()
+
+
 @router.post("/recuperar", response_class=HTMLResponse)
-async def pedir_recuperar(request: Request, email: str = Form(...)):
+async def pedir_recuperar(request: Request, tareas: BackgroundTasks,
+                          email: str = Form(...)):
+    """Responde SIEMPRE lo mismo y en el mismo tiempo.
+
+    El texto ya era uniforme, pero el tiempo no: con cuenta se creaba el token
+    y se hablaba con el servidor SMTP antes de responder (cientos de ms, o
+    segundos); sin cuenta se respondia al instante. Midiendo la espera se sabia
+    quien es cliente igual que si lo dijera el texto. Ahora todo el trabajo --
+    buscar la cuenta incluido -- va en segundo plano, despues de responder.
+    """
+    tareas.add_task(_procesar_recuperacion, email,
+                    ip_del_cliente(request.scope),
+                    _origen_para_enlaces(request))
+    return _plantillas(request).TemplateResponse(
+        "recuperar.html",
+        {"request": request, "paso": "pedir", "aviso": MENSAJE_ENVIADO})
+
+
+async def _procesar_recuperacion(email: str, ip: str | None, origen: str) -> None:
+    """Busca la cuenta, crea el token y manda el correo. Nunca lanza.
+
+    Corre despues de responder: una excepcion aqui ya no le llega a nadie, asi
+    que se registra y se acaba.
+    """
     from shared.db import (
         crear_token_recuperacion,
         get_usuario_por_email,
@@ -205,35 +356,35 @@ async def pedir_recuperar(request: Request, email: str = Form(...)):
     )
     from shared.seguridad import MAX_PETICIONES_POR_HORA, nuevo_token_recuperacion
 
-    plantillas = _plantillas(request)
-    respuesta_uniforme = plantillas.TemplateResponse(
-        "recuperar.html",
-        {"request": request, "paso": "pedir", "aviso": MENSAJE_ENVIADO})
+    try:
+        usuario = await get_usuario_por_email(email)
+        if not usuario:
+            log.info("Recuperacion pedida para un correo sin cuenta")
+            return
 
-    usuario = await get_usuario_por_email(email)
-    if not usuario:
-        # Se responde igual que si existiera, y no se hace nada mas.
-        log.info("Recuperacion pedida para un correo sin cuenta")
-        return respuesta_uniforme
+        if await peticiones_recientes(usuario["id"]) >= MAX_PETICIONES_POR_HORA:
+            # Tampoco se avisa del limite: decirlo confirmaria que la cuenta existe.
+            log.warning("Limite de recuperaciones alcanzado para el usuario %s",
+                        usuario["id"])
+            return
 
-    if await peticiones_recientes(usuario["id"]) >= MAX_PETICIONES_POR_HORA:
-        # Tampoco se avisa del limite: decirlo confirmaria que la cuenta existe.
-        log.warning("Limite de recuperaciones alcanzado para el usuario %s",
-                    usuario["id"])
-        return respuesta_uniforme
+        token, token_hash, expira = nuevo_token_recuperacion()
+        await crear_token_recuperacion(usuario["id"], token_hash, expira, ip)
 
-    token, token_hash, expira = nuevo_token_recuperacion()
-    ip = request.client.host if request.client else None
-    await crear_token_recuperacion(usuario["id"], token_hash, expira, ip)
-
-    enlace = str(request.base_url).rstrip("/") + f"/recuperar/{token}"
-    enviado = await _enviar_correo_recuperacion(usuario["email"], enlace)
-    if not enviado:
-        # Sin SMTP configurado el enlace no llega a ningun lado. Se deja en el
-        # log del servidor para no bloquear el desarrollo, y se avisa fuerte.
-        log.warning("SMTP no disponible. Enlace de recuperacion para %s: %s",
-                    usuario["email"], enlace)
-    return respuesta_uniforme
+        enlace = f"{origen}/recuperar/{token}"
+        if await _enviar_correo_recuperacion(usuario["email"], enlace):
+            return
+        if _es_desarrollo():
+            # En local sin SMTP es la unica forma de seguir el flujo.
+            log.warning("SMTP no disponible. Enlace de recuperacion: %s", enlace)
+        else:
+            # Fuera de desarrollo el enlace NO va al log: es una llave de la
+            # cuenta durante una hora, y los logs los leen mas ojos y viven mas
+            # que eso. Basta con saber que fallo y para quien.
+            log.error("No se pudo enviar el correo de recuperacion al usuario %s",
+                      usuario["id"])
+    except Exception:
+        log.exception("Fallo al procesar una peticion de recuperacion")
 
 
 async def _enviar_correo_recuperacion(destinatario: str, enlace: str) -> bool:

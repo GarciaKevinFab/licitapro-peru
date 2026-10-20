@@ -17,16 +17,21 @@ QUE APORTA ESTE MODULO Y QUE NO
   `llenar_anexos` se conserva para el dia que haga falta el inventario completo
   con su estado; hoy el expediente se arma con la funcion de abajo.
 """
+import asyncio
 import logging
 import os
 
 from prep_bot.document_gen import (
+    datos_legales,
+    exigir,
+    fecha_larga,
     generar_carta_presentacion,
     generar_declaracion_jurada,
     generar_experiencia_postor,
+    referencia,
 )
-from shared import fechas
 from shared.db import connection, get_empresa
+from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
 
 log = logging.getLogger("prep.autofill.annexes")
@@ -52,13 +57,25 @@ ANEXOS_ESTANDAR = [
 
 async def generar_anexos_complementarios(
         propuesta_id: int, empresa_id: int, licitacion: dict,
-        datos: dict) -> list[tuple[str, str]]:
+        datos: dict, menor: bool = False,
+        advertencias: list[str] | None = None) -> list[tuple[str, str]]:
     """Los tres anexos que el resto del expediente no cubre.
 
     Devuelve pares (nombre dentro del ZIP, ruta en disco). Cada uno se intenta
     por separado: que falle el pacto de integridad no puede dejar fuera la
     declaracion jurada de plazo, porque son documentos independientes y el
     expediente vale mas con dos que con ninguno.
+
+    Pero que falle NO es lo mismo que no se diga: cada anexo que no sale se
+    anota en `advertencias`, que el expediente imprime en su indice y la web
+    muestra. Antes solo quedaba en el log, y el ZIP salia sin el pacto de
+    integridad sin que nadie lo supiera.
+
+    `DocumentoIncompleto` no se traga: si falta el representante, el anexo no
+    se puede firmar, y eso lo tiene que corregir el usuario antes de armar.
+
+    En una contratacion menor (`menor`) solo se genera el pacto de integridad:
+    es el unico de los tres que pide la SC.
     """
     empresa = await get_empresa(empresa_id)
     if not empresa:
@@ -74,29 +91,38 @@ async def generar_anexos_complementarios(
                               WHERE empresa_id=$1 AND disponible=TRUE)""",
             empresa_id)
 
+    # Funciones y no corrutinas ya creadas: si una levanta, las demas no
+    # quedan como corrutinas sin esperar.
     tareas = [
-        ("06_DJ_Plazo_Entrega.docx",
-         _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir)),
-        ("08_Pacto_Integridad.docx",
-         _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos,
-                                   output_dir)),
+        ("06_DJ_Plazo_Entrega.docx", "la declaración jurada de plazo de entrega",
+         lambda: _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir)),
+        ("08_Pacto_Integridad.docx", "el pacto de integridad",
+         lambda: _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos,
+                                           output_dir)),
     ]
     # Sin profesionales registrados, la carta de compromiso saldria sin nadie
     # que se comprometa. Un anexo vacio en el expediente se lee peor que un
     # anexo ausente: parece que se respondio y no se respondio.
     if tiene_equipo:
         tareas.insert(1, (
-            "07_Compromiso_Personal_Clave.docx",
-            _generar_compromiso_personal(propuesta_id, empresa_id, licitacion,
-                                         output_dir)))
+            "07_Compromiso_Personal_Clave.docx", "la carta de compromiso del personal clave",
+            lambda: _generar_compromiso_personal(propuesta_id, empresa_id, licitacion,
+                                                 output_dir)))
+    if menor:
+        tareas = [t for t in tareas if "Pacto_Integridad" in t[0]]
 
-    for nombre, tarea in tareas:
+    for nombre, descripcion, tarea in tareas:
         try:
-            ruta = await tarea
-            if ruta:
-                salida.append((nombre, ruta))
+            ruta = await tarea()
+        except DocumentoIncompleto:
+            raise
         except Exception:
             log.exception("El anexo %s fallo", nombre)
+            ruta = None
+        if ruta:
+            salida.append((nombre, ruta))
+        elif advertencias is not None:
+            advertencias.append(f"No se pudo generar {descripcion}: agrégalo a mano.")
 
     return salida
 
@@ -194,6 +220,9 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
+    legales = datos_legales(empresa, datos)
+    exigir("la declaración jurada de plazo de entrega", legales, "representante")
+
     doc = documento_word(empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
@@ -201,29 +230,34 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
     doc.add_heading("DECLARACION JURADA DE PLAZO DE ENTREGA", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
-    representante = datos.get("legal.representante_legal", empresa.get("representante_legal", "[REPRESENTANTE]"))
+    representante = legales["representante"]
 
     doc.add_paragraph(
         f"Yo, {representante}, representante legal de {empresa['razon_social']}, "
         f"con RUC N° {empresa['ruc']}, declaro bajo juramento que nos comprometemos a "
         f"entregar el bien/servicio objeto de la contratación dentro del plazo establecido "
-        f"en las Bases del proceso {licitacion.get('nomenclatura', licitacion.get('id', ''))}."
+        f"en las Bases del proceso {referencia(licitacion)}."
     )
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(fecha_larga())
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")
     doc.add_paragraph(f"{empresa['razon_social']}")
 
     path = os.path.join(output_dir, f"dj_plazo_{propuesta_id}.docx")
-    doc.save(path)
+    await asyncio.to_thread(doc.save, path)
     return path
 
 
 async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, output_dir) -> str:
-    """Genera Carta de Compromiso del Personal Clave."""
+    """Genera Carta de Compromiso del Personal Clave.
+
+    Cada profesional se compromete con su nombre, su DNI y su titulo. Si a
+    alguno le falta el DNI o el titulo, la carta NO sale con "[DNI]" escrito:
+    se dice a quien le falta que, para que lo complete en el equipo tecnico.
+    """
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
@@ -232,6 +266,18 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
             "SELECT * FROM equipo_tecnico WHERE empresa_id=$1 AND disponible=TRUE LIMIT 5",
             empresa_id,
         )
+    documento = "la carta de compromiso del personal clave"
+    if not equipo:
+        raise DocumentoIncompleto(documento, ["los profesionales del equipo técnico"])
+    faltan = []
+    for m in equipo:
+        nombre = (m["nombre_completo"] or "").strip() or "un profesional sin nombre"
+        if not (m["dni"] or "").strip():
+            faltan.append(f"el DNI de {nombre}")
+        if not (m["titulo_profesional"] or "").strip():
+            faltan.append(f"el título profesional de {nombre}")
+    if faltan:
+        raise DocumentoIncompleto(documento, faltan)
 
     doc = documento_word(empresa_id)
     doc.styles["Normal"].font.name = "Arial"
@@ -240,20 +286,17 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
     doc.add_heading("CARTA DE COMPROMISO DEL PERSONAL CLAVE", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
-    if equipo:
-        for m in equipo:
-            doc.add_paragraph(
-                f"Yo, {m['nombre_completo']}, identificado(a) con DNI N° {m['dni'] or '[DNI]'}, "
-                f"profesional en {m['titulo_profesional'] or '[TITULO]'}, "
-                f"me comprometo a participar como parte del equipo técnico "
-                f"para el proceso de selección indicado."
-            )
-            doc.add_paragraph()
-    else:
-        doc.add_paragraph("[Pendiente: agregar profesionales al equipo técnico]")
+    for m in equipo:
+        doc.add_paragraph(
+            f"Yo, {m['nombre_completo']}, identificado(a) con DNI N° {m['dni']}, "
+            f"profesional en {m['titulo_profesional']}, "
+            f"me comprometo a participar como parte del equipo técnico "
+            f"para el proceso de selección {referencia(licitacion)}."
+        )
+        doc.add_paragraph()
 
     path = os.path.join(output_dir, f"compromiso_personal_{propuesta_id}.docx")
-    doc.save(path)
+    await asyncio.to_thread(doc.save, path)
     return path
 
 
@@ -263,6 +306,9 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
+    legales = datos_legales(empresa, datos)
+    exigir("el pacto de integridad", legales, "representante")
+
     doc = documento_word(empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
@@ -270,7 +316,7 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
     doc.add_heading("PACTO DE INTEGRIDAD", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
-    representante = datos.get("legal.representante_legal", empresa.get("representante_legal", "[REPRESENTANTE]"))
+    representante = legales["representante"]
 
     doc.add_paragraph(
         f"Yo, {representante}, representante legal de {empresa['razon_social']}, "
@@ -290,12 +336,12 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
         doc.add_paragraph(f"  - {c}")
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(fecha_larga())
     doc.add_paragraph()
     doc.add_paragraph("_" * 40)
     doc.add_paragraph(f"{representante}")
     doc.add_paragraph(f"{empresa['razon_social']}")
 
     path = os.path.join(output_dir, f"pacto_integridad_{propuesta_id}.docx")
-    doc.save(path)
+    await asyncio.to_thread(doc.save, path)
     return path

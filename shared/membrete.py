@@ -34,17 +34,29 @@ COMO SE APLICA
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
 import os
+import re
+import shutil
+import tempfile
 import zipfile
 from pathlib import Path
 
 log = logging.getLogger("shared.membrete")
 
-DIR = Path(os.getenv("MEMBRETES_DIR", "data/membretes"))
+# Anclado a la raiz del proyecto: "data/membretes" relativo dependia del
+# directorio desde el que se arrancara el proceso. MEMBRETES_DIR sigue mandando.
+DIR = Path(os.getenv("MEMBRETES_DIR")
+           or Path(__file__).resolve().parents[1] / "data" / "membretes")
 TAMANO_MAXIMO = 10 * 1024 * 1024
+# Lo que puede ocupar el Word DESCOMPRIMIDO. Un .docx es un zip: 10 MB en el
+# disco pueden ser gigas al abrirlo (la bomba zip), y quien lo abre es
+# LibreOffice, en el servidor. Una hoja membretada con su logo no llega a 5 MB.
+DESCOMPRIMIDO_MAXIMO = 50 * 1024 * 1024
+MAX_PARTES = 2000
 
 # Una fila de pixeles cuenta como "con tinta" si algun pixel baja de este
 # gris. 235 deja fuera el antialias del papel blanco pero no un texto claro.
@@ -74,6 +86,25 @@ def _rutas(empresa_id: int) -> tuple[Path, Path, Path]:
     return base.with_suffix(".docx"), base.with_suffix(".pdf"), base.with_suffix(".json")
 
 
+def _escribir_atomico(destino: Path, contenido: bytes) -> None:
+    """Escribe en un temporal del mismo directorio y lo pone en su sitio de golpe.
+
+    POR QUE: escribir directo sobre el archivo deja, si el proceso muere a
+    mitad, un PDF o un JSON cortado que despues se usa como bueno. Con
+    `os.replace` el archivo es el viejo o el nuevo, nunca uno a medias.
+    """
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporal = tempfile.mkstemp(dir=destino.parent, prefix=".tmp_",
+                                    suffix=destino.suffix)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenido)
+        os.replace(temporal, destino)
+    except BaseException:
+        Path(temporal).unlink(missing_ok=True)
+        raise
+
+
 def de(empresa_id: int) -> dict | None:
     """{docx, pdf, cabecera_pt, pie_pt} si la empresa tiene membrete; si no, None."""
     docx, pdf, medidas = _rutas(empresa_id)
@@ -84,7 +115,7 @@ def de(empresa_id: int) -> dict | None:
     except (OSError, ValueError):
         # Copiado a mano sin el .json: se mide ahora y se deja guardado.
         bandas = medir(pdf)
-        medidas.write_text(json.dumps(bandas), encoding="utf-8")
+        _escribir_atomico(medidas, json.dumps(bandas).encode("utf-8"))
     return {"docx": docx, "pdf": pdf, **bandas}
 
 
@@ -120,12 +151,15 @@ def medir(ruta_pdf: Path | str) -> dict:
     """Alto de la cabecera y del pie, en puntos, de la primera hoja."""
     import pypdfium2 as pdfium
 
-    documento = pdfium.PdfDocument(str(ruta_pdf))
-    try:
-        # Escala 1 = 72 ppp: un pixel por punto basta para medir.
-        imagen = documento[0].render(scale=1, grayscale=True).to_pil().convert("L")
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    with CANDADO:
+        documento = pdfium.PdfDocument(str(ruta_pdf))
+        try:
+            # Escala 1 = 72 ppp: un pixel por punto basta para medir.
+            imagen = documento[0].render(scale=1, grayscale=True).to_pil().convert("L")
+        finally:
+            documento.close()
     ancho, alto = imagen.size
     datos = imagen.tobytes()
     tinta = [min(datos[f * ancho:(f + 1) * ancho]) < _UMBRAL for f in range(alto)]
@@ -136,45 +170,114 @@ def medir(ruta_pdf: Path | str) -> dict:
 
 # ─── Guardar y quitar ───────────────────────────────────────
 
-def _es_docx(contenido: bytes) -> bool:
+# Cada <Relationship .../> de las partes .rels, y como reconocer las externas.
+_RE_RELACION = re.compile(rb"<Relationship\b[^>]*>", re.IGNORECASE)
+_RE_MODO_EXTERNO = re.compile(rb"TargetMode\s*=\s*[\"']External[\"']", re.IGNORECASE)
+# Las externas que SI se aceptan: un hipervinculo es solo un enlace en el texto
+# (la web de la empresa en el pie); nadie lo sigue al convertir.
+_RE_HIPERVINCULO = re.compile(rb"Type\s*=\s*[\"'][^\"']*/hyperlink[\"']", re.IGNORECASE)
+
+_NO_ES_WORD = ("La hoja membretada tiene que ser un Word (.docx). Si la tienes en "
+               ".doc, ábrela en Word y guárdala como .docx.")
+
+
+def _validar_docx(contenido: bytes) -> None:
+    """Que sea un Word, que no sea una bomba zip y que no tire de la red.
+
+    RELACIONES EXTERNAS: un .docx puede declarar que una imagen, una plantilla
+    o un objeto incrustado viven en una URL (TargetMode="External"). Al
+    convertirlo, LibreOffice -- en NUESTRO servidor -- iria a buscarlos: el
+    usuario elegiria a que direccion se conecta la maquina (SSRF), incluidas
+    las de la red interna. Se rechaza cualquier relacion externa salvo los
+    hipervinculos, que solo son texto.
+    """
     try:
         with zipfile.ZipFile(io.BytesIO(contenido)) as z:
-            return "word/document.xml" in z.namelist()
-    except zipfile.BadZipFile:
+            partes = z.infolist()
+            if "word/document.xml" not in {p.filename for p in partes}:
+                raise MembreteInvalido(_NO_ES_WORD)
+            if len(partes) > MAX_PARTES:
+                raise MembreteInvalido("Ese Word tiene demasiadas partes internas.")
+            if sum(p.file_size for p in partes) > DESCOMPRIMIDO_MAXIMO:
+                raise MembreteInvalido(
+                    "Ese Word ocupa demasiado al abrirlo (más de 50 MB). "
+                    "Reduce las imágenes y vuelve a subirlo.")
+            for parte in partes:
+                if not parte.filename.lower().endswith(".rels"):
+                    continue
+                # El tamano declarado ya se comprobo arriba, y zipfile no
+                # entrega mas bytes que los declarados.
+                for rel in _RE_RELACION.findall(z.read(parte)):
+                    if _RE_MODO_EXTERNO.search(rel) and not _RE_HIPERVINCULO.search(rel):
+                        log.warning("Membrete rechazado, relacion externa: %r", rel[:200])
+                        raise MembreteInvalido(
+                            "Ese Word enlaza imágenes u objetos que están en "
+                            "internet. Inserta las imágenes dentro del documento "
+                            "(no vinculadas) y vuelve a subirlo.")
+    except zipfile.BadZipFile as e:
+        raise MembreteInvalido(_NO_ES_WORD) from e
+    except (OSError, ValueError, RuntimeError, NotImplementedError) as e:
+        # Zip cifrado, compresion desconocida o una parte danada.
+        raise MembreteInvalido("No se pudo abrir ese Word; puede estar dañado.") from e
+
+
+def _es_docx(contenido: bytes) -> bool:
+    try:
+        _validar_docx(contenido)
+    except MembreteInvalido:
         return False
+    return True
 
 
 async def guardar(empresa_id: int, contenido: bytes) -> dict:
-    """Guarda el Word, lo convierte a PDF y mide sus bandas."""
+    """Guarda el Word, lo convierte a PDF y mide sus bandas.
+
+    Todo se prepara en una carpeta temporal propia de esta subida y solo al
+    final se pone en su sitio. POR QUE: el temporal tenia nombre fijo por
+    empresa, asi que dos subidas a la vez se pisaban; y un fallo a mitad podia
+    dejar el Word nuevo con el PDF viejo. El trabajo pesado (leer el zip,
+    recortar el PDF, renderizarlo para medir) va en un hilo: en el bucle de
+    eventos congelaba la web entera mientras duraba.
+    """
     from shared.pdf_firma import docx_a_pdf
 
     if not contenido:
         raise MembreteInvalido("El archivo está vacío.")
     if len(contenido) > TAMANO_MAXIMO:
         raise MembreteInvalido("La hoja membretada pesa más de 10 MB.")
-    if not _es_docx(contenido):
-        raise MembreteInvalido(
-            "La hoja membretada tiene que ser un Word (.docx). Si la tienes en "
-            ".doc, ábrela en Word y guárdala como .docx.")
+    await asyncio.to_thread(_validar_docx, contenido)
 
     docx, pdf, medidas = _rutas(empresa_id)
     DIR.mkdir(parents=True, exist_ok=True)
-    temporal = docx.with_name(f"subiendo_{int(empresa_id)}.docx")
-    temporal.write_bytes(contenido)
+    carpeta = Path(await asyncio.to_thread(
+        tempfile.mkdtemp, prefix=f".subiendo_{int(empresa_id)}_", dir=DIR))
     try:
-        convertido, mensaje = await docx_a_pdf(str(temporal), str(DIR))
+        temporal = carpeta / docx.name
+        await asyncio.to_thread(temporal.write_bytes, contenido)
+        convertido, mensaje = await docx_a_pdf(str(temporal), str(carpeta))
         if not convertido:
             raise MembreteInvalido(f"No se pudo convertir la hoja a PDF. {mensaje}")
-        _primera_hoja(Path(convertido), pdf)
-        Path(convertido).unlink(missing_ok=True)
-        temporal.replace(docx)
+        pdf_nuevo = carpeta / f"fondo_{pdf.name}"
+        bandas = await asyncio.to_thread(_preparar_fondo, Path(convertido), pdf_nuevo)
+        await asyncio.to_thread(_colocar, temporal, pdf_nuevo, bandas, docx, pdf, medidas)
     finally:
-        temporal.unlink(missing_ok=True)
+        await asyncio.to_thread(shutil.rmtree, carpeta, True)
 
-    bandas = medir(pdf)
-    medidas.write_text(json.dumps(bandas), encoding="utf-8")
     log.info("Membrete de la empresa %s: %s", empresa_id, bandas)
     return bandas
+
+
+def _preparar_fondo(convertido: Path, destino: Path) -> dict:
+    _primera_hoja(convertido, destino)
+    return medir(destino)
+
+
+def _colocar(docx_nuevo: Path, pdf_nuevo: Path, bandas: dict,
+             docx: Path, pdf: Path, medidas: Path) -> None:
+    """Pone los tres archivos en su sitio, cada uno con un reemplazo atomico."""
+    os.replace(pdf_nuevo, pdf)
+    _escribir_atomico(medidas, json.dumps(bandas).encode("utf-8"))
+    os.replace(docx_nuevo, docx)
 
 
 def _primera_hoja(origen: Path, destino: Path) -> None:
@@ -183,8 +286,9 @@ def _primera_hoja(origen: Path, destino: Path) -> None:
 
     escritor = PdfWriter()
     escritor.add_page(PdfReader(str(origen)).pages[0])
-    with open(destino, "wb") as f:
-        escritor.write(f)
+    salida = io.BytesIO()
+    escritor.write(salida)
+    _escribir_atomico(destino, salida.getvalue())
 
 
 def borrar(empresa_id: int) -> None:
@@ -218,8 +322,11 @@ def estampar(ruta_pdf: Path | str, membrete: dict) -> None:
             fondo.scale_to(ancho, alto)
         fondo.merge_page(pagina)
         escritor.add_page(fondo)
-    with open(ruta_pdf, "wb") as f:
-        escritor.write(f)
+    salida = io.BytesIO()
+    escritor.write(salida)
+    # Atomico: se escribe sobre el mismo PDF que se acaba de leer, y un fallo a
+    # mitad lo dejaba cortado.
+    _escribir_atomico(Path(ruta_pdf), salida.getvalue())
 
 
 def documento_word(empresa_id: int):
@@ -267,13 +374,16 @@ def miniatura_png(empresa_id: int, ancho_px: int = 420) -> bytes | None:
     membrete = de(empresa_id)
     if not membrete:
         return None
-    documento = pdfium.PdfDocument(str(membrete["pdf"]))
-    try:
-        pagina = documento[0]
-        escala = ancho_px / pagina.get_width()
-        imagen = pagina.render(scale=escala).to_pil()
-    finally:
-        documento.close()
+    from shared.pdfium_candado import CANDADO
+
+    with CANDADO:
+        documento = pdfium.PdfDocument(str(membrete["pdf"]))
+        try:
+            pagina = documento[0]
+            escala = ancho_px / pagina.get_width()
+            imagen = pagina.render(scale=escala).to_pil()
+        finally:
+            documento.close()
     salida = io.BytesIO()
     imagen.save(salida, format="PNG", optimize=True)
     return salida.getvalue()

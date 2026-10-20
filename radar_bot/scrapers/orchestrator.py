@@ -248,12 +248,21 @@ NOISE_PATTERNS = [
 ]
 
 
-def _apply_filters(entidad, objeto, monto, depto, filters, detalle: str = "") -> bool:
+def _apply_filters(entidad, objeto, monto, depto, filters, detalle: str = "",
+                   detalle_desconocido: bool = False) -> bool:
     """True = passes filters (should be processed).
 
     `detalle` (los items de la ficha) entra solo en el match de keywords, no
     en el filtro de ruido: NOISE_PATTERNS busca subcadenas como "inicio" o
     "agenda", que en un item ("FECHA DE INICIO...") tumbarian la fila.
+
+    `detalle_desconocido`: la ficha existia y NO se pudo leer (caida, 500,
+    timeout). POR QUE no se filtra entonces por falta de keywords: los items
+    -- lo que de verdad se compra -- solo estan en la ficha; el concepto del
+    listado casi nunca los nombra. Descartar por "no menciona arroz" una SC
+    cuya lista de items no se llego a ver es perderla en silencio, y como no
+    se guarda, la proxima pasada ya no la reintenta. Se deja pasar; las
+    regiones, el monto y las exclusiones siguen aplicando.
     """
     regiones = filters["regiones"]
     keywords = filters["keywords"]
@@ -273,7 +282,7 @@ def _apply_filters(entidad, objeto, monto, depto, filters, detalle: str = "") ->
     if monto and (monto < monto_min or monto > monto_max):
         return False
     texto = f"{objeto} {entidad} {detalle}"
-    if keywords and not _match_keywords(texto, keywords):
+    if keywords and not detalle_desconocido and not _match_keywords(texto, keywords):
         return False
     # Exclusiones del usuario. Van DESPUES del match positivo: sirven para
     # matar falsos positivos por homonimia -- "servidores" matchea tanto un
@@ -698,6 +707,10 @@ GORE_COTIZACIONES_PORTALS = {
         "type": "cotizaciones_app",
         "entidad": "Gobierno Regional de Madre de Dios",
         "sigla": "GOREMAD",
+        # De donde se aceptan fichas y documentos (red_segura). El dominio de
+        # la entidad y no solo el subdominio: /storage/ podria servirse desde
+        # otro host del mismo GORE.
+        "dominios": ("regionmadrededios.gob.pe",),
     },
 }
 
@@ -860,41 +873,101 @@ def _documentos_cotizacion(html: str) -> list[dict]:
     return docs
 
 
+# DE DONDE SE ACEPTA BAJAR UN DOCUMENTO
+#
+#   El enlace sale del HTML (o del JSON) de un portal ajeno: se pide solo si
+#   apunta al dominio de ese mismo portal. Ver radar_bot/scrapers/red_segura.py.
+#   Cada scraper pasa el suyo; esta lista es la de quien no pasa ninguno
+#   (tools/traer_formatos_gore.py), y cubre los dos portales que publican
+#   documentos hoy.
+DOMINIOS_DOCUMENTOS = ("regionmadrededios.gob.pe", "munitambopata.gob.pe")
+
+
 async def _guardar_documentos(client: httpx.AsyncClient, licitacion_id: str,
-                              docs: list[dict]) -> None:
+                              docs: list[dict], dominios=None) -> None:
     """Baja la SC y la DJ que aun no esten guardadas; del resto, el enlace.
 
-    Un PDF que no baja no detiene nada: la fila queda con su enlace y la
-    proxima pasada lo vuelve a intentar.
+    Un PDF que no baja no detiene nada: la fila de `licitacion_documentos`
+    queda con su enlace y SIN contenido (sha256 NULL), que es justo la marca
+    de "no guardado" que mira `documentos_conocidos`: la proxima pasada lo
+    vuelve a intentar.
+
+    POR QUE warning Y NO info
+
+      Estos fallos iban a log.info. La SC que no baja es la que la web no
+      puede llenar, y nadie se entera hasta que un cliente abre la propuesta
+      sin formato. Se registra con la URL y la causa.
     """
+    from radar_bot.scrapers import red_segura
     from shared.db import documentos_conocidos, guardar_documento
     if not docs:
         return
+    dominios = tuple(dominios or DOMINIOS_DOCUMENTOS)
     conocidos = await documentos_conocidos(licitacion_id)
     for d in docs:
         contenido = None
         if d["tipo"] in _DOC_GUARDAR and not conocidos.get(d["url"]):
             try:
-                resp = await client.get(d["url"])
-                cuerpo = resp.content
-                if resp.status_code == 200 and cuerpo.startswith(b"%PDF")                         and len(cuerpo) <= _DOC_MAX_BYTES[d["tipo"]]:
+                cuerpo = await red_segura.bajar(client, d["url"], dominios,
+                                                _DOC_MAX_BYTES[d["tipo"]])
+                if cuerpo.startswith(b"%PDF"):
                     from shared.escaneos import comprimir
                     contenido = await asyncio.to_thread(comprimir, cuerpo)
                 else:
-                    log.info("documento %s: HTTP %s, %d bytes", _corto(d["url"]),
-                             resp.status_code, len(cuerpo))
+                    log.warning("documento %s de %s no guardado: no es un PDF "
+                                "(%d bytes)", d["url"], licitacion_id, len(cuerpo))
                 await asyncio.sleep(0.3)
             except ImportError as e:
                 # Falta pypdfium2 o Pillow (requirements-puente.txt): no es un
                 # fallo del portal y no se arregla solo en la proxima pasada.
                 log.warning("documento %s: no se pudo comprimir (%s); instala "
                             "requirements-puente.txt", _corto(d["url"]), e)
+            except red_segura.DescargaRechazada as e:
+                log.warning("documento %s de %s no guardado: %s",
+                            d["url"], licitacion_id, e)
             except Exception as e:  # noqa: BLE001
-                log.info("documento %s: %s", _corto(d["url"]), e)
+                log.warning("documento %s de %s no guardado: %s: %s",
+                            d["url"], licitacion_id, type(e).__name__, e)
         elif d["url"] in conocidos:
             continue   # ya esta, y no hay nada nuevo que bajar
         await guardar_documento(licitacion_id, d["tipo"], d["categoria"] or None,
                                 d["nombre"] or None, d["url"], contenido)
+
+
+async def _pedir_ficha(client: httpx.AsyncClient, url: str,
+                       documentos: list | None = None,
+                       dominios=None) -> tuple[bool, str | None]:
+    """(se_leyo, items). `se_leyo` False = la ficha NO se pudo leer.
+
+    Separa dos cosas que `_leer_detalle` devuelve igual (None): una ficha que
+    se leyo y no trae items, y una que no cargo. La segunda es un detalle
+    DESCONOCIDO, y el filtro por keywords no puede tratarla como "no
+    menciona nada" (ver _apply_filters).
+
+    Con `dominios`, la URL (que sale del HTML del listado) se pide solo si es
+    del portal: el mismo filtro que los documentos, sin la resolucion DNS,
+    porque el host ya es el del portal que se esta leyendo.
+    """
+    if dominios:
+        from radar_bot.scrapers import red_segura
+        try:
+            red_segura.validar_url(url, dominios)
+        except red_segura.DescargaRechazada as e:
+            log.warning("ficha %s no se pide: %s", url, e)
+            return False, None
+    try:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            log.warning("ficha %s: HTTP %s; la fila queda sin items", url,
+                        resp.status_code)
+            return False, None
+        if documentos is not None:
+            documentos.extend(_documentos_cotizacion(resp.text))
+        return True, _detalle_cotizacion(resp.text)
+    except Exception as e:  # noqa: BLE001
+        log.warning("ficha %s: %s: %s; la fila queda sin items", url,
+                    type(e).__name__, e)
+        return False, None
 
 
 async def _leer_detalle(client: httpx.AsyncClient, url: str,
@@ -909,17 +982,8 @@ async def _leer_detalle(client: httpx.AsyncClient, url: str,
     ya se guarda con su concepto. `refrescar_licitacion` conserva el detalle
     anterior si este viene None.
     """
-    try:
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            log.info("ficha %s: HTTP %s", _corto(url), resp.status_code)
-            return None
-        if documentos is not None:
-            documentos.extend(_documentos_cotizacion(resp.text))
-        return _detalle_cotizacion(resp.text)
-    except Exception as e:  # noqa: BLE001
-        log.info("ficha %s: %s", _corto(url), e)
-        return None
+    _, detalle = await _pedir_ficha(client, url, documentos)
+    return detalle
 
 
 async def _scrape_gore_cotizaciones_app(
@@ -935,6 +999,8 @@ async def _scrape_gore_cotizaciones_app(
     """
     url = portal_info["url"]
     entidad = portal_info["entidad"]
+    # Fichas y documentos se piden solo dentro del dominio del portal.
+    dominios = tuple(portal_info.get("dominios") or (httpx.URL(url).host,))
     encontradas = 0
     errores = 0
     nuevas = []
@@ -996,12 +1062,15 @@ async def _scrape_gore_cotizaciones_app(
             # Apply filters
             monto = None  # MDD cotizaciones don't show monto in listing
             descripcion = None
+            ficha_leida = True
             documentos: list[dict] = []
             if href and "/solicitud/" in href:
-                descripcion = await _leer_detalle(client, href, documentos)
+                ficha_leida, descripcion = await _pedir_ficha(
+                    client, href, documentos, dominios)
                 await asyncio.sleep(0.5)
             if not _apply_filters(entidad, objeto, monto, region, filters,
-                                  detalle=descripcion or ""):
+                                  detalle=descripcion or "",
+                                  detalle_desconocido=not ficha_leida):
                 continue
 
             lid = _gen_id("gore", f"{anio}-{numero}", region)
@@ -1032,7 +1101,7 @@ async def _scrape_gore_cotizaciones_app(
             if is_new:
                 nuevas.append(licit)
             try:
-                await _guardar_documentos(client, licit["id"], documentos)
+                await _guardar_documentos(client, licit["id"], documentos, dominios)
             except Exception as e:  # noqa: BLE001
                 log.warning("documentos de %s: %s", licit["nomenclatura"], e)
 
@@ -1043,7 +1112,7 @@ async def _scrape_gore_cotizaciones_app(
             if purgados:
                 log.info("documentos purgados de solicitudes cerradas: %d", purgados)
         except Exception as e:  # noqa: BLE001
-            log.info("purga de documentos: %s", e)
+            log.warning("purga de documentos: %s", e)
 
     except Exception as e:  # noqa: BLE001
         errores += 1
@@ -1182,7 +1251,7 @@ async def _scrape_gore_generic(
 
     except Exception as e:  # noqa: BLE001
         errores += 1
-        log.debug(f"GORE {region} generic ({url}): {e}")
+        log.warning(f"GORE {region} generic ({url}): {e}")
 
     return encontradas, errores, nuevas
 
@@ -1199,8 +1268,13 @@ async def _run_gore_portals(user_id):
     parciales: list[str] = []
 
     try:
-        async with httpx.AsyncClient(
-            timeout=20, headers=HEADERS, follow_redirects=True, verify=False
+        # TLS VERIFICADO salvo en el host del GOREMAD, que sirve un certificado
+        # autofirmado (medido; ver red_segura.HOSTS_TLS_AUTOFIRMADO). Antes iba
+        # verify=False para el cliente entero, incluidos los redirects a
+        # cualquier otro sitio.
+        from radar_bot.scrapers import red_segura
+        async with red_segura.cliente(
+            timeout=20, headers=HEADERS, follow_redirects=True
         ) as client:
             # 1. Scrape dedicated cotizaciones apps (high quality)
             for region, portal_info in GORE_COTIZACIONES_PORTALS.items():
@@ -1270,6 +1344,16 @@ async def _run_gore_portals(user_id):
     return nuevas
 
 
+# TLS DE LAS FUENTES DE ABAJO
+#
+#   Todas abrian el cliente con verify=False sin decir por que. Medido el
+#   2026-10-20 con un handshake contra cada host (certifi): perucompras,
+#   essalud, sbs, transparencia y las municipalidades presentan una cadena
+#   valida (GoDaddy, Sectigo, Let's Encrypt). No habia nada que esquivar, y
+#   sin verificar cualquier intermediario servia lo que quisiera. Se verifica.
+#   Si un portal rompe su cadena, se agrega a red_segura.HOSTS_TLS_AUTOFIRMADO
+#   con su motivo, no se apaga TLS para todos.
+
 # ==================== 3. PERU COMPRAS ====================
 
 async def _run_peru_compras(user_id):
@@ -1282,7 +1366,7 @@ async def _run_peru_compras(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=30, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=30, headers=HEADERS, follow_redirects=True
         ) as client:
             urls_to_try = [
                 "https://www.perucompras.gob.pe/convocatorias.htm",
@@ -1377,7 +1461,7 @@ async def _run_poder_judicial(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=20, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=20, headers=HEADERS, follow_redirects=True
         ) as client:
             for url in urls:
                 try:
@@ -1466,7 +1550,7 @@ async def _run_essalud(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=20, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=20, headers=HEADERS, follow_redirects=True
         ) as client:
             for url in urls:
                 try:
@@ -1556,7 +1640,7 @@ async def _run_sbs(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=20, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=20, headers=HEADERS, follow_redirects=True
         ) as client:
             for url in urls:
                 try:
@@ -1641,7 +1725,7 @@ async def _run_transparencia_mef(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=20, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=20, headers=HEADERS, follow_redirects=True
         ) as client:
             for url in urls:
                 try:
@@ -1737,7 +1821,7 @@ async def _run_municipalidades(user_id):
 
     try:
         async with httpx.AsyncClient(
-            timeout=15, headers=HEADERS, follow_redirects=True, verify=False
+            timeout=15, headers=HEADERS, follow_redirects=True
         ) as client:
             for region, portales in munis.items():
                 if filters["regiones"] and region not in filters["regiones"]:

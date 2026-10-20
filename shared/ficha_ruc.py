@@ -16,6 +16,15 @@ COMO SE LEE
   bloque "DOC. NACIONAL DE / IDENTIDAD/LE / <8 digitos> / <nombre>" del
   representante. Lo que no se encuentra se devuelve vacio, nunca inventado.
 
+TAMBIEN LA "CONSULTA RUC"
+
+  Mucha gente no tiene la ficha a mano y sube la pagina de la Consulta RUC
+  (e-consultaruc.sunat.gob.pe, "Resultado de la Busqueda") impresa a PDF. Se
+  rechazaba con "no parece una Ficha RUC" y habia que cargar todo a mano. Trae
+  menos -- ni representante legal, ni telefono, ni correo --, pero si RUC,
+  razon social, domicilio, estado, condicion y actividades. Se lee y se dice
+  que falta.
+
 NO SE GUARDA SOLO
 
   Esto rellena el formulario; el usuario lo revisa y pulsa Guardar.
@@ -110,13 +119,25 @@ def _representante(texto: str) -> dict:
     }
 
 
+def _numero_telefono(valor: str) -> str | None:
+    """Solo los digitos del numero, sin el codigo de ciudad de SUNAT.
+
+    SUNAT separa el codigo con " - " ("82 - 959249224"). El numero puede traer
+    a su vez guiones propios ("959-249-224"): antes se cortaba por el ULTIMO
+    guion y quedaba "224", que no llega a seis cifras, y el telefono se perdia.
+    Ahora solo se quita el prefijo separado con espacios.
+    """
+    m = re.match(r"^\s*\d{1,3}\s+-\s+(.+)$", valor)
+    numero = re.sub(r"\D", "", m.group(1) if m else valor)
+    return numero if len(numero) >= 6 else None
+
+
 def _telefono(texto: str) -> str | None:
     for etiqueta in ("Tel.fono M.vil 1", "Tel.fono M.vil 2", "Tel.fono Fijo 1", "Tel.fono Fijo 2"):
         valor = _campo(texto, etiqueta)
         if valor:
-            # "82 - 959249224": el prefijo es el codigo de ciudad de SUNAT.
-            numero = re.sub(r"\D", "", valor.split("-")[-1])
-            if len(numero) >= 6:
+            numero = _numero_telefono(valor)
+            if numero:
                 return numero
     return None
 
@@ -144,10 +165,137 @@ def _direccion(texto: str, depto: str | None) -> str | None:
     return _espacios(salida) or None
 
 
+# ─── La Consulta RUC ("Resultado de la Busqueda") ───────────
+#
+# Impresa desde el navegador, cada etiqueta puede salir con su valor en la
+# misma linea o en la siguiente (es una tabla). Por eso el valor de una
+# etiqueta es todo lo que hay hasta la etiqueta siguiente, y no "la linea".
+
+# {clave: patron de la etiqueta}. El patron usa "." donde va una tilde: el
+# texto extraido trae a veces "N?mero" o "NÃºmero" en vez de "Numero".
+_ETIQUETAS_CONSULTA = {
+    "ruc": r"N.{1,2}mero de RUC",
+    "tipo": r"Tipo Contribuyente",
+    "documento": r"Tipo de Documento",
+    "nombre_comercial": r"Nombre Comercial",
+    "inscripcion": r"Fecha de Inscripci.{1,2}n",
+    "inicio": r"Fecha de Inicio de Actividades",
+    "estado": r"Estado del Contribuyente",
+    "condicion": r"Condici.{1,2}n del Contribuyente",
+    "domicilio": r"Domicilio Fiscal",
+    "emision": r"Sistema Emisi.{1,2}n de Comprobante",
+    "comercio_exterior": r"Actividad Comercio Exterior",
+    "contabilidad": r"Sistema Contabilidad",
+    "actividades": r"Actividad\(es\) Econ.{1,2}mica\(s\)",
+    # "Comprobantes de Pago c/aut. de impresion (F. 806 u 816):"
+    "comprobantes": r"Comprobantes de Pago[^:\n]{0,60}",
+    "emision_electronica": r"Sistema de Emisi.{1,2}n Electr.{1,2}nica",
+    "emisor_desde": r"Emisor electr.{1,2}nico desde",
+    "electronicos": r"Comprobantes Electr.{1,2}nicos",
+    "ple": r"Afiliado al PLE desde",
+    "padrones": r"Padrones",
+    "consulta": r"Fecha (?:de )?consulta",
+}
+_RE_ETIQUETA_CONSULTA = re.compile(
+    "|".join(f"(?P<{clave}>{patron})\\s*:" for clave, patron in _ETIQUETAS_CONSULTA.items()),
+    re.IGNORECASE)
+
+
+def es_consulta_ruc(texto: str) -> bool:
+    return bool(re.search(r"Resultado de la B.squeda|N.mero de RUC\s*:", texto or "",
+                          re.IGNORECASE))
+
+
+def _campos_consulta(texto: str) -> dict[str, str]:
+    """{clave de _ETIQUETAS_CONSULTA: valor} de la Consulta RUC."""
+    marcas = list(_RE_ETIQUETA_CONSULTA.finditer(texto))
+    campos: dict[str, str] = {}
+    for i, m in enumerate(marcas):
+        fin = marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)
+        # La primera aparicion manda: el pie de pagina repite a veces etiquetas.
+        campos.setdefault(m.lastgroup, texto[m.end():fin])
+    return campos
+
+
+def _depto_de_domicilio(domicilio: str) -> str | None:
+    """"... URB. LOS PINOS CUSCO - CUSCO - WANCHAQ" -> "Cusco".
+
+    El domicilio de la consulta termina en "DEPARTAMENTO - PROVINCIA -
+    DISTRITO", con el departamento pegado al final de la direccion. Se busca
+    el nombre de departamento mas largo con el que acaba ese tramo, para que
+    "MADRE DE DIOS" no se lea como otra cosa."""
+    partes = [p.strip() for p in domicilio.split(" - ")]
+    if len(partes) < 3:
+        return None
+    tramo = normalizar(partes[-3])
+    candidatos = [d for d in _DEPTOS if tramo == d or tramo.endswith(" " + d)]
+    return _DEPTOS[max(candidatos, key=len)] if candidatos else None
+
+
+def _actividades_consulta(bloque: str) -> list[str]:
+    """"Principal - 4741 - VENTA AL ..." y "Secundaria 1 - CIIU 4651 - ...".
+
+    Cada actividad sigue hasta la proxima "Principal"/"Secundaria"; la
+    descripcion puede ocupar varias lineas."""
+    plano = _espacios(bloque)
+    salida: list[str] = []
+    patron = re.compile(
+        r"(?:Principal|Secundaria\s*\d*)\s*-\s*(?:CIIU\s*)?\d{4,5}\s*-\s*(.+?)"
+        r"(?=\s*(?:Principal|Secundaria\s*\d*)\s*-|$)", re.IGNORECASE)
+    for m in patron.finditer(plano):
+        desc = m.group(1).strip(" -").lower()
+        if desc and desc not in salida:
+            salida.append(desc)
+    return salida
+
+
+def parsear_consulta(texto: str) -> dict:
+    """Campos del formulario a partir de la Consulta RUC de SUNAT.
+
+    No trae representante legal, telefono ni correo: esos quedan vacios y la
+    ruta avisa de que hay que completarlos (`origen` = "consulta")."""
+    campos = _campos_consulta(texto)
+    cabecera = _espacios(campos.get("ruc", ""))
+    m = re.match(r"^(\d{11})\s*-\s*(.+)$", cabecera)
+    if not m:
+        raise FichaInvalida("No se encontró el RUC en la consulta de SUNAT.")
+
+    def valor(clave: str) -> str | None:
+        v = _espacios(campos.get(clave, ""))
+        return None if v in ("", "-") else v
+
+    domicilio = valor("domicilio")
+    estado = valor("estado")
+    if estado:
+        # "BAJA DE OFICIO Fecha de Baja: 01/01/2020" -> solo el estado.
+        estado = re.split(r"\s+Fecha\b", estado, maxsplit=1)[0]
+    return {
+        "ruc": m.group(1),
+        "razon_social": m.group(2).strip() or None,
+        "nombre_comercial": valor("nombre_comercial"),
+        "departamento": _depto_de_domicilio(domicilio) if domicilio else None,
+        "direccion": domicilio,
+        "telefono": None,
+        "email": None,
+        "estado": estado,
+        "condicion": valor("condicion"),
+        "rubros": _actividades_consulta(campos.get("actividades", "")),
+        "representante_legal": None,
+        "dni_representante": None,
+        "cargo_representante": None,
+        "origen": "consulta",
+    }
+
+
 def parsear_texto(texto: str) -> dict:
-    """Campos del formulario de empresa a partir del texto de la ficha."""
+    """Campos del formulario de empresa a partir del texto de la ficha.
+
+    Acepta tambien la Consulta RUC (ver el docstring del modulo)."""
+    if "Reporte de Ficha RUC" not in texto and es_consulta_ruc(texto):
+        return parsear_consulta(texto)
     if "Ficha RUC" not in texto:
-        raise FichaInvalida("Ese PDF no parece una Ficha RUC de SUNAT.")
+        raise FichaInvalida(
+            "Ese PDF no parece una Ficha RUC ni una Consulta RUC de SUNAT.")
 
     m = re.search(r"Reporte de Ficha RUC\s*(.*?)\n\s*(\d{11})\s*\n", texto, re.DOTALL)
     if not m:
@@ -182,6 +330,7 @@ def parsear_texto(texto: str) -> dict:
         "representante_legal": None,
         "dni_representante": None,
         "cargo_representante": None,
+        "origen": "ficha",
     }
     datos.update(_representante(texto))
     return datos
@@ -209,7 +358,9 @@ def leer_ficha_ruc(contenido: bytes) -> dict:
 # en cada hoja. Cuando el usuario la sube para rellenar la empresa se guarda
 # tambien el archivo, como la constancia del RNP (shared/constancia_rnp.py).
 
-DIR_PDF = Path(os.getenv("FICHA_RUC_DIR", "data/ficha_ruc"))
+# Anclado a la raiz del proyecto, no al cwd. FICHA_RUC_DIR sigue mandando.
+DIR_PDF = Path(os.getenv("FICHA_RUC_DIR")
+               or Path(__file__).resolve().parents[1] / "data" / "ficha_ruc")
 
 
 def ruta_pdf(empresa_id: int) -> Path:
@@ -217,6 +368,16 @@ def ruta_pdf(empresa_id: int) -> Path:
 
 
 def guardar_pdf(empresa_id: int, contenido: bytes) -> None:
+    """Guarda con reemplazo atomico: o la ficha vieja o la nueva entera."""
+    import tempfile
+
     destino = ruta_pdf(empresa_id)
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_bytes(contenido)
+    fd, temporal = tempfile.mkstemp(dir=destino.parent, prefix=".tmp_", suffix=".pdf")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenido)
+        os.replace(temporal, destino)
+    except BaseException:
+        Path(temporal).unlink(missing_ok=True)
+        raise

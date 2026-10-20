@@ -69,26 +69,37 @@ def activo_por_entorno() -> bool:
 def ip_del_cliente(scope) -> str:
     """La IP real de quien pide, no la del proxy.
 
-    Delante hay Caddy y, delante de Caddy, Cloudflare. El Caddyfile declara los
-    rangos de Cloudflare como `trusted_proxies` precisamente para que el
-    X-Forwarded-For que llega traiga la IP de verdad, y el contenedor arranca
-    uvicorn con --proxy-headers para que la resuelva.
+    En produccion delante esta Cloudflare (tunel: cloudflared en el host entra
+    por 127.0.0.1:8200). Cloudflare pone `CF-Connecting-IP` con la IP que ve, y
+    PISA la que traiga el cliente: es la unica cabecera de origen que nadie de
+    fuera puede elegir. Y el puerto del panel solo escucha en el loopback del
+    host, asi que no hay camino hasta aqui que no pase por Cloudflare.
 
-    Se lee la cabecera igualmente en vez de fiarlo todo a `scope["client"]`
-    porque este middleware puede acabar montado por encima o por debajo del de
-    uvicorn segun como se despliegue, y con la cabecera el resultado es el
-    mismo en los dos casos.
+    X-FORWARDED-FOR YA NO SE LEE, Y ESTE ERA EL AGUJERO
+
+      Antes se leia su PRIMER elemento. Cloudflare no lo reemplaza: AÑADE al
+      final lo que ve, y respeta lo que el cliente mandara delante. O sea que
+      el primer elemento lo escribia el atacante. Con eso se saltaba este
+      limite y el freno de intentos de acceso (web/auth.py) -- una IP inventada
+      por peticion -- o se bloqueaba a proposito la IP de otro.
+
+      Sin la cabecera de Cloudflare se usa `scope["client"]`. Uvicorn lo
+      rellena desde X-Forwarded-For SOLO si la conexion llega de un proxy de
+      confianza (FORWARDED_ALLOW_IPS, ver Dockerfile), y entonces toma la
+      ultima IP que no es de confianza, no la primera. Ese middleware de
+      uvicorn envuelve a toda la aplicacion, asi que cuando esto corre el
+      scope ya esta resuelto.
 
     Si esto se rompe, el limite deja de ser por IP y pasa a ser global: el
     primer atacante bloquea a todos los clientes a la vez. Es el mismo fallo
     que ya se dio en CargoXprez, y no se parece a un problema de limites.
     """
     cabeceras = dict(scope.get("headers") or [])
-    for nombre in (b"cf-connecting-ip", b"x-forwarded-for"):
-        valor = cabeceras.get(nombre)
-        if valor:
-            # X-Forwarded-For puede traer una cadena; el cliente es el primero.
-            return valor.decode("latin-1").split(",")[0].strip()
+    valor = cabeceras.get(b"cf-connecting-ip")
+    if valor:
+        ip = valor.decode("latin-1").strip()
+        if ip:
+            return ip
     cliente = scope.get("client")
     return cliente[0] if cliente else "desconocida"
 

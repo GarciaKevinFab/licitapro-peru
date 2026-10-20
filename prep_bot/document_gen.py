@@ -1,6 +1,25 @@
-"""Document Generator — Genera documentos DOCX/PDF para propuestas."""
+"""Document Generator — Genera documentos DOCX/PDF para propuestas.
+
+NINGUN DOCUMENTO LEGAL SALE CON UN HUECO
+
+  Antes, si faltaba el representante, su DNI o el domicilio, la carta salia
+  con "[REPRESENTANTE]" o "[DNI]" escrito tal cual, y la declaracion jurada
+  con la firma de nadie. El usuario no lo veia hasta abrir el .docx -- si lo
+  abria -- y la entidad lo descalificaba en mesa de partes. Ahora se levanta
+  `DocumentoIncompleto` con la lista de lo que falta y la web se lo dice antes
+  de armar nada.
+
+DE DONDE SALEN LOS DATOS DEL REPRESENTANTE
+
+  De la tabla `empresas` primero, que es lo que el usuario edita en la ficha
+  de la empresa y lo que ve. La knowledge_base es una copia que se aprende de
+  las respuestas y puede quedarse vieja: si el representante cambio y el
+  usuario lo corrigio en la ficha, la carta tiene que decir el nuevo.
+"""
+import asyncio
 import logging
 import os
+from datetime import date
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
@@ -9,11 +28,80 @@ from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection, get_empresa
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
+from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
 
 log = logging.getLogger("prep.docgen")
 
 TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+
+# POR QUE UNA TABLA Y NO strftime('%B'): '%B' depende del locale del proceso.
+# En el contenedor no hay locale es_PE y la carta salia fechada "20 de October
+# de 2026". Es la misma tabla que usa shared/pdf_firmable.py.
+_MES = {1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+        7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre",
+        12: "diciembre"}
+
+
+def fecha_larga(d: date | None = None) -> str:
+    """'20 de octubre de 2026', sin depender del locale."""
+    d = d or fechas.hoy()
+    return f"{d.day:02d} de {_MES[d.month]} de {d.year}"
+
+
+def referencia(licitacion: dict) -> str:
+    """La nomenclatura del proceso o, si no tiene, el id de la LICITACION.
+
+    `licitacion.get('nomenclatura', licitacion['id'])` tenia dos fallos: la
+    clave existe aunque valga None (y la carta decia "Ref: None"), y en el
+    expediente este dict es la fila de la PROPUESTA, cuyo `id` es el de la
+    propuesta y no el de la licitacion.
+    """
+    return str(licitacion.get("nomenclatura") or licitacion.get("lic_id")
+               or licitacion.get("licitacion_id") or licitacion.get("id") or "")
+
+
+def _primero(*valores) -> str:
+    for v in valores:
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def datos_legales(empresa, datos: dict) -> dict:
+    """Representante, DNI, cargo y domicilio: la tabla `empresas` manda y la
+    knowledge_base cubre lo que la tabla no tiene."""
+    emp = dict(empresa) if empresa else {}
+    return {
+        "representante": _primero(emp.get("representante_legal"),
+                                  datos.get("legal.representante_legal")),
+        "dni": _primero(emp.get("dni_representante"), datos.get("legal.dni_representante")),
+        "cargo": _primero(emp.get("cargo_representante"),
+                          datos.get("legal.cargo_representante")) or "Gerente General",
+        "domicilio": _primero(emp.get("direccion"), datos.get("legal.domicilio_legal"),
+                              datos.get("legal.direccion_legal")),
+    }
+
+
+_ROTULOS = {"representante": "el representante legal",
+            "dni": "el DNI del representante",
+            "domicilio": "el domicilio legal"}
+
+
+def exigir(documento: str, legales: dict, *campos: str) -> None:
+    """Levanta DocumentoIncompleto si falta alguno de `campos`."""
+    faltan = [_ROTULOS[c] for c in campos if not legales.get(c)]
+    if faltan:
+        raise DocumentoIncompleto(documento, faltan)
+
+
+async def _guardar(doc, nombre: str) -> str:
+    path = os.path.join(TEMPLATES_DIR, "output", nombre)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # python-docx escribe a disco de forma sincrona: fuera del bucle de eventos,
+    # o la web entera se congela mientras se guarda un documento.
+    await asyncio.to_thread(doc.save, path)
+    return path
 
 
 def _set_cell_text(cell, text, bold=False, size=10):
@@ -28,6 +116,8 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     """Genera Anexo 1: Carta de Presentación del postor."""
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
+    legales = datos_legales(empresa, datos)
+    exigir("la carta de presentación", legales, "representante", "dni", "domicilio")
 
     doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
@@ -37,8 +127,8 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     # Encabezado
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run(f"{datos.get('legal.domicilio_legal', empresa.get('direccion', ''))}\n")
-    p.add_run(f"{fechas.hoy().strftime('%d de %B de %Y')}")
+    p.add_run(f"{legales['domicilio']}\n")
+    p.add_run(fecha_larga())
 
     doc.add_paragraph()  # Espacio
 
@@ -51,22 +141,22 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     # Referencia
     ref = doc.add_paragraph()
     ref.add_run("Ref: ").bold = True
-    ref.add_run(f"{licitacion.get('nomenclatura', licitacion['id'])}")
+    ref.add_run(referencia(licitacion))
     doc.add_paragraph()
 
     # Cuerpo
-    representante = datos.get("legal.representante_legal", empresa.get("representante_legal", "[REPRESENTANTE]"))
-    cargo = datos.get("legal.cargo_representante", "Gerente General")
+    representante = legales["representante"]
+    cargo = legales["cargo"]
     razon = empresa["razon_social"]
     ruc = empresa["ruc"]
 
     body = (
         f"Estimados señores:\n\n"
         f"El que suscribe, {representante}, identificado con DNI N° "
-        f"{datos.get('legal.dni_representante', empresa.get('dni_representante', '[DNI]'))}, "
+        f"{legales['dni']}, "
         f"en calidad de {cargo} y representante legal de {razon}, "
         f"identificada con RUC N° {ruc}, domiciliada en "
-        f"{datos.get('legal.domicilio_legal', empresa.get('direccion', '[DIRECCION]'))}, "
+        f"{legales['domicilio']}, "
         f"presenta a ustedes la propuesta técnica y económica para la contratación de:\n\n"
         f"\"{licitacion['objeto']}\"\n\n"
         f"Para lo cual declaramos que cumplimos con los requisitos de calificación y "
@@ -97,9 +187,7 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     if sello_path:
         insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
-    path = os.path.join(TEMPLATES_DIR, "output", f"carta_presentacion_{propuesta_id}.docx")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    doc.save(path)
+    path = await _guardar(doc, f"carta_presentacion_{propuesta_id}.docx")
     log.info(f"Carta de presentación generada: {path}")
     return path
 
@@ -108,6 +196,8 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     """Genera Anexo 2: Declaración Jurada del postor."""
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
+    legales = datos_legales(empresa, datos)
+    exigir("la declaración jurada", legales, "representante", "domicilio")
 
     doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
@@ -118,10 +208,10 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
 
     ref = doc.add_paragraph()
     ref.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    ref.add_run(f"({licitacion.get('nomenclatura', licitacion['id'])})")
+    ref.add_run(f"({referencia(licitacion)})")
     doc.add_paragraph()
 
-    representante = datos.get("legal.representante_legal", empresa.get("representante_legal", "[REPRESENTANTE]"))
+    representante = legales["representante"]
     razon = empresa["razon_social"]
     ruc = empresa["ruc"]
 
@@ -141,7 +231,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
         p.paragraph_format.space_after = Pt(6)
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{datos.get('legal.domicilio_legal', '')}, {fechas.hoy().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(f"{legales['domicilio']}, {fecha_larga()}")
     doc.add_paragraph()
 
     # Firma del representante
@@ -160,10 +250,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     if sello_path:
         insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
-    path = os.path.join(TEMPLATES_DIR, "output", f"declaracion_jurada_{propuesta_id}.docx")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    doc.save(path)
-    return path
+    return await _guardar(doc, f"declaracion_jurada_{propuesta_id}.docx")
 
 
 async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitacion: dict) -> str:
@@ -204,10 +291,7 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
         total = sum(e["monto"] for e in experiencias if e["monto"])
         doc.add_paragraph(f"\nMonto acumulado: {format_monto(total)}")
 
-    path = os.path.join(TEMPLATES_DIR, "output", f"experiencia_postor_{propuesta_id}.docx")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    doc.save(path)
-    return path
+    return await _guardar(doc, f"experiencia_postor_{propuesta_id}.docx")
 
 
 async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
@@ -215,6 +299,8 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     """Genera propuesta económica."""
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
+    legales = datos_legales(empresa, datos)
+    exigir("la propuesta económica", legales, "representante")
 
     doc = documento_word(empresa_id)
     style = doc.styles["Normal"]
@@ -222,13 +308,13 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     style.font.size = Pt(11)
 
     doc.add_heading("PROPUESTA ECONOMICA", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Ref: {licitacion.get('nomenclatura', licitacion['id'])}")
+    doc.add_paragraph(f"Ref: {referencia(licitacion)}")
     doc.add_paragraph()
 
     doc.add_paragraph(f"Señores: {licitacion['entidad']}")
     doc.add_paragraph()
 
-    representante = datos.get("legal.representante_legal", empresa.get("representante_legal", ""))
+    representante = legales["representante"]
     body = (
         f"Es grato dirigirnos a ustedes para presentar nuestra propuesta económica "
         f"por el monto total de {format_monto(precio)} (incluido IGV) para la contratación de:\n\n"
@@ -251,7 +337,7 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     _set_cell_text(table.rows[3].cells[1], format_monto(precio), bold=True)
 
     doc.add_paragraph()
-    doc.add_paragraph(f"{fechas.hoy().strftime('%d de %B de %Y')}")
+    doc.add_paragraph(fecha_larga())
     doc.add_paragraph()
 
     firma_path = await obtener_firma(empresa_id, 'firma')
@@ -268,10 +354,7 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     if sello_path:
         insertar_imagen_en_docx(doc, sello_path, width_cm=3.0)
 
-    path = os.path.join(TEMPLATES_DIR, "output", f"propuesta_economica_{propuesta_id}.docx")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    doc.save(path)
-    return path
+    return await _guardar(doc, f"propuesta_economica_{propuesta_id}.docx")
 
 
 async def _recopilar_datos(empresa_id: int) -> dict:

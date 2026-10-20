@@ -1,4 +1,5 @@
 """Shared database module — PostgreSQL connection and helpers."""
+import asyncio
 import json
 import logging
 import os
@@ -15,6 +16,23 @@ load_dotenv()
 log = logging.getLogger("licitapro.db")
 
 _pool: asyncpg.Pool | None = None
+
+# Candado para crear el pool una sola vez. POR QUE: `create_pool` es await, y
+# mientras espera al servidor otra peticion que llegue al primer uso ve
+# `_pool is None` y crea un segundo pool. El primero queda huerfano con sus
+# conexiones abiertas hasta que el proceso muere. Se guarda junto al bucle que
+# lo creo: un asyncio.Lock queda atado a su bucle, y un script que hace dos
+# `asyncio.run` seguidos reventaria con "bound to a different event loop".
+_candado: tuple[asyncio.AbstractEventLoop, asyncio.Lock] | None = None
+
+# Cuanto se espera por una conexion libre antes de rendirse. POR QUE: sin
+# tope, con el pool agotado (diez peticiones que piden una segunda conexion
+# teniendo ya una) la aplicacion se queda colgada para siempre y sin un solo
+# error en el log. Con tope la peticion falla, se registra y las demas siguen.
+SEGUNDOS_ESPERA_CONEXION = float(os.getenv("POSTGRES_ESPERA_CONEXION", "15"))
+# Tope de cada consulta. Una consulta que pasa de un minuto en esta base es un
+# bloqueo o un error, no trabajo legitimo, y retiene una de las diez conexiones.
+SEGUNDOS_POR_CONSULTA = float(os.getenv("POSTGRES_TIEMPO_CONSULTA", "60"))
 
 
 def _password_obligatoria() -> str:
@@ -76,7 +94,13 @@ async def get_pool() -> asyncpg.Pool:
     `?sslmode=` o el usuario `postgres.<ref>` que exige su pooler.
     """
     global _pool
-    if _pool is None:
+    if _pool is not None:
+        return _pool
+    async with _candado_del_bucle():
+        # Se vuelve a mirar dentro del candado: quien esperaba en la puerta
+        # encuentra el pool que creo el primero y no hace otro.
+        if _pool is not None:
+            return _pool
         url = os.getenv("DATABASE_URL") or ""
         host = os.getenv("POSTGRES_HOST", "localhost")
         puerto = int(os.getenv("POSTGRES_PORT", "5433"))
@@ -103,6 +127,7 @@ async def get_pool() -> asyncpg.Pool:
             "server_settings": {"timezone": os.getenv("POSTGRES_ZONA_SESION",
                                                       "America/Lima")},
             "init": _preparar_conexion,
+            "command_timeout": SEGUNDOS_POR_CONSULTA,
         }
 
         if puerto == PUERTO_POOLER_TRANSACCION:
@@ -135,11 +160,66 @@ async def get_pool() -> asyncpg.Pool:
     return _pool
 
 
+def _candado_del_bucle() -> asyncio.Lock:
+    """El candado de creacion del pool, uno por bucle de eventos."""
+    global _candado
+    bucle = asyncio.get_running_loop()
+    if _candado is None or _candado[0] is not bucle:
+        _candado = (bucle, asyncio.Lock())
+    return _candado[1]
+
+
+async def cerrar_pool() -> None:
+    """Cierra el pool si existe. Para el apagado de la app y de los bots.
+
+    Sin esto las conexiones se cortan de golpe al morir el proceso y Postgres
+    las ve como clientes que desaparecen a mitad de algo. Cerrar es idempotente:
+    llamarlo dos veces, o sin pool creado, no hace nada.
+    """
+    global _pool
+    pool, _pool = _pool, None
+    if pool is None:
+        return
+    try:
+        await asyncio.wait_for(pool.close(), timeout=SEGUNDOS_ESPERA_CONEXION)
+    except TimeoutError:
+        # Alguna conexion sigue ocupada: se corta en vez de colgar el apagado.
+        log.warning("El pool no cerro a tiempo; se terminan las conexiones")
+        pool.terminate()
+    log.info("Pool PostgreSQL cerrado")
+
+
 @asynccontextmanager
 async def connection():
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    try:
+        conn = await pool.acquire(timeout=SEGUNDOS_ESPERA_CONEXION)
+    except TimeoutError:
+        # El sintoma de un pool agotado: se deja escrito para que no parezca
+        # una caida misteriosa. La causa casi siempre es una funcion que pide
+        # otra conexion teniendo ya una (pasale `conn=` en vez de anidar).
+        log.error("Sin conexion libre en %.0f s: el pool (%d) esta agotado",
+                  SEGUNDOS_ESPERA_CONEXION, pool.get_max_size())
+        raise
+    try:
         yield conn
+    finally:
+        await pool.release(conn)
+
+
+@asynccontextmanager
+async def _conexion_o_nueva(conn=None):
+    """La conexion que pasa quien llama, o una nueva del pool.
+
+    POR QUE: una funcion que ya tiene una conexion y llama a otra que abre la
+    suya ocupa DOS del pool a la vez. Con diez peticiones asi el pool se agota
+    y todas esperan a una conexion que solo liberan ellas mismas.
+    """
+    if conn is not None:
+        yield conn
+        return
+    async with connection() as nueva:
+        yield nueva
 
 
 # ─── Licitaciones ────────────────────────────────────────
@@ -194,11 +274,13 @@ async def marcar_notificada(lid: str):
 
 
 # ─── Knowledge Base ──────────────────────────────────────
-async def kb_get(empresa_id: int, categoria: str, clave: str) -> str | None:
+async def kb_get(empresa_id: int, categoria: str, clave: str,
+                 conn=None) -> str | None:
     # Leer y contar el uso en un solo viaje: eran dos consultas por dato, y la
-    # ficha de una propuesta pide una docena de datos.
-    async with connection() as conn:
-        return await conn.fetchval(
+    # ficha de una propuesta pide una docena de datos. `conn` reutiliza la de
+    # quien llama (ver `_conexion_o_nueva`).
+    async with _conexion_o_nueva(conn) as c:
+        return await c.fetchval(
             """UPDATE knowledge_base SET usado_count = usado_count + 1
                 WHERE empresa_id=$1 AND categoria=$2 AND clave=$3
             RETURNING valor""",
@@ -206,20 +288,21 @@ async def kb_get(empresa_id: int, categoria: str, clave: str) -> str | None:
         )
 
 
-async def kb_todos(empresa_id: int) -> dict[tuple[str, str], str]:
+async def kb_todos(empresa_id: int, conn=None) -> dict[tuple[str, str], str]:
     """Todo lo que se sabe de la empresa, {(categoria, clave): valor}, en un
     solo viaje. Para quien revisa muchos datos a la vez (el validador pedia
     uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar."""
-    async with connection() as conn:
-        filas = await conn.fetch(
+    async with _conexion_o_nueva(conn) as c:
+        filas = await c.fetch(
             "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
             empresa_id)
     return {(f["categoria"], f["clave"]): f["valor"] for f in filas}
 
 
-async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str, fuente="usuario_respuesta"):
-    async with connection() as conn:
-        await conn.execute(
+async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str,
+                 fuente="usuario_respuesta", conn=None):
+    async with _conexion_o_nueva(conn) as c:
+        await c.execute(
             """INSERT INTO knowledge_base (empresa_id, categoria, clave, valor, fuente)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (empresa_id, categoria, clave) 
@@ -241,12 +324,25 @@ async def get_empresas_activas():
 
 # ─── Propuestas ──────────────────────────────────────────
 async def crear_propuesta(licitacion_id: str, empresa_id: int) -> int:
+    """La propuesta de esa empresa a esa licitacion; la crea si no existe.
+
+    Una empresa tiene a lo sumo una propuesta por licitacion (indice unico de
+    la migracion 0020). Un doble clic en "Licitar" devuelve la que ya hay en
+    vez de reventar con la violacion del indice.
+    """
     async with connection() as conn:
-        return await conn.fetchval(
+        nueva = await conn.fetchval(
             """INSERT INTO propuestas (licitacion_id, empresa_id, estado)
-            VALUES ($1, $2, 'iniciado') RETURNING id""",
+               VALUES ($1, $2, 'iniciado')
+               ON CONFLICT (licitacion_id, empresa_id) DO NOTHING
+               RETURNING id""",
             licitacion_id, empresa_id,
         )
+        if nueva is not None:
+            return nueva
+        return await conn.fetchval(
+            "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
+            licitacion_id, empresa_id)
 
 
 async def get_preguntas_pendientes(propuesta_id: int):
@@ -271,7 +367,9 @@ async def responder_pregunta(pregunta_id: int, respuesta: str):
         )
         # Guardar en KB si tiene categoría definida
         if row["kb_categoria"] and row["kb_clave"]:
-            await kb_set(row["empresa_id"], row["kb_categoria"], row["kb_clave"], respuesta)
+            # Con la misma conexion: abrir otra aqui ocupaba dos del pool.
+            await kb_set(row["empresa_id"], row["kb_categoria"], row["kb_clave"],
+                         respuesta, conn=conn)
             await conn.execute(
                 "UPDATE preguntas SET guardada_en_kb=TRUE WHERE id=$1", pregunta_id
             )
@@ -336,6 +434,9 @@ async def get_contratos_activos(empresa_id: int | None = None):
 
 
 async def get_plazos_proximos(dias: int = 7):
+    # La fecha de Lima y no CURRENT_DATE: con la sesion en UTC (el VPS),
+    # CURRENT_DATE pasa al dia siguiente a las 19:00 de Lima y el aviso de
+    # plazos de la noche corria la ventana un dia hacia adelante.
     async with connection() as conn:
         return await conn.fetch(
             """SELECT p.*, c.numero_contrato, c.empresa_id, l.objeto, l.entidad
@@ -343,7 +444,8 @@ async def get_plazos_proximos(dias: int = 7):
             JOIN contratos c ON p.contrato_id = c.id
             JOIN licitaciones l ON c.licitacion_id = l.id
             WHERE p.completado = FALSE 
-            AND p.fecha_limite <= CURRENT_DATE + $1 * INTERVAL '1 day'
+            AND p.fecha_limite <= (NOW() AT TIME ZONE 'America/Lima')::date
+                                  + $1 * INTERVAL '1 day'
             ORDER BY p.fecha_limite""",
             dias,
         )
@@ -765,14 +867,23 @@ async def set_token_telegram(usuario_id: int, token: str, expira) -> None:
         )
 
 
+# `telegram_token_expira` y `tokens_recuperacion.expira` se escriben desde
+# Python en hora de pared de Lima (ver shared/seguridad.py). Se comparan contra
+# la hora de Lima y no contra NOW() por lo mismo que fecha_cierre (ver
+# licitaciones_para_usuario): con la sesion en UTC, que es como corre el VPS,
+# NOW() iba cinco horas por delante y el token nacia vencido. Asi la condicion
+# vale con la sesion en cualquier zona.
+_AHORA_LIMA = "(NOW() AT TIME ZONE 'America/Lima')"
+
+
 async def token_telegram_vigente(usuario_id: int) -> str | None:
     """El codigo pendiente de canjear, si aun vale. Misma condicion que aplica
     vincular_telegram, para no mostrar un codigo que el bot va a rechazar."""
     async with connection() as conn:
         return await conn.fetchval(
-            """SELECT telegram_token FROM usuarios
+            f"""SELECT telegram_token FROM usuarios
                 WHERE id = $1 AND telegram_token IS NOT NULL
-                  AND telegram_token_expira > NOW()""",
+                  AND telegram_token_expira > {_AHORA_LIMA}""",
             usuario_id,
         )
 
@@ -786,12 +897,12 @@ async def vincular_telegram(token: str, chat_id: int):
     """
     async with connection() as conn:
         return await conn.fetchrow(
-            """UPDATE usuarios
+            f"""UPDATE usuarios
                   SET telegram_chat_id = $2,
                       telegram_token = NULL,
                       telegram_token_expira = NULL
                 WHERE telegram_token = $1
-                  AND telegram_token_expira > NOW()
+                  AND telegram_token_expira > {_AHORA_LIMA}
                   AND activo = TRUE
              RETURNING *""",
             token, chat_id,
@@ -875,12 +986,12 @@ async def usuario_por_token_recuperacion(token_hash: str):
     """Usuario dueno de un token vigente y sin usar, o None."""
     async with connection() as conn:
         return await conn.fetchrow(
-            """SELECT u.*, t.id AS token_id
+            f"""SELECT u.*, t.id AS token_id
                  FROM tokens_recuperacion t
                  JOIN usuarios u ON u.id = t.usuario_id
                 WHERE t.token_hash = $1
                   AND t.usado_en IS NULL
-                  AND t.expira > NOW()
+                  AND t.expira > {_AHORA_LIMA}
                   AND u.activo = TRUE""",
             token_hash)
 
@@ -898,8 +1009,9 @@ async def consumir_token_y_cambiar_password(token_hash: str,
     """
     async with connection() as conn, conn.transaction():
         fila = await conn.fetchrow(
-            """UPDATE tokens_recuperacion SET usado_en = NOW()
-                    WHERE token_hash = $1 AND usado_en IS NULL AND expira > NOW()
+            f"""UPDATE tokens_recuperacion SET usado_en = NOW()
+                    WHERE token_hash = $1 AND usado_en IS NULL
+                      AND expira > {_AHORA_LIMA}
                  RETURNING usuario_id""",
             token_hash)
         if not fila:
@@ -996,8 +1108,11 @@ async def borrar_cuenta(usuario_id: int) -> dict:
 
     Las tablas hijas caen por las cascadas declaradas en la migracion 0006.
     """
-    from shared.archivos import TIPOS as TIPOS_IMAGEN
-    from shared.archivos import borrar_imagen, rutas_de
+    # Los archivos (imagenes, membrete, ficha RUC, constancia del RNP,
+    # formatos, paquetes y expedientes) los borra una sola funcion, la misma
+    # que usa el borrado desde el panel del dueno: antes cada borrado tenia su
+    # lista y las dos se quedaban cortas.
+    from shared.admin_cuentas import borrar_archivos_de_cuenta
 
     resumen = {"empresas": 0, "archivos": 0, "borrada": False}
 
@@ -1005,22 +1120,7 @@ async def borrar_cuenta(usuario_id: int) -> dict:
         empresas = await conn.fetch(
             "SELECT id FROM empresas WHERE usuario_id=$1", usuario_id)
     resumen["empresas"] = len(empresas)
-
-    for fila in empresas:
-        # Se cuenta ANTES de borrar: borrar_imagen no devuelve nada, y `rutas_de`
-        # ademas comprueba el disco, asi que el recuento refleja archivos que
-        # existian de verdad y no filas que apuntaban a un hueco.
-        presentes = await rutas_de(fila["id"])
-        for tipo in TIPOS_IMAGEN:
-            try:
-                await borrar_imagen(fila["id"], tipo)
-                resumen["archivos"] += tipo in presentes
-            except Exception as e:  # noqa: BLE001
-                # Se registra y se sigue: un archivo que no se pudo borrar no
-                # puede dejar al usuario sin poder ejercer su derecho. Queda el
-                # rastro para limpiarlo a mano.
-                log.error("No se pudo borrar la imagen %s de la empresa %s: %s",
-                          tipo, fila["id"], e)
+    resumen["archivos"] = await borrar_archivos_de_cuenta(usuario_id)
 
     async with connection() as conn:
         borrada = await conn.fetchval(

@@ -26,10 +26,22 @@ SI NO SE RECONOCE
 
   FormatoNoReconocido, con un mensaje para el usuario. Quien llama cae al PDF
   propio (shared/documentos_menores.py): nunca se entrega un formato mal
-  llenado como si estuviera bien.
+  llenado como si estuviera bien. Tambien cuando el PDF tiene una forma tan
+  rara que el calculo de columnas revienta (un max() de una lista vacia, un
+  indice que no existe): antes eso era un error 500.
+
+SI FALTA UN DATO DEL POSTOR
+
+  Razon social, RUC, representante, su DNI y el domicilio son obligatorios:
+  sin ellos se levanta DocumentoIncompleto (shared/incompleto.py) y la web
+  dice cual falta. Antes la linea quedaba en blanco y el documento salia
+  igual. Lo opcional (forma de pago, garantia, plazo, CCI en la DJ) puede
+  quedar en blanco, pero queda en el log.
 """
 from __future__ import annotations
 
+import asyncio
+import functools
 import io
 import logging
 import os
@@ -39,6 +51,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from shared.config import normalizar
+from shared.incompleto import DocumentoIncompleto
 
 log = logging.getLogger("shared.llenar_formatos")
 
@@ -48,6 +61,61 @@ MAX_BYTES = 10 * 1024 * 1024
 
 class FormatoNoReconocido(ValueError):
     """El PDF no tiene la forma esperada. El mensaje es para el usuario."""
+
+
+# Lo que ningun documento del postor puede llevar en blanco.
+DATOS_DEL_POSTOR = (("razon_social", "la razón social"), ("ruc", "el RUC"),
+                    ("representante_legal", "el representante legal"),
+                    ("dni_representante", "el DNI del representante"),
+                    ("direccion", "el domicilio fiscal"))
+
+
+def _texto(valor) -> str:
+    return str(valor).strip() if valor is not None else ""
+
+
+def exigir_datos(documento: str, empresa: dict, campos=DATOS_DEL_POSTOR) -> None:
+    """DocumentoIncompleto si a la empresa le falta alguno de `campos`."""
+    falta = [rotulo for campo, rotulo in campos if not _texto(empresa.get(campo))]
+    if falta:
+        raise DocumentoIncompleto(documento, falta)
+
+
+def _errores_de_formato() -> tuple:
+    """Lo que revienta al leer un PDF con una forma inesperada: calculos sobre
+    listas vacias (ValueError, IndexError), decimales ilegibles
+    (InvalidOperation, que es ArithmeticError) y los errores propios de
+    pdfminer, pypdf y pdfium con un PDF mal formado."""
+    from pdfminer.psparser import PSException
+    from pypdf.errors import PyPdfError
+    errores = [ValueError, IndexError, KeyError, TypeError, ArithmeticError, PSException,
+               PyPdfError]
+    try:
+        from pypdfium2 import PdfiumError
+        errores.append(PdfiumError)
+    except ImportError:  # pragma: no cover
+        pass
+    return tuple(errores)
+
+
+def _sin_errores_crudos(fn):
+    """Convierte un error de formato raro en FormatoNoReconocido.
+
+    POR QUE: `except FormatoNoReconocido` del llamador no atrapa un ValueError
+    de `max()` sobre una lista vacia, y la descarga terminaba en un 500 en vez
+    de caer al formato propio con un mensaje. DocumentoIncompleto pasa tal cual."""
+    @functools.wraps(fn)
+    def envuelta(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except (FormatoNoReconocido, DocumentoIncompleto):
+            raise
+        except _errores_de_formato() as e:
+            log.warning("%s: formato con una forma inesperada (%r)", fn.__name__, e,
+                        exc_info=True)
+            raise FormatoNoReconocido(
+                "El formato de la entidad tiene una forma que no sabemos llenar.") from e
+    return envuelta
 
 
 # ─── Donde se guardan los formatos que sube el usuario ──────
@@ -73,9 +141,16 @@ def guardados(propuesta_id: int) -> dict[str, bool]:
 
 def guardar(propuesta_id: int, tipo: str, contenido: bytes) -> None:
     """Valida que sea un PDF legible y lo guarda, reemplazando el anterior."""
-    with _abrir(contenido) as pdf:
-        if not pdf.pages:
-            raise FormatoNoReconocido("El PDF no tiene páginas.")
+    # `pdf.pages` dentro del try: pdfplumber abre sin leer, y es al pedir las
+    # paginas cuando pdfminer revienta con un PDF danado (era un 500).
+    try:
+        with _abrir(contenido) as pdf:
+            if not pdf.pages:
+                raise FormatoNoReconocido("El PDF no tiene páginas.")
+    except FormatoNoReconocido:
+        raise
+    except Exception as e:
+        raise FormatoNoReconocido("No se pudo leer el PDF. ¿Está dañado o protegido?") from e
     destino = ruta(propuesta_id, tipo)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_bytes(contenido)
@@ -90,7 +165,7 @@ async def formato(propuesta_id: int, licitacion_id: str, tipo: str) -> tuple[byt
     correccion suya); si no, el que bajo la PC puente del portal de la entidad."""
     subido = ruta(propuesta_id, tipo)
     if subido.exists():
-        return subido.read_bytes(), "subido"
+        return await asyncio.to_thread(subido.read_bytes), "subido"
     from shared.db import contenido_documento
     contenido = await contenido_documento(licitacion_id, tipo)
     return (bytes(contenido), "portal") if contenido else None
@@ -221,8 +296,13 @@ def _etiqueta(palabras, *frases) -> dict | None:
 
 # ─── Solicitud de cotizacion ────────────────────────────────
 
+@_sin_errores_crudos
 def _localizar_tabla(pagina) -> dict:
-    """Columnas MARCA / P. UNITARIO / P. TOTAL y las filas de items."""
+    """Columnas MARCA / P. UNITARIO / P. TOTAL y las filas de items.
+
+    Decorada: una pagina sin lineas verticales a la izquierda de MARCA daba
+    `max()` de una lista vacia (ValueError), que `llenar_solicitud` no
+    atrapaba al probar la siguiente pagina."""
     palabras = _palabras(pagina)
     marca = next((w for w in palabras if normalizar(w["text"]) == "marca"), None)
     precios = sorted((w for w in palabras if normalizar(w["text"]) == "precio"),
@@ -284,6 +364,32 @@ def _localizar_tabla(pagina) -> dict:
             "fila_total": fila_total, "palabras": palabras, "izquierda": izquierda}
 
 
+SC = "la solicitud de cotización"
+# Lo que la cabecera (o el bloque del postor) de una SC tiene que llevar escrito.
+_EN_LA_SC = (("razon_social", "la razón social"), ("ruc", "el RUC"),
+             ("direccion", "el domicilio fiscal"))
+
+
+def exigir_escritos(escritos: set, documento: str = SC) -> None:
+    """FormatoNoReconocido si el formato no tenia donde poner un dato obligatorio.
+
+    El dato estaba (lo comprueba `exigir_datos`), pero no se encontro su
+    etiqueta: el documento saldria con la razon social o el RUC sin poner.
+    Mejor caer al formato propio, que los lleva todos."""
+    for campo, rotulo in _EN_LA_SC:
+        if campo not in escritos:
+            raise FormatoNoReconocido(f"No encontramos dónde va {rotulo} en {documento}.")
+
+
+def _avisar_condiciones(documento: str, etiqueta, frases, valor) -> None:
+    """Las condiciones son opcionales: si el formato las pide y no hay dato,
+    quedan en blanco, pero que quede constancia."""
+    if etiqueta and not valor:
+        log.warning("%s: «%s» queda en blanco (sin dato en las condiciones)", documento,
+                    frases[0])
+
+
+@_sin_errores_crudos
 def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condiciones: dict,
                      total_letras: str, total: Decimal, imagenes: dict | None = None) -> bytes:
     """La SC de la entidad con marca y precios por fila, cabecera y condiciones.
@@ -293,6 +399,7 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
     fila equivocada es peor que una cotizacion con formato propio."""
     from shared.cotizacion import monto, precio_legible
 
+    exigir_datos(SC, empresa)
     with _abrir(contenido) as pdf:
         paginas = pdf.pages
         donde, error = None, None
@@ -311,7 +418,12 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
             raise FormatoNoReconocido(
                 f"La solicitud tiene {len(filas)} ítems y la propuesta {len(items)}: "
                 "revisa los ítems antes de llenar el formato.")
-        for (_, cant), it in zip(filas, items):
+        for (_, cant), it in zip(filas, items, strict=True):
+            if it.get("cantidad") is None:
+                # Decimal("None") era un InvalidOperation y un 500.
+                raise FormatoNoReconocido(
+                    f"El ítem «{(it.get('descripcion') or '')[:40]}» no tiene cantidad: "
+                    "complétala antes de llenar el formato.")
             if Decimal(str(it["cantidad"])) != cant:
                 raise FormatoNoReconocido(
                     f"La cantidad de «{it['descripcion'][:40]}» no coincide con la solicitud "
@@ -350,7 +462,7 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
         # el usuario pidio respetar el formato tal cual (`total_letras` se
         # conserva para la cotizacion propia, que si lo lleva).
 
-        _cabecera(capas, paginas, n, empresa)
+        escritos = _cabecera(capas, paginas, n, empresa)
 
         # Condiciones: la respuesta a continuacion de cada etiqueta.
         pal = tabla["palabras"]
@@ -362,16 +474,22 @@ def llenar_solicitud(contenido: bytes, empresa: dict, items: list[dict], condici
                 (("TIPO DE MONEDA:",), condiciones.get("moneda") or "Soles (S/)"),
                 (("VALIDEZ DE LA COTIZACIÓN:",), condiciones.get("validez"))):
             w = _etiqueta(pal, *frases)
+            _avisar_condiciones(SC, w, frases, valor)
             if w and valor:
                 capa.texto(w["x1"] + 5, w["bottom"] - 1.5, str(valor).upper(), 7.5,
                            ancho_max=pag.width - w["x1"] - 50)
 
-        _bloque_postor(capas, paginas, empresa, imagenes or {})
+        escritos |= _bloque_postor(capas, paginas, empresa, imagenes or {})
+        exigir_escritos(escritos)
         return _fundir(contenido, capas)
 
 
-def _cabecera(capas, paginas, n, empresa) -> None:
-    """Señores / R.U.C. / Direccion / Telefono, en la primera pagina que los tenga."""
+def _cabecera(capas, paginas, n, empresa) -> set[str]:
+    """Señores / R.U.C. / Direccion / Telefono, en la primera pagina que los tenga.
+
+    Devuelve los campos que escribio: quien llama exige razon social, RUC y
+    domicilio (antes, sin la etiqueta, quedaban sin poner y nadie se enteraba)."""
+    escritos: set[str] = set()
     for pi in sorted({0, n}):
         pal = _palabras(paginas[pi])
         etiquetas = {}
@@ -404,13 +522,16 @@ def _cabecera(capas, paginas, n, empresa) -> None:
                 limite = fax["x0"] - 6
             cp.texto(x_valor, w["bottom"] - 1.5, valor, size, negrita=neg,
                      ancho_max=limite - x_valor)
+            escritos.add({"senores": "razon_social"}.get(clave, clave))
         if ruc_w and empresa.get("ruc"):
             # El SIGA pone los dos puntos aparte ("R.U.C.  :"): el RUC va tras ellos.
             dp = next((w for w in pal if w["text"] == ":" and abs(w["top"] - ruc_w["top"]) < 3
                        and 0 <= w["x0"] - ruc_w["x1"] <= 16), None)
-            cp.texto((dp or ruc_w)["x1"] + 6, ruc_w["bottom"] - 1.5, empresa["ruc"], 9,
+            cp.texto((dp or ruc_w)["x1"] + 6, ruc_w["bottom"] - 1.5, str(empresa["ruc"]), 9,
                      negrita=True)
-        return
+            escritos.add("ruc")
+        return escritos
+    return escritos
 
 
 def _partir(texto: str, ancho: float, size: float) -> list[str]:
@@ -468,29 +589,37 @@ def _firma_junto_a_la_entidad(capas: dict, paginas, empresa: dict, imagenes: dic
     return False
 
 
-def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> None:
+def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> set[str]:
     """Firma del postor: junto a la de la entidad si la SC la tiene; si no, datos
-    del postor y linea de firma en el espacio libre de la ultima pagina."""
+    del postor y linea de firma en el espacio libre de la ultima pagina.
+
+    Devuelve los campos del postor que escribio. Sin sitio para la firma,
+    FormatoNoReconocido: antes se volvia sin escribir nada y la SC salia sin
+    firma ni datos del postor."""
     if _firma_junto_a_la_entidad(capas, paginas, empresa, imagenes):
-        return
+        return set()
     ult = len(paginas) - 1
     pag = paginas[ult]
     cuerpo = [w for w in _palabras(pag) if w["bottom"] < pag.height - 60]
     libre_desde = max((w["bottom"] for w in cuerpo), default=80) + 40
     if pag.height - 70 - libre_desde < 190:
-        return  # sin sitio: no se encima nada sobre el texto de la entidad
+        # No se encima nada sobre el texto de la entidad: formato propio.
+        raise FormatoNoReconocido(
+            "La solicitud no deja sitio para la firma y los datos del postor.")
     capa = capas[ult]
     y = libre_desde
+    escritos: set[str] = set()
     capa.texto(42, y, "DATOS DEL POSTOR", 9, negrita=True)
-    for rotulo, valor in (("Razón social:", empresa.get("razon_social")),
-                          ("RUC:", empresa.get("ruc")),
-                          ("Domicilio fiscal:", empresa.get("direccion")),
-                          ("Teléfono:", empresa.get("telefono")),
-                          ("Correo:", empresa.get("email"))):
+    for campo, rotulo, valor in (("razon_social", "Razón social:", empresa.get("razon_social")),
+                                 ("ruc", "RUC:", empresa.get("ruc")),
+                                 ("direccion", "Domicilio fiscal:", empresa.get("direccion")),
+                                 ("telefono", "Teléfono:", empresa.get("telefono")),
+                                 ("email", "Correo:", empresa.get("email"))):
         if valor:
             y += 13
             capa.texto(42, y, rotulo, 8, negrita=True)
             capa.texto(125, y, valor, 8, ancho_max=pag.width - 170)
+            escritos.add(campo)
     y += 95
     centro = pag.width / 2
     # Como se firma en papel: el sello sobre la linea y la firma encima de el.
@@ -507,6 +636,7 @@ def _bloque_postor(capas: dict, paginas, empresa: dict, imagenes: dict) -> None:
         capa.texto(centro, y + 12 + k * 11, t, 8, negrita=neg, centro=True)
     capa.texto(centro, y + 64, "(Firma y sello del postor)", 7.5, centro=True,
                color=(0.4, 0.4, 0.4))
+    return escritos
 
 
 # ─── Declaracion jurada ─────────────────────────────────────
@@ -548,9 +678,20 @@ def _contexto(pagina, tramo: dict, n: int = 40) -> str:
     return re.sub(r"\s+", " ", normalizar(texto)).strip()[-n:]
 
 
+DJ = "la declaración jurada"
+# Los campos que toda DJ de postor trae y sin los cuales no se reconoce el formato.
+_DJ_RECONOCIBLE = {"representante_legal", "razon_social", "dni_representante", "ruc"}
+
+
+@_sin_errores_crudos
 def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                               dia: str, mes: str, imagenes: dict | None = None) -> bytes:
-    """La DJ de la entidad con los datos del postor en sus lineas punteadas."""
+    """La DJ de la entidad con los datos del postor en sus lineas punteadas.
+
+    DocumentoIncompleto si a la empresa le falta razon social, RUC,
+    representante, DNI o domicilio: antes su linea quedaba en blanco y la DJ
+    se firmaba asi. El CCI es opcional: su linea queda para escribirla a mano."""
+    exigir_datos(DJ, empresa)
     with _abrir(contenido) as pdf:
         pag = pdf.pages[0]
         capa = _Capa(pag.width, pag.height)
@@ -567,7 +708,11 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                 campo = "razon_social"
             elif re.search(r"dni n\S?$", ctx):
                 campo = "dni_representante"
-            elif re.search(r"ruc( n\S?)?$", ctx) or re.search(r"^n\S?$", ctx[-2:]) and "ruc" in ctx:
+            elif re.search(r"\br\.?u\.?c\.?\s*(n\S?)?$", ctx):
+                # "RUC", "RUC N°", "R.U.C. Nº" justo antes de la linea. Antes
+                # bastaba con que "ruc" apareciera en los 40 caracteres previos
+                # y la linea terminara en "N°": una "Partida N° ......" tras
+                # "con RUC ..." se llenaba con el RUC.
                 campo = "ruc"
             elif ctx.endswith("fiscal en"):
                 campo = "direccion"
@@ -577,29 +722,40 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
                 detectados.add(campo)
             valor = cci if campo == "cci" else empresa.get(campo) if campo else None
             if not valor or campo in llenados:
-                continue   # sin dato: la linea queda para escribirla a mano
+                # Sin dato solo puede quedar el CCI (los obligatorios ya se
+                # exigieron arriba): su linea queda para escribirla a mano.
+                if campo == "cci" and not valor:
+                    log.warning("DJ: sin CCI, su línea queda en blanco")
+                continue
             chico = campo == "direccion"
             capa.tapar(tr["x0"] - 0.5, tr["top"] - 0.5, tr["x1"] + 0.5, tr["bottom"] + 0.5)
-            capa.texto(tr["x0"] + 2, tr["bottom"] - 1.8, valor, 7.5 if chico else 9,
+            capa.texto(tr["x0"] + 2, tr["bottom"] - 1.8, str(valor), 7.5 if chico else 9,
                        negrita=not chico, ancho_max=tr["x1"] - tr["x0"] - 3)
             llenados.add(campo)
-        # Se exige reconocer el FORMATO (que tenga nombre, DNI y RUC), no que la
-        # empresa tenga todos los datos: lo que falte queda en blanco.
-        if not {"representante_legal", "dni_representante", "ruc"} <= detectados:
+        # Se exige reconocer el FORMATO: nombre, razon social, DNI y RUC. Si no
+        # se encuentra la linea de uno, la DJ saldria con ese dato sin poner
+        # aunque la empresa lo tenga: mejor la DJ propia, que los lleva todos.
+        if not _DJ_RECONOCIBLE <= detectados:
             raise FormatoNoReconocido(
-                "No reconocimos los campos de la declaración jurada (nombre, DNI, RUC).")
+                "No reconocimos los campos de la declaración jurada "
+                "(nombre, razón social, DNI, RUC).")
+        if "direccion" not in detectados:
+            # Hay DJ que no piden domicilio; si lo piden con otra redaccion,
+            # que quede constancia de que su linea no se lleno.
+            log.warning("DJ: no se encontró la línea del domicilio; no se escribe")
 
         # Fecha "  /   / 2026": dia antes de la primera barra y mes entre las dos.
         palabras = _palabras(pag)
         fecha = _etiqueta(palabras, "Fecha:")
-        if fecha:
-            barras = [w for w in palabras if w["text"].startswith("/") and
-                      abs(w["top"] - fecha["top"]) < 3 and w["x0"] > fecha["x1"]]
-            if len(barras) >= 2:
-                capa.texto((fecha["x1"] + barras[0]["x0"]) / 2, fecha["bottom"] - 1.5, dia, 9,
-                           negrita=True, centro=True)
-                capa.texto((barras[0]["x1"] + barras[1]["x0"]) / 2, fecha["bottom"] - 1.5, mes,
-                           9, negrita=True, centro=True)
+        barras = [w for w in palabras if fecha and w["text"].startswith("/") and
+                  abs(w["top"] - fecha["top"]) < 3 and w["x0"] > fecha["x1"]]
+        if fecha and len(barras) >= 2:
+            capa.texto((fecha["x1"] + barras[0]["x0"]) / 2, fecha["bottom"] - 1.5, dia, 9,
+                       negrita=True, centro=True)
+            capa.texto((barras[0]["x1"] + barras[1]["x0"]) / 2, fecha["bottom"] - 1.5, mes,
+                       9, negrita=True, centro=True)
+        else:
+            log.warning("DJ: no se encontró la fecha «  /  /»; queda para escribirla a mano")
 
         # Firma y sello sobre la linea de "Firma, nombre y/o sello".
         imagenes = imagenes or {}
@@ -622,6 +778,7 @@ def llenar_declaracion_jurada(contenido: bytes, empresa: dict, cci: str | None,
         return _fundir(contenido, {0: capa})
 
 
+@_sin_errores_crudos
 def sellar_paginas(contenido: bytes, imagenes: dict | None) -> bytes:
     """Firma y sello en la esquina inferior derecha de CADA pagina.
 
@@ -659,12 +816,15 @@ def _mapas_de_tinta(contenido: bytes) -> list:
     ve. Si la pagina no se puede pintar, se sigue sin mapa."""
     try:
         import pypdfium2 as pdfium
-        doc = pdfium.PdfDocument(contenido)
-        try:
-            return [doc[i].render(scale=_ESCALA_TINTA).to_pil().convert("L")
-                    for i in range(len(doc))]
-        finally:
-            doc.close()
+
+        from shared.pdfium_candado import CANDADO
+        with CANDADO:
+            doc = pdfium.PdfDocument(contenido)
+            try:
+                return [doc[i].render(scale=_ESCALA_TINTA).to_pil().convert("L")
+                        for i in range(len(doc))]
+            finally:
+                doc.close()
     except Exception as e:  # noqa: BLE001
         log.info("Sin mapa de tinta para sellar: %s", e)
         return []
@@ -733,18 +893,27 @@ def _hueco_para_el_sello(pag, tinta=None) -> tuple[float, float, float]:
 
 async def sc_llena(propuesta_id: int, licitacion_id: str, empresa: dict, items: list[dict],
                    condiciones: dict, imagenes: dict | None = None) -> bytes | None:
-    """La SC de la entidad llena, o None si no hay formato (ni subido ni del portal)."""
+    """La SC de la entidad llena, o None si no hay formato (ni subido ni del portal).
+
+    El llenado corre en un hilo (asyncio.to_thread), como el de la DJ y las
+    EETT: pdfplumber, pypdfium2 y reportlab sobre un escaneo grande tardan
+    segundos, y en el hilo del servidor congelaban el sitio entero, webhooks
+    incluidos."""
     from shared import cotizacion
     hallado = await formato(propuesta_id, licitacion_id, "sc")
     if not hallado:
         return None
     suma = cotizacion.total(items)
     from shared.llenar_siga import es_siga, llenar_solicitud_siga
-    if es_siga(hallado[0]):
-        # La SC del SIGA (municipalidades: Tambopata): otra tabla, sin columna MARCA.
-        return llenar_solicitud_siga(hallado[0], empresa, items, condiciones, suma, imagenes)
-    return llenar_solicitud(hallado[0], empresa, items, condiciones,
-                            cotizacion.monto_en_letras(suma), suma, imagenes)
+
+    def llenar() -> bytes:
+        if es_siga(hallado[0]):
+            # La SC del SIGA (municipalidades: Tambopata): otra tabla, sin columna MARCA.
+            return llenar_solicitud_siga(hallado[0], empresa, items, condiciones, suma,
+                                         imagenes)
+        return llenar_solicitud(hallado[0], empresa, items, condiciones,
+                                cotizacion.monto_en_letras(suma), suma, imagenes)
+    return await asyncio.to_thread(llenar)
 
 
 async def dj_llena(propuesta_id: int, licitacion_id: str, empresa: dict, cci: str | None,
@@ -755,8 +924,8 @@ async def dj_llena(propuesta_id: int, licitacion_id: str, empresa: dict, cci: st
     if not hallado:
         return None
     hoy = fechas.hoy()
-    return llenar_declaracion_jurada(hallado[0], empresa, cci, f"{hoy.day:02d}",
-                                     f"{hoy.month:02d}", imagenes)
+    return await asyncio.to_thread(llenar_declaracion_jurada, hallado[0], empresa, cci,
+                                   f"{hoy.day:02d}", f"{hoy.month:02d}", imagenes)
 
 
 async def eett_selladas(propuesta_id: int, licitacion_id: str,
@@ -765,4 +934,4 @@ async def eett_selladas(propuesta_id: int, licitacion_id: str,
     hallado = await formato(propuesta_id, licitacion_id, "eett")
     if not hallado:
         return None
-    return sellar_paginas(hallado[0], imagenes)
+    return await asyncio.to_thread(sellar_paginas, hallado[0], imagenes)
