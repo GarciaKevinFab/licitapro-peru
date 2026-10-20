@@ -28,17 +28,26 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import logging
+
 from shared.config import normalizar
 from shared.llenar_formatos import (
+    SC,
     FormatoNoReconocido,
     _abrir,
+    _avisar_condiciones,
     _cabecera,
     _Capa,
     _etiqueta,
     _fundir,
     _num,
     _palabras,
+    _sin_errores_crudos,
+    exigir_datos,
+    exigir_escritos,
 )
+
+log = logging.getLogger("shared.llenar_siga")
 
 
 def es_siga(contenido: bytes) -> bool:
@@ -46,7 +55,9 @@ def es_siga(contenido: bytes) -> bool:
     try:
         with _abrir(contenido) as pdf:
             texto = normalizar(" ".join(w["text"] for w in _palabras(pdf.pages[0])[:40]))
-    except FormatoNoReconocido:
+    except Exception:  # noqa: BLE001
+        # Un PDF sin paginas o que pdfminer no lee no es del SIGA; el llenador
+        # del GOREMAD lo rechazara con su FormatoNoReconocido y su mensaje.
         return False
     return "sistema integrado de gestion administrativa" in texto
 
@@ -139,6 +150,8 @@ def _filas(palabras, cols, desde, hasta) -> list[dict]:
         desc = sorted((p for p in cerca if en("descripcion", p)),
                       key=lambda p: (round(p["top"]), p["x0"]))
         filas.append({"cantidad": _num(cant[0]["text"]) if cant else None,
+                      # Bienes: la tabla tiene CANTIDAD y cada item la trae.
+                      "con_cantidad": "cantidad" in cols,
                       "unidad": " ".join(p["text"] for p in sorted(unidad, key=lambda p: p["x0"])),
                       "top": w["top"], "bottom": w["bottom"], "fin": fin, "desc": desc,
                       "descripcion": " ".join(p["text"] for p in desc)})
@@ -174,15 +187,30 @@ def leer_items_siga(contenido: bytes) -> list[dict]:
     """Los items de la SC, en su orden: descripcion, cantidad y unidad.
 
     Es lo que el radar guarda en `licitaciones.descripcion` para que la
-    propuesta nazca con sus items (shared/cotizacion.sembrar). Un servicio sin
-    cantidad cuenta como 1.
+    propuesta nazca con sus items (shared/cotizacion.sembrar).
+
+    Un servicio cuenta como 1: la variante de servicios del SIGA no tiene
+    columna CANTIDAD y se cotiza por su valor total, asi que 1 es lo que dice
+    el formato. En bienes, en cambio, una cantidad que no se lee NO es 1:
+    antes se tomaba asi y el total de la oferta salia falso (60 archivadores
+    cotizados como uno). Se levanta FormatoNoReconocido.
     """
     with _abrir(contenido) as pdf:
         filas = _todas_las_filas(pdf.pages)[0]
-    return [{"descripcion": f["descripcion"], "cantidad": f["cantidad"] or Decimal(1),
-             "unidad": f["unidad"] or None} for f in filas if f["descripcion"]]
+    items = []
+    for n, f in enumerate((f for f in filas if f["descripcion"]), 1):
+        cantidad = f["cantidad"]
+        if cantidad is None:
+            if f["con_cantidad"]:
+                raise FormatoNoReconocido(
+                    f"No se pudo leer la cantidad del ítem {n} de la solicitud.")
+            cantidad = Decimal(1)
+        items.append({"descripcion": f["descripcion"], "cantidad": cantidad,
+                      "unidad": f["unidad"] or None})
+    return items
 
 
+@_sin_errores_crudos
 def llenar_solicitud_siga(contenido: bytes, empresa: dict, items: list[dict],
                           condiciones: dict, total: Decimal,
                           imagenes: dict | None = None) -> bytes:
@@ -190,6 +218,7 @@ def llenar_solicitud_siga(contenido: bytes, empresa: dict, items: list[dict],
     from shared.cotizacion import monto, precio_legible
 
     imagenes = imagenes or {}
+    exigir_datos(SC, empresa)
     with _abrir(contenido) as pdf:
         paginas = pdf.pages
         capas = {i: _Capa(p.width, p.height) for i, p in enumerate(paginas)}
@@ -203,7 +232,11 @@ def llenar_solicitud_siga(contenido: bytes, empresa: dict, items: list[dict],
             raise FormatoNoReconocido(
                 f"La solicitud tiene {len(filas)} ítems y la propuesta {len(items)}: "
                 "revisa los ítems antes de llenarla.")
-        for f, it in zip(filas, items, strict=True):
+        for k, (f, it) in enumerate(zip(filas, items, strict=True), 1):
+            if f["cantidad"] is None and f["con_cantidad"]:
+                # Sin leerla no se puede comprobar que el precio va en su fila.
+                raise FormatoNoReconocido(
+                    f"No se pudo leer la cantidad del ítem {k} de la solicitud.")
             if (f["cantidad"] is not None and it.get("cantidad") is not None
                     and f["cantidad"] != Decimal(str(it["cantidad"]))):
                 raise FormatoNoReconocido(
@@ -226,10 +259,12 @@ def llenar_solicitud_siga(contenido: bytes, empresa: dict, items: list[dict],
         capa.texto(tc[1] - 4, fila_total["bottom"] - 1, monto(total), 9, negrita=True,
                    derecha=True)
 
-        _cabecera(capas, paginas, primera_tabla, empresa)
+        exigir_escritos(_cabecera(capas, paginas, primera_tabla, empresa))
         _email(capas, paginas, primera_tabla, empresa)
         _condiciones(capas[pagina_total], paginas[pagina_total], condiciones)
-        _firma(capas, paginas, empresa, imagenes)
+        if not _firma(capas, paginas, empresa, imagenes):
+            raise FormatoNoReconocido(
+                "No encontramos dónde firma el postor («Atentamente;») en la solicitud.")
         return _fundir(contenido, capas)
 
 
@@ -303,13 +338,15 @@ def _condiciones(capa, pag, condiciones: dict) -> None:
             (("Indicar Marca de Procedencia",), "Indicada en cada ítem"),
             (("Tipo de Cambio :", "Tipo de Cambio:"), "No aplica")):
         w = _etiqueta(pal, *frases)
+        _avisar_condiciones(SC, w, frases, valor)
         if w and valor:
             capa.texto(w["x1"] + 4, w["bottom"] - 1.5, str(valor).upper(), 7,
                        ancho_max=max(tope - w["x1"] - 4, 40))
 
 
-def _firma(capas, paginas, empresa: dict, imagenes: dict) -> None:
-    """Bajo "Atentamente;" de la ultima pagina que lo tenga."""
+def _firma(capas, paginas, empresa: dict, imagenes: dict) -> bool:
+    """Bajo "Atentamente;" de la ultima pagina que lo tenga. False si no hay
+    donde: la SC saldria sin firma del postor."""
     for n in range(len(paginas) - 1, -1, -1):
         pag = paginas[n]
         aten = next((w for w in _palabras(pag)
@@ -326,7 +363,7 @@ def _firma(capas, paginas, empresa: dict, imagenes: dict) -> None:
                 capa.imagen(imagenes["sello"], cx, linea + 8, 190, 76)
             if imagenes.get("firma"):
                 capa.imagen(imagenes["firma"], cx, linea - 4, 115, 56)
-            return
+            return True
         capa.linea(cx - 95, linea, cx + 95)
         cargo = (empresa.get("cargo_representante") or "Representante legal").upper()
         for k, (t, neg) in enumerate(((empresa.get("representante_legal") or "", True),
@@ -334,4 +371,5 @@ def _firma(capas, paginas, empresa: dict, imagenes: dict) -> None:
                                       (cargo, False),
                                       (empresa.get("razon_social") or "", True))):
             capa.texto(cx, linea + 9 + k * 8.5, t, 7, negrita=neg, centro=True, ancho_max=200)
-        return
+        return True
+    return False

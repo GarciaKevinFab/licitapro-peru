@@ -22,6 +22,7 @@ equivalentes ante la ley ni ante una entidad:
 
 Por eso estos documentos salen en PDF y no en DOCX: ReFirma firma PDF.
 """
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -116,6 +117,19 @@ def _cabecera(empresa: dict, imagenes: dict, est: dict) -> list:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     return [tabla, Spacer(1, 16)]
+
+
+def lugar_y_fecha(empresa: dict, hoy) -> str:
+    """"Tambopata, 20 de octubre de 2026", o solo la fecha si no se sabe el lugar.
+
+    Antes, sin departamento, salia "Lima": una empresa de Puerto Maldonado
+    firmaba una declaracion jurada fechada en una ciudad donde no estaba. Un
+    lugar inventado en una DJ es peor que no ponerlo. Escapado: reportlab lee
+    "&" y "<" como marcado."""
+    fecha = f"{hoy.day} de {_MES[hoy.month]} de {hoy.year}"
+    lugar = next((str(v).strip() for v in (empresa.get("provincia"), empresa.get("departamento"))
+                  if v and str(v).strip()), None)
+    return f"{escape(lugar)}, {fecha}" if lugar else fecha
 
 
 def _bloque_firma(empresa: dict, imagenes: dict, est: dict, con_dnie: bool) -> list:
@@ -219,13 +233,17 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     # Fecha y firma en un solo bloque: si no caben al pie de la ultima pagina,
     # pasan juntas a la siguiente. Antes la firma podia quedar sola en una hoja
     # en blanco, separada del documento que firma.
-    partes.append(KeepTogether([Spacer(1, 12), Paragraph(
-        f"{empresa.get('departamento') or 'Lima'}, "
-        f"{hoy.day} de {_MES[hoy.month]} de {hoy.year}", est["cuerpo"])]
-        + _bloque_firma(empresa, imagenes, est, con_dnie)))
+    partes.append(KeepTogether([Spacer(1, 12), Paragraph(lugar_y_fecha(empresa, hoy),
+                                                         est["cuerpo"])]
+                               + _bloque_firma(empresa, imagenes, est, con_dnie)))
 
-    doc.build(partes)
-    if membrete:
-        hoja.estampar(ruta, membrete)
+    def construir() -> None:
+        doc.build(partes)
+        if membrete:
+            hoja.estampar(ruta, membrete)
+
+    # En un hilo: reportlab con imagenes y el estampado de la hoja membretada
+    # (pypdf) tardan, y en el hilo del servidor congelaban todas las peticiones.
+    await asyncio.to_thread(construir)
     log.info("PDF generado: %s (dnie=%s, membrete=%s)", ruta, con_dnie, bool(membrete))
     return str(ruta)

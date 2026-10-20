@@ -342,7 +342,7 @@ async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
         usuario, empresa, cliente, marca, tmp_path, monkeypatch, plantillas_del_repo):
     from radar_bot.scrapers.mpt_tambopata import descripcion_desde_sc
     from shared import constancia_rnp, cotizacion, ficha_ruc, llenar_formatos, pdf_firma
-    from shared.db import connection, guardar_documento
+    from shared.db import connection, guardar_documento, kb_set
 
     monkeypatch.setattr(llenar_formatos, "DIR", tmp_path / "formatos")
     monkeypatch.setattr(constancia_rnp, "DIR_PDF", tmp_path / "rnp")
@@ -350,7 +350,15 @@ async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
     monkeypatch.setattr(pdf_firma, "hay_conversor", lambda: None)
     sc = _siga(BIENES)
     lic = f"mpt_prueba_{marca}"
+    # Lo que los anexos no pueden llevar en blanco: antes salian con "……" en el
+    # DNI, el domicilio, el plazo y el CCI, y la prueba no lo notaba.
+    await kb_set(empresa, "financiero", "cci", "00212345678901234567")
+    await kb_set(empresa, "financiero", "entidad_bancaria", "BCP")
     async with connection() as c:
+        await c.execute(
+            """UPDATE empresas SET representante_legal='QUISPE MAMANI ROSA ELENA',
+                      dni_representante='12345678', direccion='Av. La Cultura 1234'
+                WHERE id=$1""", empresa)
         await c.execute(
             """INSERT INTO licitaciones (id, fuente, tipo, nomenclatura, entidad, objeto,
                    descripcion, url)
@@ -368,7 +376,8 @@ async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
         items = await cotizacion.items_de(pid)
         assert len(items) == 3
         await cotizacion.guardar(pid, {it["id"]: (f"MARCA {k}", Decimal("2.50"))
-                                       for k, it in enumerate(items, 1)}, {})
+                                       for k, it in enumerate(items, 1)},
+                                {"plazo_entrega": "05 días calendario"})
         r = await cliente.post("/entrar", data={"email": usuario["email"],
                                                 "password": usuario["password"]})
         assert r.status_code == 303
