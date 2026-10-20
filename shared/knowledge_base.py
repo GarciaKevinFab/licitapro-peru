@@ -24,22 +24,23 @@ CATEGORIAS = [
 
 async def buscar_valor(empresa_id: int, categoria: str, clave: str) -> str | None:
     """Busca un valor primero en KB, luego en tablas auxiliares."""
-    # 1. Buscar en knowledge_base
-    valor = await kb_get(empresa_id, categoria, clave)
-    if valor:
-        return valor
-
-    # 2. Buscar en tabla empresas
+    # Todo con UNA conexion: kb_set abria otra mientras esta seguia ocupada,
+    # y con el pool lleno eso es un interbloqueo.
     async with connection() as conn:
+        # 1. Buscar en knowledge_base
+        valor = await kb_get(empresa_id, categoria, clave, conn=conn)
+        if valor:
+            return valor
+
+        # 2. Buscar en tabla empresas
         empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", empresa_id)
         if empresa and clave in dict(empresa) and empresa[clave]:
             valor = str(empresa[clave])
-            await kb_set(empresa_id, categoria, clave, valor, "tabla_empresas")
+            await kb_set(empresa_id, categoria, clave, valor, "tabla_empresas", conn=conn)
             return valor
 
-    # 3. Buscar en equipo_tecnico si es de equipo
-    if categoria == "equipo":
-        async with connection() as conn:
+        # 3. Buscar en equipo_tecnico si es de equipo
+        if categoria == "equipo":
             miembro = await conn.fetchrow(
                 "SELECT * FROM equipo_tecnico WHERE empresa_id=$1 AND especialidad ILIKE $2 LIMIT 1",
                 empresa_id, f"%{clave}%",
