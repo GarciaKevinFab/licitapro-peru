@@ -1,5 +1,6 @@
 """Suscripcion: elegir plan, pagar con Izipay y recibir la confirmacion."""
 import logging
+import os
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
@@ -8,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from shared import culqi, izipay
 from shared.db import connection
 from shared.suscripciones import (
+    PLAN_PENDIENTE_DE_PAGO,
     activar_por_culqi,
     cambiar_plan,
     cancelar,
@@ -15,6 +17,9 @@ from shared.suscripciones import (
     datos_culqi,
     estado_suscripcion,
     limpiar_culqi,
+    orden_del_usuario,
+    plan_valido,
+    plan_y_precio,
     registrar_intento,
 )
 from web.auth import usuario_actual
@@ -45,6 +50,25 @@ async def _planes():
 #   Este ticket NO es una boleta. Es el resumen del cobro que ya se hizo, para
 #   que el cliente tenga a mano el numero de orden y el importe. El comprobante
 #   electronico de SUNAT se emite aparte.
+
+
+def simulacion_permitida() -> bool:
+    """Si se puede "pagar" sin pasarela: Izipay simulado Y entorno de pruebas.
+
+    POR QUE NO BASTA CON EL MODO SIMULADO
+
+      `izipay.modo()` cae a "simulado" en cuanto falta una credencial, a
+      proposito: sin llaves hay que fallar hacia "no cobra nada". Pero el
+      retorno simulado CONFIRMA pagos, y con solo esa condicion bastaba con
+      borrar (o escribir mal) una variable del `.env` de produccion para que
+      cualquiera con cuenta se regalara meses mandando `simulado=1`.
+
+      Se exige ademas que el entorno lo diga en voz alta. Y sin valor por
+      defecto: otras partes del proyecto tratan una LICITAPRO_ENTORNO ausente
+      como "dev", y aqui eso seria repetir el mismo agujero con otra variable.
+    """
+    entorno = os.getenv("LICITAPRO_ENTORNO", "").strip().lower()
+    return izipay.modo() == "simulado" and entorno in ("dev", "test")
 
 
 def _comprobante(historial):
@@ -157,15 +181,28 @@ async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("m
     sxn = (datos or {}).get("culqi_subscription_id")
     tarjeta = (datos or {}).get("culqi_card_id")
 
-    if not await cambiar_plan(usuario["id"], plan, periodo):
+    if not await plan_valido(plan, periodo):
         return RedirectResponse("/suscripcion?error=Plan+o+periodo+no+valido",
                                 status_code=303)
 
-    # Sin suscripcion recurrente viva, cambiar de plan es lo que siempre fue:
-    # un cambio de fila. El cobro llegara cuando el cliente pague.
+    # Sin suscripcion recurrente viva, el cambio pasa por `cambiar_plan`, que
+    # NO aplica una subida sin cobro: si el plan es mas caro, se abre el pago
+    # de ese plan y es la confirmacion del pago la que lo aplica. Bajar se
+    # aplica ya (ver la decision en `cambiar_plan`).
     if not (sxn and tarjeta and culqi.cobro_recurrente()):
+        resultado = await cambiar_plan(usuario["id"], plan, periodo)
+        if not resultado:
+            return RedirectResponse("/suscripcion?error=Plan+o+periodo+no+valido",
+                                    status_code=303)
+        if resultado == PLAN_PENDIENTE_DE_PAGO:
+            return await iniciar_cobro(request, usuario, plan=plan, periodo=periodo)
         return RedirectResponse("/suscripcion?aviso=Plan+actualizado.+Ya+puedes+pagar",
                                 status_code=303)
+
+    # Con Culqi el plan NO se toca antes de crear la suscripcion nueva: es
+    # `activar_por_culqi` quien lo pone, y solo despues de que Culqi la haya
+    # creado (y cobrado). Antes se cambiaba aqui arriba, y si la creacion
+    # fallaba el cliente se quedaba con el plan nuevo sin haberlo pagado.
 
     from web.comprar import plan_culqi_id
     plan_id = await plan_culqi_id(plan, periodo)
@@ -188,9 +225,7 @@ async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("m
             "vuelve a intentarlo en un momento."), status_code=303)
     await limpiar_culqi(usuario["id"])
 
-    susc = await estado_suscripcion(usuario["id"])
-    monto = (susc.get("precio_anual") if periodo == "anual"
-             else susc.get("precio_mensual"))
+    monto = (await plan_y_precio(plan, periodo) or {}).get("monto")
     try:
         nueva = await culqi.crear_suscripcion(
             tarjeta, plan_id,
@@ -203,8 +238,9 @@ async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("m
                   sxn, plan, periodo, usuario["email"], e.merchant_message)
         return RedirectResponse(_con_error(
             "/suscripcion",
-            f"Cambiamos tu plan, pero el cobro automático quedó desactivado: "
-            f"{e.user_message} Vuelve a contratarlo desde Precios."),
+            f"No pudimos cambiar tu plan y el cobro automático quedó "
+            f"desactivado: {e.user_message} Conservas tu plan actual hasta "
+            f"que venza; vuelve a contratarlo desde Precios."),
             status_code=303)
 
     await activar_por_culqi(
@@ -230,7 +266,8 @@ def _con_error(ruta: str, texto: str) -> str:
     return f"{ruta}{'&' if '?' in ruta else '?'}error={quote_plus(texto)}"
 
 
-async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion"):
+async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion",
+                        plan: str | None = None, periodo: str | None = None):
     """Crea la orden, pide el token de sesion a Izipay y pinta el formulario.
 
     El numero de orden se genera y se guarda ANTES de llamar a la pasarela. Si
@@ -252,26 +289,52 @@ async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion
 
     `volver_a` es adonde se devuelve al usuario si algo falla ANTES de llegar a
     la pasarela, y no es el mismo sitio en los dos casos.
+
+    `plan` y `periodo` son lo que se compra cuando NO es el plan de la fila:
+    una subida de plan, que `cambiar_plan` deja pendiente de este cobro. Viajan
+    en la orden y `confirmar_pago` los aplica al confirmarse. Sin ellos se
+    cobra el plan y el periodo que la cuenta ya tiene.
     """
+    if izipay.modo() == "simulado" and not simulacion_permitida():
+        # La pasarela sin credenciales fuera de un entorno de pruebas: abrir el
+        # formulario simulado aqui seria ensenar un "pago" que no cobra nada.
+        log.error("Cobro pedido con Izipay en modo simulado fuera de dev/test")
+        return RedirectResponse(
+            _con_error(volver_a, "El pago no está disponible ahora mismo. "
+                                 "Escríbenos y lo resolvemos."),
+            status_code=303)
+
     susc = await estado_suscripcion(usuario["id"])
     if not susc.get("existe"):
         return RedirectResponse(_con_error(volver_a, "No tienes plan seleccionado"),
                                 status_code=303)
 
-    monto = (susc["precio_anual"] if susc["periodo"] == "anual"
-             else susc["precio_mensual"])
+    if not (plan and periodo):
+        # El plan de la fila, no el que se ve: una cuenta degradada al gratuito
+        # paga para volver al suyo, y `estado_suscripcion` pisa plan_codigo y
+        # precios con los del gratuito en ese caso. Por eso se leen de nuevo.
+        async with connection() as conn:
+            fila = await conn.fetchrow(
+                "SELECT plan_codigo, periodo FROM suscripciones WHERE usuario_id=$1",
+                usuario["id"])
+        plan, periodo = fila["plan_codigo"], fila["periodo"]
+    elegido = await plan_y_precio(plan, periodo)
+    monto = (elegido or {}).get("monto")
     if not monto:
         return RedirectResponse(
             _con_error(volver_a, "Ese plan no tiene precio configurado"),
             status_code=303)
 
     numero_orden = izipay.nuevo_numero_orden()
-    if not await registrar_intento(usuario["id"], monto, numero_orden):
+    if not await registrar_intento(usuario["id"], monto, numero_orden,
+                                   plan_codigo=plan, periodo=periodo):
         return RedirectResponse(_con_error(volver_a, "No se pudo iniciar el cobro"),
                                 status_code=303)
 
+    # El importe viaja como Decimal: `izipay.importe` lo formatea sin pasar por
+    # float, para que lo enviado coincida al centimo con lo registrado.
     resultado = await izipay.generar_token_sesion(
-        numero_orden, float(monto), usuario["email"])
+        numero_orden, monto, usuario["email"])
 
     if not resultado["ok"]:
         log.error("Izipay no devolvio token para %s: %s", numero_orden,
@@ -284,7 +347,7 @@ async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion
         "request": request, "usuario": usuario,
         "token": resultado["token"], "modo": resultado["modo"],
         "numero_orden": numero_orden, "monto": monto,
-        "plan": susc.get("plan_nombre"), "periodo": susc["periodo"],
+        "plan": elegido["nombre"], "periodo": periodo,
     })
 
 
@@ -304,13 +367,28 @@ async def retorno(request: Request, numero_orden: str = Form(...),
 
     El retorno del navegador NO es prueba de pago: lo manda el cliente. La
     confirmacion de verdad llega por webhook, firmada. En modo simulado si se
-    acepta, porque existe justamente para probar el flujo sin pasarela.
+    acepta, porque existe justamente para probar el flujo sin pasarela -- pero
+    solo en un entorno de pruebas declarado (`simulacion_permitida`) y solo
+    para una orden de quien la manda: el numero de orden viene del formulario,
+    y sin esa comprobacion se podria confirmar la orden pendiente de otro.
     """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
 
-    if simulado and izipay.modo() == "simulado":
+    if simulado:
+        if not simulacion_permitida():
+            log.warning("Retorno simulado de %s rechazado: la simulacion no esta "
+                        "permitida en este entorno", usuario["email"])
+            return RedirectResponse(_con_error(
+                "/suscripcion", "Ese pago no se puede confirmar desde aquí."),
+                status_code=303)
+        if not await orden_del_usuario(numero_orden, usuario["id"]):
+            log.warning("Retorno simulado de %s con una orden ajena o inexistente: %s",
+                        usuario["email"], numero_orden)
+            return RedirectResponse(_con_error(
+                "/suscripcion", "Ese pago no se puede confirmar desde aquí."),
+                status_code=303)
         await confirmar_pago(numero_orden, f"SIM-{numero_orden}", {"origen": "simulado"})
         return RedirectResponse("/suscripcion?aviso=Pago+simulado+confirmado",
                                 status_code=303)

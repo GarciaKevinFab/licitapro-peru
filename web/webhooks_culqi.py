@@ -207,11 +207,19 @@ async def recibir(request: Request):
         # Culqi reintenta sus propios cobros; nosotros solo contamos los
         # rechazos y aplicamos la maquina de estados que ya existe: gracia
         # primero, suspension despues de MAX_INTENTOS.
-        await registrar_intento_fallido(susc["usuario_id"])
-        log.info("Cargo %s de la suscripcion %s no fue aprobado (%s): "
-                 "sumado como intento fallido", cargo_id, susc["id"],
-                 (cargo.get("outcome") or {}).get("type"))
-        return JSONResponse({"ok": True, "aplicado": False, "cobrado": False})
+        #
+        # Se cuenta UNA vez por cargo: el mismo chr_ rechazado reenviado N
+        # veces sumaba N intentos, y cuatro reenvios de un solo rechazo
+        # suspendian la cuenta. El `charge_id` hace la cuenta idempotente.
+        contado = await registrar_intento_fallido(
+            susc["usuario_id"], charge_id=cargo_id,
+            monto=culqi.a_soles(cargo.get("amount") or 0),
+            event_id=ids.get("evento"), respuesta=cargo)
+        log.info("Cargo %s de la suscripcion %s no fue aprobado (%s): %s",
+                 cargo_id, susc["id"], (cargo.get("outcome") or {}).get("type"),
+                 "sumado como intento fallido" if contado else "ya estaba contado")
+        return JSONResponse({"ok": True, "aplicado": False, "cobrado": False,
+                             "contado": bool(contado)})
 
     monto = culqi.a_soles(cargo.get("amount") or 0)
     resultado = await aplicar_cargo_culqi(

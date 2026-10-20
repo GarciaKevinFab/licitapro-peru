@@ -126,8 +126,9 @@ def culqi_encendido(monkeypatch):
         caja["aplicados"].append(kw)
         return "aplicado"
 
-    async def fallido(usuario_id):
+    async def fallido(usuario_id, **kw):
         caja["fallidos"].append(usuario_id)
+        return True
 
     monkeypatch.setattr(wh.culqi, "leer_cargo", leer_cargo)
     monkeypatch.setattr(wh.culqi, "leer_evento", leer_evento)

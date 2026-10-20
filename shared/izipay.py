@@ -34,6 +34,7 @@ import hmac
 import logging
 import os
 import secrets
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import httpx
 
@@ -116,6 +117,32 @@ def modo() -> str:
     return "simulado"
 
 
+def importe(monto) -> str:
+    """El importe como lo espera la pasarela: texto con dos decimales exactos.
+
+    POR QUE DECIMAL Y NO `f"{float:.2f}"`
+
+      El precio sale de la base como NUMERIC (Decimal) y se convertia a float
+      para formatearlo. Para 99.00 da igual, pero el float no representa
+      exactamente la mayoria de los centimos -- 0.285 es 0.28499999... -- y el
+      redondeo de `:.2f` puede dejar el importe enviado un centimo por debajo
+      del que se registro en `pagos_suscripcion`. Un centimo de descuadre entre
+      lo cobrado y lo apuntado es justo lo que no se puede explicar en una
+      conciliacion. Se acepta float por compatibilidad, pasando por `str()`
+      para no heredar su error binario.
+
+    Lanza ValueError ante algo que no es un importe positivo: mandar a cobrar
+    "nan" o un negativo no puede ser una peticion valida.
+    """
+    try:
+        valor = Decimal(str(monto)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError) as e:
+        raise ValueError(f"Importe no valido: {monto!r}") from e
+    if not valor.is_finite() or valor <= 0:
+        raise ValueError(f"Importe no valido: {monto!r}")
+    return f"{valor:.2f}"
+
+
 def _host() -> str:
     return HOST_PRODUCCION if modo() == "produccion" else HOST_SANDBOX
 
@@ -130,7 +157,7 @@ def _transaction_id() -> str:
     return f"{fechas.ahora():%H%M%S}{secrets.randbelow(10000):04d}"
 
 
-async def generar_token_sesion(numero_orden: str, monto: float,
+async def generar_token_sesion(numero_orden: str, monto,
                                email_cliente: str, moneda: str = "PEN") -> dict:
     """Token de sesion para abrir el formulario de pago en el navegador.
 
@@ -143,13 +170,19 @@ async def generar_token_sesion(numero_orden: str, monto: float,
         return {"ok": True, "modo": "simulado",
                 "token": f"SIMULADO-{numero_orden}", "detalle": None}
 
+    try:
+        cantidad = importe(monto)
+    except ValueError as e:
+        log.error("Token de Izipay pedido con un importe invalido: %s", e)
+        return {"ok": False, "modo": modo(), "token": None, "detalle": str(e)}
+
     # POR_CONFIRMAR: nombres de campo tomados de la documentacion de web-core.
     cuerpo = {
         "requestSource": "ECOMMERCE",
         "merchantCode": os.getenv("IZIPAY_MERCHANT_CODE"),
         "orderNumber": numero_orden,
         "publicKey": os.getenv("IZIPAY_PUBLIC_KEY", ""),
-        "amount": f"{monto:.2f}",
+        "amount": cantidad,
         "currency": moneda,
         "email": email_cliente,
     }
@@ -181,7 +214,7 @@ async def generar_token_sesion(numero_orden: str, monto: float,
     return {"ok": False, "modo": modo(), "token": None, "detalle": datos}
 
 
-async def cobrar_con_token(token_tarjeta: str, numero_orden: str, monto: float,
+async def cobrar_con_token(token_tarjeta: str, numero_orden: str, monto,
                            moneda: str = "PEN") -> dict:
     """Cobro recurrente contra una tarjeta ya tokenizada.
 
@@ -191,12 +224,19 @@ async def cobrar_con_token(token_tarjeta: str, numero_orden: str, monto: float,
         return {"ok": True, "estado": "pagado", "modo": "simulado",
                 "transaction_id": f"SIM-{numero_orden}", "detalle": None}
 
+    try:
+        cantidad = importe(monto)
+    except ValueError as e:
+        log.error("Cobro con token pedido con un importe invalido: %s", e)
+        return {"ok": False, "estado": "error", "transaction_id": None,
+                "detalle": str(e)}
+
     # POR_CONFIRMAR: endpoint y cuerpo del cobro con token.
     cuerpo = {
         "requestSource": "ECOMMERCE",
         "merchantCode": os.getenv("IZIPAY_MERCHANT_CODE"),
         "orderNumber": numero_orden,
-        "amount": f"{monto:.2f}",
+        "amount": cantidad,
         "currency": moneda,
         "cardToken": token_tarjeta,
     }
@@ -245,6 +285,11 @@ def verificar_firma(cuerpo_crudo: bytes, firma_recibida: str) -> bool:
     return hmac.compare_digest(esperada, firma_recibida.strip().lower())
 
 
-def comision_estimada(monto: float) -> float:
-    """Lo que se lleva Izipay de un cobro, con IGV incluido."""
-    return round(monto * COMISION_PORCENTAJE + COMISION_FIJA, 2)
+def comision_estimada(monto) -> float:
+    """Lo que se lleva Izipay de un cobro, con IGV incluido.
+
+    Es una estimacion para el panel, no un importe que se cobre: por eso
+    float. Se convierte aqui para aceptar tambien el Decimal de la base, que
+    multiplicado por un float lanzaria TypeError.
+    """
+    return round(float(monto) * COMISION_PORCENTAJE + COMISION_FIJA, 2)
