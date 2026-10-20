@@ -124,6 +124,16 @@
 <main class="estrecho">
   {% if aviso %}<div class="mensaje ok">{{ aviso }}</div>{% endif %}
   {% if error %}<div class="mensaje mal">{{ error }}</div>{% endif %}
+  {# El paquete de envio volvio con avisos (EETT que no estan, anexos en
+     Word...): no se sirvio en silencio. Si el usuario los leyo y lo quiere
+     igual, lo baja desde aqui, con los avisos dentro en 00_FALTANTES.txt. #}
+  {% if confirmar_paquete %}
+  <div class="mensaje aviso">
+    <div class="btn-grupo">
+      <a class="btn sec" href="/propuestas/{{ p.id }}/paquete?confirmar=1">Descargar el ZIP de todos modos</a>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="cab-pag">
     <div>
@@ -564,7 +574,11 @@
   <div class="tarjeta" id="expediente">
     <h2>Expediente</h2>
 
-    {% if validacion %}
+    {% if validacion and validacion.error %}
+      {# El validador se cayo: no se sabe si falta algo, y eso no es lo mismo
+         que saber que no falta. El boton de armar queda deshabilitado. #}
+      <div class="mensaje mal"><div><strong>{{ validacion.error }}</strong></div></div>
+    {% elif validacion %}
       {% if validacion.faltantes %}
         {# Bloquean. Sin estos campos la entidad devuelve la oferta en mesa de
            partes, y enterarse allí es enterarse cuando ya venció el plazo. #}
@@ -608,7 +622,7 @@
         <button type="submit" class="sec">Generar documentos</button></form>
       <form method="post" action="/propuestas/{{ p.id }}/expediente">
         <button type="submit" class="{% if p.expediente_zip_path %}sec{% endif %}"
-                {% if validacion and validacion.faltantes %}disabled{% endif %}>Armar expediente ZIP</button></form>
+                {% if validacion and (validacion.faltantes or validacion.error) %}disabled{% endif %}>Armar expediente ZIP</button></form>
       {% if p.expediente_zip_path %}
         <a class="btn" href="/propuestas/{{ p.id }}/descargar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>

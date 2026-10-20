@@ -340,6 +340,8 @@ async def test_sin_libreoffice_los_anexos_van_en_word_y_se_avisa(plantillas_del_
 @pytest.mark.asyncio
 async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
         usuario, empresa, cliente, marca, tmp_path, monkeypatch, plantillas_del_repo):
+    from urllib.parse import unquote_plus
+
     from radar_bot.scrapers.mpt_tambopata import descripcion_desde_sc
     from shared import constancia_rnp, cotizacion, ficha_ruc, llenar_formatos, pdf_firma
     from shared.db import connection, guardar_documento, kb_set
@@ -388,10 +390,35 @@ async def test_la_postulacion_a_la_mpt_sale_completa_y_el_panel_lleva_al_portal(
         assert "servicios/contratacion-bienes-servicios" in pagina
         assert "Enviar propuesta" in pagina and "No soy un robot" not in pagina
 
+        # Lo que la postulacion exige: datos legales, firma y sello (va firmada
+        # y sellada en cada hoja), ficha RUC y constancia del RNP.
+        from PIL import Image
+        for nombre, color in (("f.png", "black"), ("s.png", "blue")):
+            Image.new("RGB", (200, 80), color).save(tmp_path / nombre)
+        async with connection() as c:
+            await c.execute(
+                """UPDATE empresas SET representante_legal='ANA PEREZ',
+                          dni_representante='40000000', direccion='Jr. Loreto 123',
+                          rnp_numero='S0000001', firma_representante_path=$2,
+                          sello_empresa_path=$3 WHERE id=$1""",
+                empresa, str(tmp_path / "f.png"), str(tmp_path / "s.png"))
+        await kb_set(empresa, "financiero", "cci", "00212345678901234567", "prueba")
+        ficha_ruc.guardar_pdf(empresa, _siga(BIENES))
+        constancia_rnp.guardar_pdf(empresa, _siga(BIENES))
+
+        # Sin LibreOffice los anexos van en Word: eso no se sirve en silencio.
+        # Se avisa en la ficha, con el enlace para bajarlo igual.
         r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303
+        assert "confirmar_paquete=1" in r.headers["location"]
+        assert "LibreOffice" in unquote_plus(r.headers["location"])
+        r = await cliente.get(f"/propuestas/{pid}/paquete?confirmar=1")
         assert r.status_code == 200, r.headers.get("location")
         z = zipfile.ZipFile(io.BytesIO(r.content))
         nombres = z.namelist()
+        assert nombres[-1] == "00_FALTANTES.txt"
+        faltantes = z.read("00_FALTANTES.txt").decode()
+        assert "LibreOffice" in faltantes and "TDR" in faltantes
         assert nombres[0] == "01_Solicitud_de_Cotizacion.pdf"
         assert [n[3:] for n in nombres[1:6]] == [
             "Anexo_05_Oferta_Economica.docx", "Anexo_06_DJ_Notificacion.docx",

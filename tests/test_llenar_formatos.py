@@ -659,11 +659,14 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         usuario, empresa, cliente, marca, tmp_path, monkeypatch):
     import zipfile
 
+    from urllib.parse import unquote_plus
+
     from shared import constancia_rnp, ficha_ruc, llenar_formatos
-    from shared.db import connection, guardar_documento
+    from shared.db import connection, guardar_documento, kb_set
 
     monkeypatch.setattr(llenar_formatos, "DIR", tmp_path / "formatos")
     monkeypatch.setattr(constancia_rnp, "DIR_PDF", tmp_path / "rnp")
+    monkeypatch.setattr(ficha_ruc, "DIR_PDF", tmp_path / "sin_ficha")
     pid, lic = await _propuesta_con_items(empresa, marca)
     try:
         async with connection() as c:
@@ -674,43 +677,68 @@ async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         await guardar_documento(lic, "dj", None, None, "http://portal.ejemplo/storage/dj.pdf",
                                 _dj())
         constancia_rnp.guardar_pdf(empresa, _dos_paginas("RNP"))
+        # Lo que la validacion exige antes de armar el envio de una cotizacion.
+        async with connection() as c:
+            await c.execute(
+                """UPDATE empresas SET representante_legal='ANA PEREZ',
+                          dni_representante='40000000', direccion='Jr. Loreto 123',
+                          rnp_numero='S0000001' WHERE id=$1""", empresa)
+        await kb_set(empresa, "financiero", "cci", "00212345678901234567", "prueba")
         await _entrar(cliente, usuario)
 
         pagina = (await cliente.get(f"/propuestas/{pid}")).text
         assert "http://portal.ejemplo/solicitud/77/enviar" in pagina
         assert 'data-copiar="Jurídica"' in pagina   # el RUC de prueba empieza por 20
-
-        r = await cliente.get(f"/propuestas/{pid}/paquete")
-        assert r.status_code == 200, r.headers.get("location")
-        assert r.headers["content-type"] == "application/zip"
-        zipeado = zipfile.ZipFile(io.BytesIO(r.content))
-        nombres = zipeado.namelist()
-        # Sin ficha RUC ni EETT guardadas, van los que hay: cotizacion, DJ y RNP.
-        assert nombres == ["01_Cotizacion.pdf", "02_Declaracion_Jurada_de_Postor.pdf",
-                           "03_Registro_Nacional_de_Proveedores_y_Consulta_RUC.pdf"]
-        assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
-        assert len(PdfReader(io.BytesIO(zipeado.read(nombres[2]))).pages) == 2
         assert "no publicadas aún" in pagina
 
-        # Con la ficha RUC subida y las EETT bajadas por el puente van los cuatro
-        # que pide el portal: la consulta RUC detras del RNP, en el mismo PDF, y
-        # las EETT como ficha tecnica. Los adjuntos llevan firma y sello en CADA hoja.
-        monkeypatch.setattr(ficha_ruc, "DIR_PDF", tmp_path / "ficha")
-        ficha_ruc.guardar_pdf(empresa, _dos_paginas())
-        await guardar_documento(lic, "eett", "ESPECIFICACIONES TECNICAS", "3404.pdf",
-                                "http://portal.ejemplo/storage/eett.pdf", _dos_paginas())
+        # Sin firma ni sello, el envio "firmado y sellado" no se arma: antes
+        # salia sin firma y la descarga decia que todo habia ido bien.
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303 and "firma" in unquote_plus(r.headers["location"])
         async with connection() as c:
             await c.execute(
                 "UPDATE empresas SET firma_representante_path=$2, sello_empresa_path=$3 "
                 "WHERE id=$1", empresa, _png(tmp_path, "f.png", "black"),
                 _png(tmp_path, "s.png", "blue"))
+
+        # Sin ficha RUC tampoco: es obligatoria, y antes el ZIP salia sin ella.
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303 and "ficha RUC" in unquote_plus(r.headers["location"])
+        monkeypatch.setattr(ficha_ruc, "DIR_PDF", tmp_path / "ficha")
+        ficha_ruc.guardar_pdf(empresa, _dos_paginas())
+
+        # Sin las EETT (opcionales: las baja el puente) se AVISA antes de
+        # descargar, con el enlace para bajarlo igual; y el ZIP lleva el aviso.
+        r = await cliente.get(f"/propuestas/{pid}/paquete")
+        assert r.status_code == 303
+        destino = unquote_plus(r.headers["location"])
+        assert "confirmar_paquete=1" in destino and "ficha técnica" in destino
+        pagina = (await cliente.get(r.headers["location"])).text
+        assert f"/propuestas/{pid}/paquete?confirmar=1" in pagina
+        r = await cliente.get(f"/propuestas/{pid}/paquete?confirmar=1")
+        assert r.status_code == 200, r.headers.get("location")
+        assert r.headers["content-type"] == "application/zip"
+        zipeado = zipfile.ZipFile(io.BytesIO(r.content))
+        nombres = zipeado.namelist()
+        assert nombres == ["01_Cotizacion.pdf", "02_Declaracion_Jurada_de_Postor.pdf",
+                           "03_Registro_Nacional_de_Proveedores_y_Consulta_RUC.pdf",
+                           "00_FALTANTES.txt"]
+        assert "MARCA 2" in _tinta(zipeado.read(nombres[0]))
+        # La consulta RUC va detras del RNP, en el mismo PDF.
+        assert len(PdfReader(io.BytesIO(zipeado.read(nombres[2]))).pages) == 4
+        assert "ficha técnica" in zipeado.read("00_FALTANTES.txt").decode()
+
+        # Con las EETT bajadas por el puente van los cuatro que pide el portal,
+        # sin avisos. Los adjuntos llevan firma y sello en CADA hoja.
+        await guardar_documento(lic, "eett", "ESPECIFICACIONES TECNICAS", "3404.pdf",
+                                "http://portal.ejemplo/storage/eett.pdf", _dos_paginas())
         r = await cliente.get(f"/propuestas/{pid}/paquete")
         assert r.status_code == 200, r.headers.get("location")
+        assert 'filename="Envio_COT-' in r.headers["content-disposition"]
         zipeado = zipfile.ZipFile(io.BytesIO(r.content))
         nombres = zipeado.namelist()
         assert [n[:3] for n in nombres] == ["01_", "02_", "03_", "04_"]
         assert nombres[3] == "04_Ficha_Tecnica.pdf"
-        assert len(PdfReader(io.BytesIO(zipeado.read(nombres[2]))).pages) == 4
         r = await cliente.get(f"/propuestas/{pid}/anexo/eett")
         assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
         with pdfplumber.open(io.BytesIO(r.content)) as doc:
