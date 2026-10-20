@@ -636,7 +636,7 @@ async def comprar_con_culqi(request: Request, plan: str = Form(...),
                 conn=conn)
             if not asentado:
                 raise RuntimeError("activar_por_culqi no encontro la fila local")
-    except Exception as fallo:  # noqa: BLE001
+    except Exception as fallo:
         # Antes de crear la suscripcion no hay nada que deshacer en Culqi: se
         # deja subir el error como cualquier otro.
         if suscripcion is None:

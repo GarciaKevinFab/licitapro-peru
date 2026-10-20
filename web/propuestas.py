@@ -61,8 +61,8 @@ router = APIRouter()
 # "1E+30" pasaba la validacion (es un numero finito) y reventaba en el UPDATE
 # con un 500. Mil millones de soles por item es mas de lo que cualquier
 # contratacion menor o licitacion regional va a ver.
-TOPE_PRECIO = Decimal("1000000000")
-TOPE_CANTIDAD = Decimal("1000000000")
+TOPE_PRECIO = Decimal(1000000000)
+TOPE_CANTIDAD = Decimal(1000000000)
 _DESBORDE = "Ese número es demasiado grande: revisa precios y cantidades."
 
 

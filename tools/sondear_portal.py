@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import re
 import sys
-from urllib.parse import urlparse
 from pathlib import Path
+from urllib.parse import urlparse
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
@@ -32,7 +32,6 @@ sys.path.insert(0, str(RAIZ))
 import httpx
 
 from radar_bot.scrapers import red_segura
-
 from radar_bot.scrapers.orchestrator import (
     GORE_COTIZACIONES_APAGADOS,
     GORE_COTIZACIONES_PORTALS,

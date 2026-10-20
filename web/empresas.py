@@ -27,10 +27,10 @@ from fastapi.responses import (
 
 from shared import fechas
 from shared import membrete as hoja_membretada
+from shared.archivos import MAX_BYTES as MAX_BYTES_IMAGEN
 from shared.archivos import (
     TIPOS as TIPOS_IMAGEN,
 )
-from shared.archivos import MAX_BYTES as MAX_BYTES_IMAGEN
 from shared.archivos import (
     ArchivoInvalido,
     borrar_imagen,
