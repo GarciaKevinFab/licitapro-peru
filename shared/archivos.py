@@ -22,6 +22,7 @@ producto, asi que aqui las reglas son estrictas y explicitas:
      que comprueba la propiedad, porque la firma de un representante legal no
      puede quedar accesible con solo adivinar una URL.
 """
+import asyncio
 import io
 import logging
 import os
@@ -34,7 +35,12 @@ from shared.db import connection
 
 log = logging.getLogger("shared.archivos")
 
-DIRECTORIO = Path(os.getenv("FIRMAS_DIR", "data/firmas"))
+# Anclado a la raiz del proyecto y no al directorio desde el que se arranca.
+# POR QUE: "data/firmas" relativo dependia del cwd; un comando lanzado desde
+# otra carpeta guardaba las firmas donde la web no las busca, y el PDF salia
+# sin firma. FIRMAS_DIR sigue mandando si esta puesta.
+RAIZ = Path(__file__).resolve().parents[1]
+DIRECTORIO = Path(os.getenv("FIRMAS_DIR") or RAIZ / "data" / "firmas")
 
 # 5 MB. Un logo o una firma escaneada no pesan ni de lejos eso; el margen es
 # para quien fotografia su firma con el movil.
@@ -65,11 +71,20 @@ def _validar_y_normalizar(datos: bytes, tipo: str) -> bytes:
             f"{MAX_BYTES // 1024} KB. Redúcela y vuelve a intentarlo.")
 
     try:
-        imagen = Image.open(io.BytesIO(datos))
+        # Solo PNG y JPEG. POR QUE: Pillow sabe abrir decenas de formatos
+        # (PSD, TGA, EPS...) y cada decodificador es superficie de ataque; lo
+        # que se ofrece al usuario es PNG o JPG, asi que no se intenta mas.
+        imagen = Image.open(io.BytesIO(datos), formats=["PNG", "JPEG"])
         # verify() detecta corrupcion, pero deja el objeto inutilizable:
         # hay que reabrirlo para poder trabajar con el.
         imagen.verify()
-        imagen = Image.open(io.BytesIO(datos))
+        imagen = Image.open(io.BytesIO(datos), formats=["PNG", "JPEG"])
+    except Image.DecompressionBombError as e:
+        # Pillow la lanza al abrir una imagen de dimensiones absurdas (la
+        # bomba de descompresion). Antes salia como un 500: no es OSError.
+        log.info("Subida rechazada, bomba de descompresion: %s", e)
+        raise ArchivoInvalido(
+            f"La imagen es demasiado grande. El máximo es {MAX_LADO} px por lado.") from e
     except (UnidentifiedImageError, OSError, ValueError) as e:
         log.info("Subida rechazada, no es una imagen: %s", e)
         raise ArchivoInvalido(
@@ -80,14 +95,21 @@ def _validar_y_normalizar(datos: bytes, tipo: str) -> bytes:
             f"La imagen mide {imagen.size[0]}x{imagen.size[1]} px y el máximo "
             f"es {MAX_LADO} px por lado.")
 
-    # Firma y sello conservan transparencia, para poder superponerlos sobre el
-    # documento sin un recuadro blanco alrededor.
-    imagen = imagen.convert("RGBA" if tipo in ("firma", "sello") else "RGB")
+    try:
+        # Firma y sello conservan transparencia, para poder superponerlos sobre
+        # el documento sin un recuadro blanco alrededor.
+        imagen = imagen.convert("RGBA" if tipo in ("firma", "sello") else "RGB")
 
-    salida = io.BytesIO()
-    # Re-codificar es lo que limpia el archivo: se escriben pixeles, no el
-    # contenido original. Sin metadatos, sin EXIF, sin nada mas.
-    imagen.save(salida, format="PNG", optimize=True)
+        salida = io.BytesIO()
+        # Re-codificar es lo que limpia el archivo: se escriben pixeles, no el
+        # contenido original. Sin metadatos, sin EXIF, sin nada mas.
+        imagen.save(salida, format="PNG", optimize=True)
+    except (OSError, ValueError, Image.DecompressionBombError) as e:
+        # Una cabecera valida con datos truncados pasa verify() y revienta
+        # aqui, al decodificar de verdad.
+        log.info("Subida rechazada al decodificar: %s", e)
+        raise ArchivoInvalido(
+            "No se pudo leer la imagen; puede estar dañada. Usa PNG o JPG.") from e
     return salida.getvalue()
 
 
@@ -96,14 +118,15 @@ async def guardar_imagen(empresa_id: int, tipo: str, datos: bytes) -> str:
     if tipo not in TIPOS:
         raise ArchivoInvalido("Tipo de imagen no permitido.")
 
-    limpia = _validar_y_normalizar(datos, tipo)
+    # Decodificar y re-codificar con Pillow tarda: en un hilo, para no
+    # congelar el bucle de eventos (y con el, a todos los demas usuarios).
+    limpia = await asyncio.to_thread(_validar_y_normalizar, datos, tipo)
 
-    DIRECTORIO.mkdir(parents=True, exist_ok=True)
     # Nombre generado por el servidor. El sufijo aleatorio evita que alguien
     # adivine la ruta de la firma de otra empresa a partir de su id.
     nombre = f"empresa_{empresa_id}_{tipo}_{secrets.token_hex(8)}.png"
     destino = DIRECTORIO / nombre
-    destino.write_bytes(limpia)
+    await asyncio.to_thread(_escribir, destino, limpia)
 
     columna = TIPOS[tipo][0]
     async with connection() as conn:
@@ -123,6 +146,22 @@ async def guardar_imagen(empresa_id: int, tipo: str, datos: bytes) -> str:
     return str(destino)
 
 
+def _escribir(destino: Path, contenido: bytes) -> None:
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(contenido)
+
+
+def _en_disco(ruta: str) -> Path:
+    """La ruta guardada en la base, resuelta contra la raiz si es relativa.
+
+    Las filas viejas guardan "data/firmas/..." relativo al cwd del contenedor
+    (/app, que es la raiz). Resolverlo contra la raiz las hace validas aunque
+    el proceso se lance desde otra carpeta.
+    """
+    p = Path(ruta)
+    return p if p.is_absolute() else RAIZ / p
+
+
 def _borrar_del_disco(ruta: str) -> None:
     """Borra solo si esta dentro del directorio de firmas.
 
@@ -131,7 +170,7 @@ def _borrar_del_disco(ruta: str) -> None:
     cualquier archivo del servidor.
     """
     try:
-        p = Path(ruta).resolve()
+        p = _en_disco(ruta).resolve()
         if p.is_file() and DIRECTORIO.resolve() in p.parents:
             p.unlink()
     except OSError as e:
@@ -168,6 +207,15 @@ async def rutas_de(empresa_id: int) -> dict:
     salida = {}
     for tipo, (columna, _) in TIPOS.items():
         ruta = fila[columna]
-        if ruta and Path(ruta).is_file():
-            salida[tipo] = ruta
+        if not ruta:
+            continue
+        en_disco = _en_disco(ruta)
+        if en_disco.is_file():
+            salida[tipo] = str(en_disco)
+        else:
+            # La base dice que hay imagen y el disco no la tiene: volumen mal
+            # montado o borrado a mano. Antes se callaba y el documento salia
+            # sin firma; ahora queda el rastro para encontrarlo.
+            log.warning("La empresa %s apunta a un %s que no esta en disco: %s",
+                        empresa_id, tipo, ruta)
     return salida
