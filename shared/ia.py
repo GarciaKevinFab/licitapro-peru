@@ -69,6 +69,18 @@ def _cliente() -> anthropic.AsyncAnthropic:
 
 # ─── Cuota ───────────────────────────────────────────────
 
+# El dia 1 del mes en curso en Lima, como hora de pared sin zona.
+#
+#   Antes era `date_trunc('month', CURRENT_DATE)`. CURRENT_DATE sale de la zona
+#   de la SESION, y la del VPS es UTC: el ultimo dia de cada mes, a partir de
+#   las 19:00 de Lima, la cuota se reiniciaba cinco horas antes de tiempo. Por
+#   lo mismo `creado_en` se escribe ahora en hora de Lima (ver
+#   guardar_analisis) y no con NOW(), que en esa sesion guarda la hora UTC:
+#   comparar una columna en UTC contra un inicio de mes en Lima seria el mismo
+#   desfase con el signo cambiado.
+_INICIO_MES_LIMA = "date_trunc('month', (NOW() AT TIME ZONE 'America/Lima'))"
+
+
 async def cuota(usuario_id: int) -> dict:
     """Cuantos analisis con IA le quedan a este usuario en el mes en curso.
 
@@ -92,9 +104,9 @@ async def cuota(usuario_id: int) -> dict:
         # Solo cuentan los que costaron dinero. Un heuristico devuelto porque
         # la API estaba caida no puede gastar el tope del cliente.
         usados = await conn.fetchval(
-            """SELECT COUNT(*) FROM analisis_ia
+            f"""SELECT COUNT(*) FROM analisis_ia
                 WHERE usuario_id = $1 AND origen = $2
-                  AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+                  AND creado_en >= {_INICIO_MES_LIMA}""",
             usuario_id, ORIGEN_IA) or 0
 
     sin_limite = tope is None
@@ -189,8 +201,10 @@ async def guardar_analisis(usuario_id: int, empresa_id: int, licitacion_id: str,
         await conn.execute(
             """INSERT INTO analisis_ia
                    (usuario_id, empresa_id, licitacion_id, score, recomendacion,
-                    resultado, origen, modelo, tokens_entrada, tokens_salida)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                    resultado, origen, modelo, tokens_entrada, tokens_salida,
+                    creado_en)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                       (NOW() AT TIME ZONE 'America/Lima'))
                ON CONFLICT (usuario_id, empresa_id, licitacion_id) DO UPDATE SET
                    score = EXCLUDED.score,
                    recomendacion = EXCLUDED.recomendacion,
@@ -199,7 +213,7 @@ async def guardar_analisis(usuario_id: int, empresa_id: int, licitacion_id: str,
                    modelo = EXCLUDED.modelo,
                    tokens_entrada = EXCLUDED.tokens_entrada,
                    tokens_salida = EXCLUDED.tokens_salida,
-                   creado_en = now()""",
+                   creado_en = EXCLUDED.creado_en""",
             usuario_id, empresa_id, licitacion_id,
             resultado.get("score_viabilidad"),
             resultado.get("recomendacion"),
@@ -272,14 +286,14 @@ async def gasto_detallado(meses: int = 6) -> dict:
     """
     async with connection() as conn:
         por_mes = await conn.fetch(
-            """SELECT date_trunc('month', creado_en)::date AS mes,
+            f"""SELECT date_trunc('month', creado_en)::date AS mes,
                       COUNT(*)                             AS analisis,
                       COUNT(DISTINCT usuario_id)           AS usuarios,
                       COALESCE(SUM(tokens_entrada), 0)     AS entrada,
                       COALESCE(SUM(tokens_salida), 0)      AS salida
                  FROM analisis_ia
                 WHERE origen = $1
-                  AND creado_en >= date_trunc('month', CURRENT_DATE)
+                  AND creado_en >= {_INICIO_MES_LIMA}
                                    - make_interval(months => $2)
                 GROUP BY 1 ORDER BY 1 DESC""",
             ORIGEN_IA, meses)
@@ -287,7 +301,7 @@ async def gasto_detallado(meses: int = 6) -> dict:
         # Por plan, solo el mes en curso: es el periodo sobre el que todavia se
         # puede actuar.
         por_plan = await conn.fetch(
-            """SELECT COALESCE(p.nombre, 'sin plan')  AS plan,
+            f"""SELECT COALESCE(p.nombre, 'sin plan')  AS plan,
                       p.precio_mensual,
                       p.analisis_ia_mes               AS tope,
                       COUNT(a.*)                      AS analisis,
@@ -298,14 +312,14 @@ async def gasto_detallado(meses: int = 6) -> dict:
                  LEFT JOIN suscripciones s ON s.usuario_id = a.usuario_id
                  LEFT JOIN planes p        ON p.codigo = s.plan_codigo
                 WHERE a.origen = $1
-                  AND a.creado_en >= date_trunc('month', CURRENT_DATE)
+                  AND a.creado_en >= {_INICIO_MES_LIMA}
                 GROUP BY 1, 2, 3 ORDER BY 7 DESC""",
             ORIGEN_IA)
 
         # Las cuentas que mas gastan. Es donde aparece el uso anomalo antes de
         # que llegue la factura.
         top = await conn.fetch(
-            """SELECT u.email, u.nombre,
+            f"""SELECT u.email, u.nombre,
                       COALESCE(p.nombre, 'sin plan')     AS plan,
                       COUNT(a.*)                         AS analisis,
                       COALESCE(SUM(a.tokens_entrada), 0) AS entrada,
@@ -315,7 +329,7 @@ async def gasto_detallado(meses: int = 6) -> dict:
                  LEFT JOIN suscripciones s ON s.usuario_id = a.usuario_id
                  LEFT JOIN planes p        ON p.codigo = s.plan_codigo
                 WHERE a.origen = $1
-                  AND a.creado_en >= date_trunc('month', CURRENT_DATE)
+                  AND a.creado_en >= {_INICIO_MES_LIMA}
                 GROUP BY 1,2,3 ORDER BY 6 DESC LIMIT 15""",
             ORIGEN_IA)
 
@@ -323,9 +337,9 @@ async def gasto_detallado(meses: int = 6) -> dict:
         # API o con la clave, y el cliente de pago se esta llevando el respaldo
         # sin que nadie lo note.
         heuristicos = await conn.fetchval(
-            """SELECT COUNT(*) FROM analisis_ia
+            f"""SELECT COUNT(*) FROM analisis_ia
                 WHERE origen = $1
-                  AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+                  AND creado_en >= {_INICIO_MES_LIMA}""",
             ORIGEN_HEURISTICO) or 0
 
     def con_coste(filas):
@@ -365,11 +379,11 @@ async def gasto_del_mes() -> dict:
     """
     async with connection() as conn:
         return dict(await conn.fetchrow(
-            """SELECT COUNT(*)                         AS analisis,
+            f"""SELECT COUNT(*)                         AS analisis,
                       COUNT(DISTINCT usuario_id)       AS usuarios,
                       COALESCE(SUM(tokens_entrada), 0) AS tokens_entrada,
                       COALESCE(SUM(tokens_salida), 0)  AS tokens_salida
                  FROM analisis_ia
                 WHERE origen = $1
-                  AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+                  AND creado_en >= {_INICIO_MES_LIMA}""",
             ORIGEN_IA))

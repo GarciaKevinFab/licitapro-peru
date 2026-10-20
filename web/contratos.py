@@ -11,6 +11,7 @@ Igual que en propuestas, la propiedad se deriva por JOIN contra
 empresas.usuario_id: nunca de un id que mande el cliente.
 """
 import logging
+import math
 import os
 from datetime import date, timedelta
 from urllib.parse import quote_plus
@@ -32,6 +33,48 @@ log = logging.getLogger("web.contratos")
 router = APIRouter()
 
 ESTADOS = ("adjudicado", "firmado", "en_ejecucion", "entregado", "pagado", "cancelado")
+
+# Topes de lo que se acepta en un formulario de contrato o de cobro.
+#
+#   POR QUE HACEN FALTA: el campo llegaba como `float` de FastAPI, que acepta
+#   "nan", "inf", "-5" o "1e30". Un NaN en `monto` envenena cada SUM de la
+#   cuenta (informes, por cobrar) sin dar error; un negativo resta de lo que
+#   se debe; y 1e30 desborda la columna y era un 500. Mil millones de soles
+#   esta muy por encima de cualquier contrato de este mercado y muy por debajo
+#   de lo que rompe la base. Un plazo de mas de diez anos es una errata, y
+#   uno enorme desbordaba `timedelta` (otro 500).
+MONTO_MAXIMO = 1_000_000_000
+PLAZO_MAXIMO_DIAS = 3650
+
+
+def _leer_monto(texto: str) -> float | None:
+    """El monto del formulario, o None si no es un importe aceptable.
+
+    El formulario manda el valor de un <input type=number> ("15000.50"), pero
+    se acepta tambien lo que alguien pegue a mano: coma decimal ("1500,50") y
+    separadores de miles ("15,000.50", "1.500,50"). Si hay coma y punto, el
+    ultimo que aparece es el decimal.
+    """
+    limpio = (texto or "").strip().replace(" ", "").replace("'", "")
+    if "," in limpio and "." in limpio:
+        miles = "," if limpio.rfind(".") > limpio.rfind(",") else "."
+        limpio = limpio.replace(miles, "")
+    limpio = limpio.replace(",", ".")
+    try:
+        valor = float(limpio)
+    except ValueError:
+        return None
+    if not math.isfinite(valor) or valor < 0 or valor > MONTO_MAXIMO:
+        return None
+    return round(valor, 2)
+
+
+def _error(destino: str, mensaje: str) -> RedirectResponse:
+    return RedirectResponse(f"{destino}?error={quote_plus(mensaje)}", status_code=303)
+
+
+MENSAJE_MONTO = ("Monto no valido: escribe un importe en soles entre 0 y "
+                 "1 000 000 000, por ejemplo 15000.50")
 
 
 def _plantillas(request: Request):
@@ -60,7 +103,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
             """SELECT c.*, e.razon_social, l.objeto, l.entidad,
                       (SELECT COUNT(*) FROM plazos pl
                         WHERE pl.contrato_id = c.id AND pl.completado = FALSE
-                          AND pl.fecha_limite <= CURRENT_DATE + 7) AS plazos_urgentes,
+                          AND pl.fecha_limite <= $2::date + 7) AS plazos_urgentes,
                       COALESCE((SELECT SUM(monto) FROM pagos pg
                                  WHERE pg.contrato_id = c.id
                                    AND pg.estado <> 'pagado'), 0) AS por_cobrar
@@ -70,7 +113,9 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
                 WHERE e.usuario_id = $1
                 ORDER BY (c.estado <> 'pagado') DESC,
                          c.fecha_entrega_final ASC NULLS LAST""",
-            usuario["id"])
+            # La fecha de Lima va como parametro: CURRENT_DATE es la de la
+            # sesion, que en el VPS es UTC y cambia de dia a las 19:00 de Lima.
+            usuario["id"], fechas.hoy())
         # Propuestas sin contrato: son las que se pueden marcar como ganadas.
         candidatas = await conn.fetch(
             """SELECT p.id, l.objeto, l.entidad, e.razon_social
@@ -90,11 +135,26 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
 
 @router.post("/contratos/ganar")
 async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
-                              monto: float = Form(...), plazo_dias: int = Form(30)):
-    """Registra la buena pro y arma el timeline de plazos del contrato."""
+                              monto: str = Form(...), plazo_dias: str = Form("30")):
+    """Registra la buena pro y arma el timeline de plazos del contrato.
+
+    `monto` y `plazo_dias` llegan como texto y se validan aqui: con `float` e
+    `int` de FastAPI un valor raro era un 422 en JSON o un 500, en vez de un
+    aviso legible en la misma pagina.
+    """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
+    valor = _leer_monto(monto)
+    if valor is None:
+        return _error("/contratos", MENSAJE_MONTO)
+    try:
+        dias = int((plazo_dias or "").strip())
+    except ValueError:
+        dias = -1
+    if not 1 <= dias <= PLAZO_MAXIMO_DIAS:
+        return _error("/contratos",
+                      f"Plazo no valido: escribe los dias de ejecucion, de 1 a {PLAZO_MAXIMO_DIAS}")
 
     async with connection() as conn:
         prop = await conn.fetchrow(
@@ -115,8 +175,8 @@ async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
                    monto_adjudicado, fecha_adjudicacion, plazo_ejecucion_dias,
                    fecha_entrega_final, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'adjudicado') RETURNING id""",
-            propuesta_id, prop["licitacion_id"], prop["empresa_id"], monto,
-            fechas.hoy(), plazo_dias, fechas.hoy() + timedelta(days=plazo_dias))
+            propuesta_id, prop["licitacion_id"], prop["empresa_id"], valor,
+            fechas.hoy(), dias, fechas.hoy() + timedelta(days=dias))
         await conn.execute(
             "UPDATE propuestas SET estado='ganada', updated_at=NOW() WHERE id=$1",
             propuesta_id)
@@ -229,14 +289,14 @@ async def completar_plazo(request: Request, plazo_id: int):
                                     status_code=303)
         await conn.execute(
             """UPDATE plazos SET completado = NOT completado,
-                   fecha_completado = CASE WHEN completado THEN NULL ELSE CURRENT_DATE END
-               WHERE id=$1""", plazo_id)
+                   fecha_completado = CASE WHEN completado THEN NULL ELSE $2::date END
+               WHERE id=$1""", plazo_id, fechas.hoy())
     return RedirectResponse(f"/contratos/{contrato_id}", status_code=303)
 
 
 @router.post("/contratos/{contrato_id}/pago")
 async def registrar_cobro(request: Request, contrato_id: int,
-                          concepto: str = Form(...), monto: float = Form(...),
+                          concepto: str = Form(...), monto: str = Form(...),
                           numero_factura: str = Form(""), cobrado: str = Form(""),
                           fecha_conformidad: str = Form(""),
                           expediente_siaf: str = Form("")):
@@ -255,6 +315,9 @@ async def registrar_cobro(request: Request, contrato_id: int,
         return RedirectResponse("/entrar", status_code=303)
     if not await _contrato_del_usuario(contrato_id, usuario["id"]):
         return RedirectResponse("/contratos?error=Ese+contrato+no+es+tuyo", status_code=303)
+    valor = _leer_monto(monto)
+    if valor is None:
+        return _error(f"/contratos/{contrato_id}", MENSAJE_MONTO)
 
     conformidad = None
     if fecha_conformidad.strip():
@@ -278,7 +341,7 @@ async def registrar_cobro(request: Request, contrato_id: int,
                    fecha_factura, fecha_pago_real, fecha_conformidad,
                    fecha_limite_pago, fecha_pago_esperada, expediente_siaf, estado)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10)""",
-            contrato_id, concepto.strip(), monto, numero_factura.strip() or None,
+            contrato_id, concepto.strip(), valor, numero_factura.strip() or None,
             fechas.hoy(), fechas.hoy() if ya_cobrado else None,
             conformidad, limite, expediente_siaf.strip() or None,
             "pagado" if ya_cobrado else "facturado")
@@ -301,8 +364,8 @@ async def marcar_cobrado(request: Request, pago_id: int):
             return RedirectResponse("/contratos?error=Ese+pago+no+es+tuyo",
                                     status_code=303)
         await conn.execute(
-            """UPDATE pagos SET estado='pagado', fecha_pago_real=CURRENT_DATE
-               WHERE id=$1""", pago_id)
+            """UPDATE pagos SET estado='pagado', fecha_pago_real=$2
+               WHERE id=$1""", pago_id, fechas.hoy())
     return RedirectResponse(f"/contratos/{contrato_id}?aviso=Cobro+registrado",
                             status_code=303)
 
