@@ -249,6 +249,14 @@ async def _propuesta_con_items(empresa, marca):
         pid = await c.fetchval(
             "INSERT INTO propuestas (licitacion_id, empresa_id, estado) "
             "VALUES ($1, $2, 'iniciado') RETURNING id", lic, empresa)
+        # Lo que la SC y la DJ no pueden llevar en blanco. Antes la empresa de
+        # prueba solo tenia razon social y RUC, y la DJ salia sin nombre, DNI
+        # ni domicilio sin que la prueba lo notara: ahora eso es
+        # DocumentoIncompleto (lo prueba tests/test_auditoria_llenadores.py).
+        await c.execute(
+            """UPDATE empresas SET representante_legal='QUISPE MAMANI ROSA ELENA',
+                      dni_representante='12345678', direccion='Av. La Cultura 1234'
+                WHERE id=$1""", empresa)
     await cotizacion.sembrar(pid)
     items = await cotizacion.items_de(pid)
     await cotizacion.guardar(pid, {it["id"]: (f"MARCA {i}", Decimal("2.50"))

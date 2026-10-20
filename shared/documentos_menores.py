@@ -27,9 +27,18 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from shared.config import normalizar
 from shared.cotizacion import cantidad_legible, monto, precio_legible, total
+from shared.llenar_formatos import DATOS_DEL_POSTOR, exigir_datos
 from shared.pdf_firmable import generar_pdf
 
+# Solo para el CCI de la DJ, que es opcional: su linea queda para escribirla a
+# mano. Los datos obligatorios (nombre, DNI, RUC, domicilio) ya no caen aqui:
+# antes una DJ "identificado con DNI N.º ____" se firmaba y la entidad la
+# devolvia; ahora generar_dj levanta DocumentoIncompleto antes de dibujarla.
 _VACIO = "____________________"
+
+# La cotizacion no lleva DNI (el pie de firma lo pone solo si lo hay), pero si
+# los datos del postor que cierran el documento y el nombre de quien firma.
+_DATOS_COTIZACION = tuple((c, r) for c, r in DATOS_DEL_POSTOR if c != "dni_representante")
 
 
 def _e(valor) -> str:
@@ -73,11 +82,11 @@ def formato_dj(prop: dict) -> str | None:
 
 def _generica(emp: dict, prop: dict) -> tuple[str, str, list]:
     parrafos = [
-        (f"El que suscribe, {_e(emp.get('representante_legal')) or _VACIO}, "
-         f"identificado con DNI N.º {_e(emp.get('dni_representante')) or _VACIO}, "
+        (f"El que suscribe, {_e(emp.get('representante_legal'))}, "
+         f"identificado con DNI N.º {_e(emp.get('dni_representante'))}, "
          f"en calidad de {_e(emp.get('cargo_representante')) or 'representante legal'} "
-         f"de {_e(emp.get('razon_social'))}, con RUC N.º {_e(emp.get('ruc')) or _VACIO} "
-         f"y domicilio en {_e(emp.get('direccion')) or _VACIO}, "
+         f"de {_e(emp.get('razon_social'))}, con RUC N.º {_e(emp.get('ruc'))} "
+         f"y domicilio en {_e(emp.get('direccion'))}, "
          f"DECLARO BAJO JURAMENTO lo siguiente:"),
         ("1. Que los datos consignados en el presente documento son veraces y "
          "corresponden a la situación actual de mi representada."),
@@ -128,11 +137,11 @@ def _goremad(emp: dict, prop: dict, cci: str | None) -> tuple[str, str, list]:
     parrafos = [
         "SEÑORES:<br/><b>GOBIERNO REGIONAL DE MADRE DE DIOS.</b><br/>Presente:",
         "<u>DATOS DEL POSTOR</u>",
-        (f"Yo, <b>{_e(emp.get('representante_legal')) or _VACIO}</b>, representante legal "
+        (f"Yo, <b>{_e(emp.get('representante_legal'))}</b>, representante legal "
          f"de la Empresa <b>{_e(emp.get('razon_social'))}</b>, identificado con DNI N° "
-         f"<b>{_e(emp.get('dni_representante')) or _VACIO}</b>, RUC N° "
-         f"<b>{_e(emp.get('ruc')) or _VACIO}</b> con domicilio fiscal en "
-         f"<b>{_e(emp.get('direccion')) or _VACIO}</b> y Cuenta Corriente Interbancaria "
+         f"<b>{_e(emp.get('dni_representante'))}</b>, RUC N° "
+         f"<b>{_e(emp.get('ruc'))}</b> con domicilio fiscal en "
+         f"<b>{_e(emp.get('direccion'))}</b> y Cuenta Corriente Interbancaria "
          f"<b>{_e(cci) or _VACIO}</b>."),
         "<b>DECLARO BAJO JURAMENTO QUE:</b>",
     ]
@@ -148,6 +157,9 @@ def _goremad(emp: dict, prop: dict, cci: str | None) -> tuple[str, str, list]:
 
 
 async def generar_dj(prop: dict, emp: dict, cci: str | None, con_dnie: bool) -> str:
+    """La DJ propia en PDF. DocumentoIncompleto si falta nombre, DNI, razon
+    social, RUC o domicilio del postor (el CCI puede faltar)."""
+    exigir_datos("la declaración jurada", emp)
     if formato_dj(prop) == "goremad":
         titulo, sub, parrafos = _goremad(emp, prop, cci)
     else:
@@ -209,7 +221,12 @@ def tabla_items(items: list[dict]) -> Table:
 
 async def generar_cotizacion(prop: dict, emp: dict, items: list[dict], condiciones: dict,
                              cci: str | None, con_dnie: bool) -> str:
-    """La cotizacion lista para enviar: tabla de items, condiciones y contacto."""
+    """La cotizacion lista para enviar: tabla de items, condiciones y contacto.
+
+    DocumentoIncompleto si falta la razon social, el RUC, el domicilio o el
+    representante: antes "DATOS DEL POSTOR" salia con "Domicilio fiscal:" vacio
+    y el pie firmado por "Representante legal"."""
+    exigir_datos("la cotización", emp, _DATOS_COTIZACION)
     contacto = " / ".join(x for x in (_e(emp.get("telefono")), _e(emp.get("email"))) if x)
     parrafos = [
         f"Señores: <b>{_e(prop.get('entidad'))}</b>",

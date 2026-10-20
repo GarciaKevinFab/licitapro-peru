@@ -28,6 +28,20 @@ COMO SE LLENAN
   Lo que no se sabe (sede registral, asiento) se deja en puntos para llenarlo
   a mano: un dato inventado en una declaracion jurada es peor que un hueco.
 
+LO QUE NO PUEDE FALTAR
+
+  Razon social, RUC, representante, su DNI y el domicilio; en el Anexo 05 el
+  plazo y el precio de cada item; en el 07 el CCI de 20 digitos y el banco.
+  Antes se rellenaban con "……" y el documento salia igual: el Anexo 07 de
+  CUBS FAM se envio con puntos en el CCI. Ahora, si falta uno, se levanta
+  DocumentoIncompleto (shared/incompleto.py) y la web dice cual falta antes de
+  descargar nada. Lo opcional (garantia, telefono, correo, datos registrales)
+  sigue pudiendo quedar en blanco o en puntos.
+
+  Y si la municipalidad cambia la redaccion de una plantilla y un marcador ya
+  no coincide, PlantillaCambiada: antes el "[CONSIGNAR ...]" quedaba tal cual
+  en el documento firmado.
+
 DE DONDE SALEN LAS PLANTILLAS
 
   Del ZIP del portal, bajado como mucho una vez al dia (data/plantillas_mpt).
@@ -36,6 +50,7 @@ DE DONDE SALEN LAS PLANTILLAS
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import io
 import logging
@@ -45,7 +60,12 @@ import tempfile
 import time
 import zipfile
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
+
+from shared.config import normalizar
+from shared.incompleto import DocumentoIncompleto
+from shared.llenar_formatos import FormatoNoReconocido
 
 log = logging.getLogger("shared.anexos_mpt")
 
@@ -63,15 +83,51 @@ ANEXOS = {
     "09": "Anexo_09_DJ_Prohibiciones",
     "10": "Anexo_10_Requisitos_Minimos",
 }
+# Solo para lo OPCIONAL (garantia, datos registrales): lo obligatorio que
+# falte levanta DocumentoIncompleto y nunca llega a escribirse con puntos.
 PUNTOS = "……………………"
+
+
+class PlantillaCambiada(FormatoNoReconocido):
+    """La plantilla de la municipalidad ya no tiene el marcador o la fila que
+    se esperaba: cambio su redaccion. Es un FormatoNoReconocido para que la
+    web lo muestre con su mensaje en vez de un error 500."""
+
+    def __init__(self, numero: str, que: str):
+        super().__init__(
+            f"La plantilla del Anexo {numero} de la Municipalidad cambió: no encontramos "
+            f"{que}. No se genera para no entregarlo con un marcador sin llenar.")
 
 
 # ─── Plantillas ─────────────────────────────────────────────
 
+# POR QUE el freno: si el portal esta caido, cada anexo (seis por postulacion)
+# esperaba otros 20 s al timeout. Tras un fallo no se vuelve a intentar hasta
+# pasada una hora; mientras, se usan las copias que haya.
+REINTENTO = 3600
+_ultimo_fallo = 0.0
+
+
+def _escribir_atomico(destino: Path, contenido: bytes) -> None:
+    """Un corte a mitad de escritura no deja una plantilla truncada en la cache:
+    se escribe al lado y se reemplaza de una vez."""
+    fd, tmp = tempfile.mkstemp(dir=destino.parent, prefix=destino.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(contenido)
+        os.replace(tmp, destino)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def _refrescar_cache() -> None:
     """Baja el ZIP del portal si la copia local tiene mas de un dia."""
+    global _ultimo_fallo
     marca = CACHE / ".bajado"
     if marca.exists() and time.time() - marca.stat().st_mtime < UN_DIA:
+        return
+    if time.time() - _ultimo_fallo < REINTENTO:
         return
     try:
         import httpx
@@ -79,12 +135,22 @@ def _refrescar_cache() -> None:
         r.raise_for_status()
         z = zipfile.ZipFile(io.BytesIO(r.content))
         CACHE.mkdir(parents=True, exist_ok=True)
+        bajados = 0
         for info in z.infolist():
             m = re.match(r"Anexo (\d\d)", Path(info.filename).name)
             if m and info.filename.lower().endswith(".docx"):
-                (CACHE / f"anexo_{m.group(1)}.docx").write_bytes(z.read(info))
+                contenido = z.read(info)
+                if not contenido.startswith(b"PK"):   # un .docx es un ZIP
+                    continue
+                _escribir_atomico(CACHE / f"anexo_{m.group(1)}.docx", contenido)
+                bajados += 1
+        # Un ZIP sin anexos (el portal devolvio otra cosa) no cuenta como
+        # bajado: si se marcara, no se volveria a intentar en un dia.
+        if not bajados:
+            raise ValueError("el ZIP no trae ningún anexo")
         marca.touch()
     except Exception as e:  # noqa: BLE001
+        _ultimo_fallo = time.time()
         log.warning("No se pudo bajar el ZIP de formatos de la MPT (%s): se usa la copia "
                     "del repositorio", e)
 
@@ -119,6 +185,49 @@ def _sustituir(parrafo, patron: str, nuevo: str) -> bool:
             _en_negro(r)
         primero = False
     return True
+
+
+def _reemplazar(doc, numero: str, patron: str, nuevo: str, que: str) -> int:
+    """`_sustituir` en todos los parrafos; el marcador TIENE que estar.
+
+    POR QUE: antes se ignoraba si `_sustituir` encontraba el patron. Si la
+    municipalidad cambiaba una palabra del marcador, el "[CONSIGNAR ...]"
+    quedaba tal cual en el documento firmado."""
+    n = sum(_sustituir(p, patron, nuevo) for p in doc.paragraphs)
+    if not n:
+        raise PlantillaCambiada(numero, que)
+    return n
+
+
+def _fila(tabla, numero: str, etiqueta: str, que: str):
+    """La fila cuya primera celda dice `etiqueta` (regex sobre el texto normalizado).
+
+    Por la etiqueta y no por la posicion: con `zip(filas, valores)` una fila
+    de mas o de menos en la plantilla corria todos los datos un renglon (el
+    CCI en la fila del banco) o se comia el ultimo sin avisar."""
+    for fila in tabla.rows:
+        if re.search(etiqueta, normalizar(fila.cells[0].text).strip()):
+            return fila
+    raise PlantillaCambiada(numero, f"la fila «{que}»")
+
+
+# Los marcadores de las plantillas que el llenador tiene que reemplazar. El de
+# la exoneracion del Anexo 05 no: es una instruccion para quien goce de una
+# exoneracion ("Mi oferta no incluye [CONSIGNAR EL IMPUESTO ...]").
+_MARCADOR = re.compile(r"\[(?:CONSIGNAR|INDICAR|DETALLE)(?![^\]]*IMPUESTO MATERIA)[^\]]*\]"
+                       r"|\[[…\.]+\]")
+
+
+def _sin_marcadores(doc, numero: str) -> None:
+    """Ultima comprobacion: ningun marcador de la plantilla en el documento lleno."""
+    textos = [p.text for p in doc.paragraphs]
+    for t in doc.tables:
+        for fila in t.rows:
+            textos += [c.text for c in fila.cells]
+    for texto in textos:
+        m = _MARCADOR.search(texto)
+        if m:
+            raise PlantillaCambiada(numero, f"cómo llenar «{m.group(0)}»")
 
 
 def _en_negro(run) -> None:
@@ -164,24 +273,29 @@ def _fecha(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
-def _imagen_compuesta(imagenes: dict) -> str | None:
+def _imagen_compuesta(imagenes: dict, carpeta: str) -> str | None:
     """Una sola imagen con el sello y la firma encima, como se firma a mano.
 
     En Word las imagenes en linea no se pueden encimar: si la empresa tiene
-    firma y sello por separado se componen aqui en un PNG temporal."""
+    firma y sello por separado se componen aqui en un PNG dentro de `carpeta`
+    (temporal de quien llama: antes era un mkdtemp que nadie borraba, uno por
+    anexo y postulacion)."""
     firma, sello = imagenes.get("firma"), imagenes.get("sello")
     if not (firma or sello):
         return None
     if not (firma and sello):
         return firma or sello
     from PIL import Image
-    s = Image.open(sello).convert("RGBA")
-    f = Image.open(firma).convert("RGBA")
+    # `with`: los archivos se cierran al terminar (en Windows uno abierto no
+    # se puede borrar, y en el servidor se acumulaban descriptores).
+    with Image.open(sello) as im_s, Image.open(firma) as im_f:
+        s = im_s.convert("RGBA")
+        f = im_f.convert("RGBA")
     escala = min(s.width * 0.6 / f.width, s.height * 0.75 / f.height)
     f = f.resize((max(1, int(f.width * escala)), max(1, int(f.height * escala))))
     lienzo = s.copy()
     lienzo.alpha_composite(f, ((s.width - f.width) // 2, max(0, (s.height - f.height) // 2 - 8)))
-    destino = Path(tempfile.mkdtemp(prefix="firma_")) / "firma_sello.png"
+    destino = Path(carpeta) / "firma_sello.png"
     lienzo.save(destino)
     return str(destino)
 
@@ -251,13 +365,68 @@ def _firmar(tabla, empresa: dict, hoy: date, imagen: str | None) -> None:
                 r.bold, r.font.size = neg, Pt(8)
 
 
+# ─── Lo que cada anexo no puede llevar en blanco ────────────
+
+_DATOS_EMPRESA = (("razon_social", "la razón social"), ("ruc", "el RUC"),
+                  ("representante_legal", "el representante legal"),
+                  ("dni_representante", "el DNI del representante"),
+                  ("direccion", "el domicilio fiscal"))
+# El representante firma del 05 al 09, y su nombre y DNI van en el pie
+# cuando no hay sello; el domicilio lo piden el 05 y el 06. El 10 no lleva
+# datos del postor: solo su experiencia, que es opcional.
+_REQUERIDOS = {
+    "05": {"razon_social", "ruc", "representante_legal", "dni_representante", "direccion"},
+    "06": {"razon_social", "ruc", "representante_legal", "dni_representante", "direccion"},
+    "07": {"razon_social", "ruc", "representante_legal", "dni_representante"},
+    "08": {"razon_social", "representante_legal", "dni_representante"},
+    "09": {"razon_social", "representante_legal", "dni_representante"},
+    "10": set(),
+}
+
+
+def _texto(valor) -> str:
+    return str(valor).strip() if valor is not None else ""
+
+
+def _cci(valor) -> str | None:
+    """Los 20 digitos del CCI, sin espacios ni guiones; None si no los tiene.
+    Un CCI de 19 digitos firmado en el Anexo 07 es un pago que no llega."""
+    digitos = re.sub(r"[\s\-]", "", _texto(valor))
+    return digitos if re.fullmatch(r"\d{20}", digitos) else None
+
+
+def faltantes(numero: str, datos: dict) -> list[str]:
+    """Los datos obligatorios del anexo que no estan, para DocumentoIncompleto."""
+    e = datos.get("empresa") or {}
+    falta = [rotulo for campo, rotulo in _DATOS_EMPRESA
+             if campo in _REQUERIDOS[numero] and not _texto(e.get(campo))]
+    if numero == "05":
+        if not _texto((datos.get("condiciones") or {}).get("plazo_entrega")):
+            falta.append("el plazo de entrega")
+        if not _texto(datos.get("referencia")):
+            falta.append("el número del estudio de mercado")
+        items = datos.get("items") or []
+        if not items:
+            falta.append("los ítems de la oferta")
+        for it in items:
+            if it.get("precio_unitario") is None or it.get("subtotal") is None:
+                falta.append(f"el precio de «{_texto(it.get('descripcion'))[:40]}»")
+        if datos.get("total") is None:
+            falta.append("el total de la oferta")
+    if numero == "07":
+        if not _cci(datos.get("cci")):
+            falta.append("el CCI (20 dígitos)")
+        if not _texto(datos.get("banco")):
+            falta.append("el banco del CCI")
+    return falta
+
+
 # ─── Cada anexo ─────────────────────────────────────────────
 
 def _anexo_05(doc, d: dict) -> None:
     from shared.cotizacion import cantidad_legible, monto, precio_legible
-    for p in doc.paragraphs:
-        _sustituir(p, r"\[INDICAR EL N[ÚU]MERO DE ESTUDIO DE MERCADO\]\s*\(OBLIGATORIO\)",
-                   d["referencia"])
+    _reemplazar(doc, "05", r"\[INDICAR EL N[ÚU]MERO DE ESTUDIO DE MERCADO\]\s*\(OBLIGATORIO\)",
+                str(d["referencia"]), "el número de estudio de mercado")
     conceptos, datos, pie = doc.tables[0], doc.tables[1], doc.tables[2]
     modelo = copy.deepcopy(conceptos.rows[1]._tr)
     for k, it in enumerate(d["items"]):
@@ -288,11 +457,17 @@ def _anexo_05(doc, d: dict) -> None:
     _poner(fila.cells[3], monto(d["total"]), negrita=True, tamano=8)
 
     e, c = d["empresa"], d["condiciones"]
-    valores = [c.get("plazo_entrega") or PUNTOS, c.get("garantia") or PUNTOS,
-               e.get("razon_social") or "", e.get("ruc") or "", e.get("direccion") or "",
-               e.get("email") or "", e.get("telefono") or ""]
-    for fila, valor in zip(datos.rows, valores, strict=False):
-        _poner(fila.cells[-1], valor, negrita=False)
+    # Garantia, correo y telefono son opcionales: la garantia queda en puntos
+    # (para escribirla si la convocatoria la pide), los otros en blanco.
+    for etiqueta, que, valor in (
+            (r"^plazo", "Plazo de ejecución", c["plazo_entrega"]),
+            (r"^garantia", "Garantía", c.get("garantia") or PUNTOS),
+            (r"razon", "Nombre o razón social", e["razon_social"]),
+            (r"^ruc", "RUC", e["ruc"]),
+            (r"^domicilio", "Domicilio", e["direccion"]),
+            (r"^correo", "Correo electrónico", e.get("email") or ""),
+            (r"^telefono", "Teléfono", e.get("telefono") or "")):
+        _poner(_fila(datos, "05", etiqueta, que).cells[-1], str(valor), negrita=False)
     _firmar(pie, e, d["hoy"], d["imagen"])
 
 
@@ -303,22 +478,25 @@ def _anexo_06(doc, d: dict) -> None:
     def registral(campo, valor):
         return f"{campo} {valor or PUNTOS}" if juridica else f"{campo} —"
 
-    for p in doc.paragraphs:
-        _sustituir(p, r"\[[…\.]+\]", e.get("representante_legal") or PUNTOS)
-        _sustituir(p, r"\[CONSIGNAR SEG[ÚU]N CORRESPONDA\]", e.get("razon_social") or PUNTOS)
-        _sustituir(p, r"\[CONSIGNAR TIPO DE DOCUMENTO DE IDENTIDAD\]", "DNI")
-        _sustituir(p, r"\[CONSIGNAR N[ÚU]MERO DE DOCUMENTO DE IDENTIDAD\]",
-                   e.get("dni_representante") or PUNTOS)
-        _sustituir(p, r"Sede Registral de \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
-                   registral("Sede Registral de", d.get("sede_registral")))
-        _sustituir(p, r"Partida Registral N[ºo°] \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
-                   registral("Partida Registral Nº", d.get("partida")))
-        _sustituir(p, r"Asiento N[ºo°] \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
-                   registral("Asiento Nº", d.get("asiento")))
+    # Los datos registrales (sede, partida, asiento) son los unicos que pueden
+    # quedar en puntos: no siempre se conocen y uno inventado es peor.
+    for patron, nuevo, que in (
+            (r"\[[…\.]+\]", e["representante_legal"], "el nombre del que suscribe"),
+            (r"\[CONSIGNAR SEG[ÚU]N CORRESPONDA\]", e["razon_social"], "la razón social"),
+            (r"\[CONSIGNAR TIPO DE DOCUMENTO DE IDENTIDAD\]", "DNI", "el tipo de documento"),
+            (r"\[CONSIGNAR N[ÚU]MERO DE DOCUMENTO DE IDENTIDAD\]", e["dni_representante"],
+             "el número de documento"),
+            (r"Sede Registral de \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
+             registral("Sede Registral de", d.get("sede_registral")), "la sede registral"),
+            (r"Partida Registral N[ºo°] \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
+             registral("Partida Registral Nº", d.get("partida")), "la partida registral"),
+            (r"Asiento N[ºo°] \[CONSIGNAR EN CASO DE SER PERSONA JUR[ÍI]DICA\]",
+             registral("Asiento Nº", d.get("asiento")), "el asiento registral")):
+        _reemplazar(doc, "06", patron, str(nuevo), que)
     t = doc.tables[0]
-    _poner(t.rows[0].cells[1], e.get("razon_social") or "", negrita=False)
-    _poner(t.rows[1].cells[1], e.get("direccion") or "", negrita=False)
-    _agregar(t.rows[2].cells[0], e.get("ruc") or "")
+    _poner(t.rows[0].cells[1], str(e["razon_social"]), negrita=False)
+    _poner(t.rows[1].cells[1], str(e["direccion"]), negrita=False)
+    _agregar(t.rows[2].cells[0], str(e["ruc"]))
     _poner(t.rows[2].cells[3], e.get("telefono") or "", negrita=False)
     _agregar(t.rows[3].cells[0], e.get("email") or "")
     _firmar(doc.tables[1], e, d["hoy"], d["imagen"])
@@ -326,28 +504,30 @@ def _anexo_06(doc, d: dict) -> None:
 
 def _anexo_07(doc, d: dict) -> None:
     e = d["empresa"]
-    valores = (d.get("cci") or PUNTOS, d.get("banco") or PUNTOS,
-               e.get("razon_social") or "", e.get("ruc") or "")
-    for fila, valor in zip(doc.tables[0].rows, valores, strict=False):
-        _poner(fila.cells[-1], valor, negrita=False)
+    for etiqueta, que, valor in ((r"interbancari|cci", "Código de Cuenta Interbancario",
+                                  _cci(d["cci"])),
+                                 # "^entidad" y no "banc": "banc" esta en "interbancario".
+                                 (r"^entidad", "Entidad Bancaria", d["banco"]),
+                                 (r"titular", "Nombre completo del titular", e["razon_social"]),
+                                 (r"^ruc", "RUC", e["ruc"])):
+        _poner(_fila(doc.tables[0], "07", etiqueta, que).cells[-1], str(valor), negrita=False)
     _firmar(doc.tables[1], e, d["hoy"], d["imagen"])
 
 
 def _anexo_08(doc, d: dict) -> None:
     e = d["empresa"]
-    for p in doc.paragraphs:
-        _sustituir(p, r"declarante\s*[…\.]+\s*con DNI\s*[…\.]+",
-                   f"declarante {e.get('representante_legal') or PUNTOS}, con DNI "
-                   f"{e.get('dni_representante') or PUNTOS},")
+    _reemplazar(doc, "08", r"declarante\s*[…\.]+\s*con DNI\s*[…\.]+",
+                f"declarante {e['representante_legal']}, con DNI {e['dni_representante']},",
+                "el nombre y DNI del declarante")
     _firmar(doc.tables[0], e, d["hoy"], d["imagen"])
 
 
 def _anexo_09(doc, d: dict) -> None:
     e = d["empresa"]
-    for p in doc.paragraphs:
-        _sustituir(p, r"Representante Legal de\s*[…\s]+,\s*identificado/a con DNI N°\s*[…\s]+,",
-                   f"Representante Legal de {e.get('razon_social') or PUNTOS}, identificado/a "
-                   f"con DNI N° {e.get('dni_representante') or PUNTOS},")
+    _reemplazar(doc, "09",
+                r"Representante Legal de\s*[…\s]+,\s*identificado/a con DNI N°\s*[…\s]+,",
+                f"Representante Legal de {e['razon_social']}, identificado/a "
+                f"con DNI N° {e['dni_representante']},", "la razón social y el DNI")
     _firmar(doc.tables[0], e, d["hoy"], d["imagen"])
 
 
@@ -371,12 +551,20 @@ FILAS_EXPERIENCIA = 6
 
 def _anexo_10(doc, d: dict) -> None:
     from shared.cotizacion import monto
-    for p in doc.paragraphs:
-        _sustituir(p, r"\[DETALLE LOS DOCUMENTOS QUE SUSTENTEN LA CAPACIDAD LEGAL\]",
-                   "Se adjuntan la Ficha RUC y la constancia del RNP vigentes.")
+    _reemplazar(doc, "10", r"\[DETALLE LOS DOCUMENTOS QUE SUSTENTEN LA CAPACIDAD LEGAL\]",
+                "Se adjuntan la Ficha RUC y la constancia del RNP vigentes.",
+                "el detalle de la capacidad legal")
     tabla = doc.tables[0]
     filas = [f for f in tabla.rows[1:] if f.cells[0].text.strip().isdigit()]
-    experiencia = list(d.get("experiencia") or [])[:FILAS_EXPERIENCIA]
+    if not filas:
+        raise PlantillaCambiada("10", "las filas numeradas de la experiencia")
+    # Tantas como filas tenga la plantilla (y nunca mas de seis): con
+    # zip(strict=False) las sobrantes se perdian pero su monto si entraba al total.
+    todas = list(d.get("experiencia") or [])
+    experiencia = todas[:min(FILAS_EXPERIENCIA, len(filas))]
+    if len(todas) > len(experiencia):
+        log.info("Anexo 10: se declaran %d de %d experiencias (las filas de la plantilla)",
+                 len(experiencia), len(todas))
     if not experiencia:
         _poner(filas[0].cells[1], "No aplica según los términos de referencia",
                negrita=False, tamano=8)
@@ -387,10 +575,14 @@ def _anexo_10(doc, d: dict) -> None:
                    _fecha_corta(e.get("fecha_inicio") or fecha),
                    _fecha_corta(fecha) if e.get("conformidad") else "",
                    monto(e["monto"]) if e.get("monto") is not None else ""]
+        if len(fila.cells) - 1 < len(valores):
+            raise PlantillaCambiada("10", "las columnas de la tabla de experiencia")
         for celda, valor in zip(fila.cells[1:], valores, strict=False):
             _poner(celda, valor, negrita=False, tamano=7)
     if experiencia:
-        total = sum(float(e.get("monto") or 0) for e in experiencia)
+        # Decimal, no float: la suma en float de montos con centimos puede
+        # perder uno en el total que se declara.
+        total = sum((Decimal(str(e.get("monto") or 0)) for e in experiencia), Decimal(0))
         _poner(tabla.rows[-1].cells[-1], monto(total), negrita=True, tamano=8)
     _firma_al_pie(doc, d["imagen"])
 
@@ -430,31 +622,65 @@ _LLENADORES = {"05": _anexo_05, "06": _anexo_06, "07": _anexo_07, "08": _anexo_0
 
 def llenar_docx(numero: str, datos: dict) -> bytes:
     """El .docx del anexo lleno. `datos`: empresa, items, condiciones, total,
-    referencia, cci, banco, partida, hoy e imagenes."""
+    referencia, cci, banco, partida, hoy e imagenes.
+
+    DocumentoIncompleto si falta un dato obligatorio; PlantillaCambiada si la
+    plantilla ya no tiene donde ponerlo."""
     import docx
+    falta = faltantes(numero, datos)
+    if falta:
+        raise DocumentoIncompleto(f"el Anexo {numero}", falta)
     doc = docx.Document(str(plantilla(numero)))
-    d = {**datos, "imagen": _imagen_compuesta(datos.get("imagenes") or {})}
-    _LLENADORES[numero](doc, d)
+    with tempfile.TemporaryDirectory(prefix="firma_") as carpeta:
+        d = {**datos, "imagen": _imagen_compuesta(datos.get("imagenes") or {}, carpeta)}
+        try:
+            _LLENADORES[numero](doc, d)
+        except IndexError as e:
+            # Una tabla con menos filas o celdas de las que tenia.
+            raise PlantillaCambiada(numero, "sus tablas como estaban") from e
+    _sin_marcadores(doc, numero)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
 
+def _faltantes_de_todos(datos: dict) -> None:
+    """Un solo aviso con todo lo que falta en los anexos, y no uno por intento."""
+    con_falta, todo = [], []
+    for numero in ANEXOS:
+        falta = faltantes(numero, datos)
+        if falta:
+            con_falta.append(numero)
+            todo += [f for f in falta if f not in todo]
+    if con_falta:
+        documento = (f"el Anexo {con_falta[0]}" if len(con_falta) == 1
+                     else f"los Anexos {', '.join(con_falta)}")
+        raise DocumentoIncompleto(documento, todo)
+
+
 async def anexos_pdf(datos: dict) -> tuple[dict[str, bytes], str | None]:
-    """{nombre de archivo: contenido} de los anexos 05 a 09, en PDF.
+    """{nombre de archivo: contenido} de los anexos 05 a 10, en PDF.
 
     Si LibreOffice no esta, van en .docx y el segundo valor lo explica: el
-    postor puede exportarlos desde Word, pero no se le esconde que faltan."""
+    postor puede exportarlos desde Word, pero no se le esconde que faltan.
+    DocumentoIncompleto, antes de llenar ninguno, si falta un dato obligatorio."""
     from shared.pdf_firma import docx_a_pdf, hay_conversor
+    _faltantes_de_todos(datos)
     salida: dict[str, bytes] = {}
-    aviso = None
+    # Todos los avisos: antes uno sobrescribia al otro y el usuario solo veia
+    # el del ultimo anexo que fallo.
+    avisos: list[str] = []
     with tempfile.TemporaryDirectory(prefix="anexos_mpt_") as carpeta:
         for numero, nombre in ANEXOS.items():
-            contenido = llenar_docx(numero, datos)
+            # En un hilo: python-docx, PIL y la posible bajada del ZIP del
+            # portal (hasta 20 s) congelaban el servidor entero.
+            contenido = await asyncio.to_thread(llenar_docx, numero, datos)
             if not hay_conversor():
                 salida[f"{nombre}.docx"] = contenido
                 aviso = ("Los anexos van en Word: este servidor no tiene LibreOffice para "
                          "pasarlos a PDF.")
+                if aviso not in avisos:
+                    avisos.append(aviso)
                 continue
             ruta = Path(carpeta) / f"{nombre}.docx"
             ruta.write_bytes(contenido)
@@ -463,5 +689,5 @@ async def anexos_pdf(datos: dict) -> tuple[dict[str, bytes], str | None]:
                 salida[f"{nombre}.pdf"] = Path(pdf).read_bytes()
             else:
                 salida[f"{nombre}.docx"] = contenido
-                aviso = f"Los anexos van en Word: {mensaje}"
-    return salida, aviso
+                avisos.append(f"El Anexo {numero} va en Word: {mensaje}")
+    return salida, (" ".join(avisos) or None)
