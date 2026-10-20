@@ -336,6 +336,9 @@ async def get_contratos_activos(empresa_id: int | None = None):
 
 
 async def get_plazos_proximos(dias: int = 7):
+    # La fecha de Lima y no CURRENT_DATE: con la sesion en UTC (el VPS),
+    # CURRENT_DATE pasa al dia siguiente a las 19:00 de Lima y el aviso de
+    # plazos de la noche corria la ventana un dia hacia adelante.
     async with connection() as conn:
         return await conn.fetch(
             """SELECT p.*, c.numero_contrato, c.empresa_id, l.objeto, l.entidad
@@ -343,7 +346,8 @@ async def get_plazos_proximos(dias: int = 7):
             JOIN contratos c ON p.contrato_id = c.id
             JOIN licitaciones l ON c.licitacion_id = l.id
             WHERE p.completado = FALSE 
-            AND p.fecha_limite <= CURRENT_DATE + $1 * INTERVAL '1 day'
+            AND p.fecha_limite <= (NOW() AT TIME ZONE 'America/Lima')::date
+                                  + $1 * INTERVAL '1 day'
             ORDER BY p.fecha_limite""",
             dias,
         )
@@ -765,14 +769,23 @@ async def set_token_telegram(usuario_id: int, token: str, expira) -> None:
         )
 
 
+# `telegram_token_expira` y `tokens_recuperacion.expira` se escriben desde
+# Python en hora de pared de Lima (ver shared/seguridad.py). Se comparan contra
+# la hora de Lima y no contra NOW() por lo mismo que fecha_cierre (ver
+# licitaciones_para_usuario): con la sesion en UTC, que es como corre el VPS,
+# NOW() iba cinco horas por delante y el token nacia vencido. Asi la condicion
+# vale con la sesion en cualquier zona.
+_AHORA_LIMA = "(NOW() AT TIME ZONE 'America/Lima')"
+
+
 async def token_telegram_vigente(usuario_id: int) -> str | None:
     """El codigo pendiente de canjear, si aun vale. Misma condicion que aplica
     vincular_telegram, para no mostrar un codigo que el bot va a rechazar."""
     async with connection() as conn:
         return await conn.fetchval(
-            """SELECT telegram_token FROM usuarios
+            f"""SELECT telegram_token FROM usuarios
                 WHERE id = $1 AND telegram_token IS NOT NULL
-                  AND telegram_token_expira > NOW()""",
+                  AND telegram_token_expira > {_AHORA_LIMA}""",
             usuario_id,
         )
 
@@ -786,12 +799,12 @@ async def vincular_telegram(token: str, chat_id: int):
     """
     async with connection() as conn:
         return await conn.fetchrow(
-            """UPDATE usuarios
+            f"""UPDATE usuarios
                   SET telegram_chat_id = $2,
                       telegram_token = NULL,
                       telegram_token_expira = NULL
                 WHERE telegram_token = $1
-                  AND telegram_token_expira > NOW()
+                  AND telegram_token_expira > {_AHORA_LIMA}
                   AND activo = TRUE
              RETURNING *""",
             token, chat_id,
@@ -875,12 +888,12 @@ async def usuario_por_token_recuperacion(token_hash: str):
     """Usuario dueno de un token vigente y sin usar, o None."""
     async with connection() as conn:
         return await conn.fetchrow(
-            """SELECT u.*, t.id AS token_id
+            f"""SELECT u.*, t.id AS token_id
                  FROM tokens_recuperacion t
                  JOIN usuarios u ON u.id = t.usuario_id
                 WHERE t.token_hash = $1
                   AND t.usado_en IS NULL
-                  AND t.expira > NOW()
+                  AND t.expira > {_AHORA_LIMA}
                   AND u.activo = TRUE""",
             token_hash)
 
@@ -898,8 +911,9 @@ async def consumir_token_y_cambiar_password(token_hash: str,
     """
     async with connection() as conn, conn.transaction():
         fila = await conn.fetchrow(
-            """UPDATE tokens_recuperacion SET usado_en = NOW()
-                    WHERE token_hash = $1 AND usado_en IS NULL AND expira > NOW()
+            f"""UPDATE tokens_recuperacion SET usado_en = NOW()
+                    WHERE token_hash = $1 AND usado_en IS NULL
+                      AND expira > {_AHORA_LIMA}
                  RETURNING usuario_id""",
             token_hash)
         if not fila:

@@ -27,6 +27,7 @@ TODO FILTRA POR usuario_id
 import csv
 import io
 import logging
+from datetime import timedelta
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -63,7 +64,13 @@ async def proximos_vencimientos(usuario_id: int,
     Se unen al leer y no en el modelo porque son cosas distintas: el RNP
     vencido inhabilita para contratar; una poliza vencida es un problema del
     contrato. Lo que comparten es cuando hay que mirarlas.
+
+    El limite se calcula con la fecha de Lima y va como parametro. Antes era
+    CURRENT_DATE, que es la fecha de la SESION: en el VPS la sesion es UTC y
+    desde las 19:00 de Lima ya era manana, asi que la ventana y los "dias que
+    faltan" (que si salian de Lima) no casaban.
     """
+    hoy = fechas.hoy()
     async with connection() as conn:
         filas = await conn.fetch(
             """
@@ -74,7 +81,7 @@ async def proximos_vencimientos(usuario_id: int,
               FROM empresas e
              WHERE e.usuario_id = $1 AND e.activa
                AND e.rnp_vigencia IS NOT NULL
-               AND e.rnp_vigencia <= CURRENT_DATE + make_interval(days => $2)
+               AND e.rnp_vigencia <= $2
 
             UNION ALL
 
@@ -83,12 +90,11 @@ async def proximos_vencimientos(usuario_id: int,
               FROM vencimientos v
               JOIN empresas e ON e.id = v.empresa_id
              WHERE e.usuario_id = $1
-               AND v.fecha_vencimiento <= CURRENT_DATE + make_interval(days => $2)
+               AND v.fecha_vencimiento <= $2
 
             ORDER BY fecha
-            """, usuario_id, dias)
+            """, usuario_id, hoy + timedelta(days=dias))
 
-    hoy = fechas.hoy()
     return [{**dict(f), "dias": (f["fecha"] - hoy).days} for f in filas]
 
 
@@ -155,6 +161,27 @@ async def ver_informes(request: Request):
 
 # ─── Exportacion ─────────────────────────────────────────
 
+# Lo que Excel y LibreOffice interpretan como inicio de formula. El tabulador y
+# el retorno de carro tambien: algunas versiones los saltan y leen lo que sigue.
+_INICIO_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _celda_segura(valor):
+    """Neutraliza una celda de texto que Excel ejecutaria como formula.
+
+    Los textos salen de fuentes que no controlamos -- el objeto o la entidad
+    scrapeados del SEACE, el concepto que teclea el usuario --, y un
+    `=HYPERLINK("http://...")` o un `=cmd|...` en una celda se ejecuta al abrir
+    el CSV. Se antepone un apostrofe, que Excel muestra como texto literal.
+
+    Solo se tocan cadenas: los numeros van tal cual, y un monto negativo
+    seguiria siendo un numero en la hoja.
+    """
+    if isinstance(valor, str) and valor.startswith(_INICIO_FORMULA):
+        return "'" + valor
+    return valor
+
+
 def _csv(filas, cabeceras: list[str], nombre: str) -> StreamingResponse:
     """CSV que Excel en español abre sin romperse.
 
@@ -172,7 +199,7 @@ def _csv(filas, cabeceras: list[str], nombre: str) -> StreamingResponse:
     escritor = csv.writer(buffer, delimiter=";", quoting=csv.QUOTE_MINIMAL)
     escritor.writerow(cabeceras)
     for fila in filas:
-        escritor.writerow(list(fila))
+        escritor.writerow([_celda_segura(v) for v in fila])
 
     buffer.seek(0)
     return StreamingResponse(
