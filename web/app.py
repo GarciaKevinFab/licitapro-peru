@@ -8,7 +8,9 @@ import asyncio
 import logging
 import os
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import (
@@ -31,7 +33,56 @@ from web import limites
 log = logging.getLogger("web.app")
 
 BASE = Path(__file__).parent
-app = FastAPI(title="LicitaPro Panel")
+
+
+# ─── Ciclo de vida: el pool se abre al arrancar y se cierra al apagar ────
+#
+# Antes el pool nacia con la primera consulta y no se cerraba nunca. Dos
+# problemas: las primeras peticiones simultaneas tras un despliegue podian
+# crear DOS pools (get_pool no tiene candado y las dos ven `_pool is None`), y
+# al reiniciar el contenedor las conexiones se cortaban a lo bruto en vez de
+# devolverse a Postgres, que las tiene contadas hasta que expiran.
+#
+# Si la base no responde al arrancar NO se aborta: se registra y se sigue. La
+# app ya sabe vivir sin base -- /salud responde 503 y get_pool lo vuelve a
+# intentar en la primera consulta --, y un contenedor que no arranca hasta que
+# Postgres responde es un contenedor en bucle de reinicios que tampoco sirve
+# la pagina de error.
+@asynccontextmanager
+async def _ciclo_de_vida(_app):
+    from shared import db
+    try:
+        await db.get_pool()
+    except Exception as e:  # noqa: BLE001
+        log.error("No se pudo abrir el pool al arrancar; se reintentara en la "
+                  "primera consulta: %s", e)
+    try:
+        yield
+    finally:
+        pool = getattr(db, "_pool", None)
+        if pool is not None:
+            db._pool = None
+            # close() espera a que se devuelvan las conexiones prestadas. Con
+            # una consulta colgada esperaria para siempre y el apagado no
+            # terminaria nunca: pasado un plazo, se cortan.
+            try:
+                await asyncio.wait_for(pool.close(), timeout=10)
+            except TimeoutError:
+                log.warning("El pool no cerro en 10 s; se cortan las conexiones")
+                pool.terminate()
+
+
+# /docs, /redoc y /openapi.json solo en desarrollo. Fuera de ahi son un mapa
+# de las 95 rutas, con sus parametros, regalado a quien quiera probarlas una a
+# una. Al cliente no le sirven de nada: el panel es HTML.
+_EN_DESARROLLO = os.getenv("LICITAPRO_ENTORNO", "dev") == "dev"
+app = FastAPI(
+    title="LicitaPro Panel",
+    lifespan=_ciclo_de_vida,
+    docs_url="/docs" if _EN_DESARROLLO else None,
+    redoc_url="/redoc" if _EN_DESARROLLO else None,
+    openapi_url="/openapi.json" if _EN_DESARROLLO else None,
+)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 # Los routers alcanzan las plantillas por app.state y no importando este modulo,
 # que los importa a ellos: al reves habria ciclo.
@@ -153,6 +204,97 @@ async def permitir_head(request: Request, call_next):
     return vacia
 
 
+# ─── Peticiones que cambian algo deben venir de este sitio (CSRF) ────────
+#
+# HASTA AHORA SOLO HABIA SameSite=lax, Y NO BASTA
+#
+#   Lax impide que otro SITIO mande la cookie en un POST, pero para el
+#   navegador "sitio" es el dominio registrable: sisac.pe entero. Cualquier
+#   otro subdominio de sisac.pe -- que los hay, y no todos son nuestros ni
+#   igual de cuidados -- es "el mismo sitio" y su formulario llegaria aqui con
+#   la sesion puesta. Y si algun dia se baja a SameSite=none por un flujo de
+#   pago, la proteccion desaparece entera sin que nada avise.
+#
+# COMO SE DECIDE
+#
+#   Los navegadores dicen de donde viene cada peticion y una pagina no puede
+#   falsearlo: `Origin` en todo POST de otro origen, `Sec-Fetch-Site` en los
+#   modernos. Se exige que Origin (o Referer si no hay Origin) sea este mismo
+#   host, o que Sec-Fetch-Site diga same-origin / none (none = el usuario lo
+#   escribio o vino de un marcador).
+#
+#   Si no llega NINGUNA de las tres se deja pasar. Asi llegan los clientes que
+#   no son navegadores -- curl, la suite de pruebas -- y esos no arrastran la
+#   cookie de nadie, que es de lo que va un CSRF. Un navegador que hoy pueda
+#   ejecutar el formulario de un atacante manda Origin siempre.
+#
+#   Se compara solo el host (con puerto), no el esquema: detras del tunel la
+#   aplicacion ve http aunque el navegador hable https.
+#
+# EXENTAS
+#
+#   /webhooks/*           Culqi, Izipay y WhatsApp llaman desde sus servidores,
+#                         con su propia firma. Ver cada modulo.
+#   /suscripcion/retorno  La pasarela devuelve al navegador con un POST desde su
+#                         propio dominio. Ahi no hay nada que proteger: con
+#                         Lax esa peticion llega sin cookie, y sin sesion la
+#                         ruta solo redirige a /entrar.
+_METODOS_QUE_ESCRIBEN = ("POST", "PUT", "PATCH", "DELETE")
+_EXENTAS_CSRF = ("/webhooks/", "/suscripcion/retorno")
+
+
+def _hosts_propios(host_pedido: str | None) -> set[str]:
+    """Hosts que cuentan como "este sitio": el de la peticion y el publico."""
+    hosts = set()
+    if host_pedido:
+        hosts.add(host_pedido.strip().lower())
+    dominio = (os.getenv("LICITAPRO_DOMINIO") or "").strip().lower()
+    if dominio:
+        hosts.add(dominio)
+    publica = urlparse(os.getenv("LICITAPRO_URL_PUBLICA") or "").netloc.lower()
+    if publica:
+        hosts.add(publica)
+    return hosts
+
+
+def peticion_ajena(metodo: str, ruta: str, cabeceras) -> bool:
+    """True si la peticion escribe y un navegador dice que viene de otro sitio."""
+    if metodo.upper() not in _METODOS_QUE_ESCRIBEN:
+        return False
+    if ruta.startswith(_EXENTAS_CSRF):
+        return False
+
+    propios = _hosts_propios(cabeceras.get("host"))
+    origen = cabeceras.get("origin")
+    if origen is not None:
+        # "null" lo mandan los iframes con sandbox y las paginas file://: un
+        # origen opaco nunca es este sitio.
+        return urlparse(origen.strip()).netloc.lower() not in propios
+    referer = cabeceras.get("referer")
+    if referer:
+        return urlparse(referer.strip()).netloc.lower() not in propios
+    sitio = cabeceras.get("sec-fetch-site")
+    if sitio is not None:
+        return sitio.strip().lower() not in ("same-origin", "none")
+    return False
+
+
+@app.middleware("http")
+async def frenar_csrf(request: Request, call_next):
+    if peticion_ajena(request.method, request.url.path, request.headers):
+        log.warning("Peticion %s %s rechazada por venir de otro origen (%s)",
+                    request.method, request.url.path,
+                    (request.headers.get("origin")
+                     or request.headers.get("referer") or "")[:80])
+        return HTMLResponse(
+            "<!doctype html><html lang=\"es\"><meta charset=\"utf-8\">"
+            "<title>Peticion rechazada</title><h1>Petición rechazada</h1>"
+            "<p>Este formulario no se envió desde LicitaPro. Vuelve a abrir la "
+            "página en el panel e inténtalo otra vez.</p></html>",
+            status_code=403)
+    return await call_next(request)
+
+
 # ─── Cabeceras de seguridad ──────────────────────────────
 # Va DESPUES de todo lo demas a proposito: en Starlette el ultimo registrado
 # envuelve a los anteriores, asi que este queda por fuera y sus cabeceras
@@ -244,7 +386,12 @@ def _csp(nonce: str) -> str:
         # Se admite el origen exacto, no un comodin. Y si algun dia se desactiva
         # la insercion automatica en el panel de Cloudflare, esta linea sobra:
         # quitarla entonces, que una excepcion sin uso es una puerta abierta.
-        "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com"
+        #
+        # unpkg.com ya no esta: htmx se sirve desde /static. Con el CDN entero
+        # admitido, un XSS podia cargar desde alli cualquier paquete de npm
+        # -- incluidos los que sirven para saltarse una CSP -- y la politica
+        # no habria dicho nada.
+        "script-src 'self' https://static.cloudflareinsights.com"
         + culqi_src["script"],
         f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com"
         + culqi_src["style"],

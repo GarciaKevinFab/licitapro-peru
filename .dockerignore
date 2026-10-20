@@ -1,0 +1,54 @@
+# Lo que NO entra en la imagen. El Dockerfile hace `COPY . .`, y sin este
+# archivo eso copiaba TODO lo que hubiera en la carpeta del servidor:
+#
+#   - el .env con la clave de sesion, la del correo y las de la pasarela,
+#     y los .env.respaldo-* que se van acumulando en el VPS;
+#   - data/, con las constancias RNP, firmas, sellos y expedientes de los
+#     clientes;
+#   - .git entero, historial incluido.
+#
+# Todo eso quedaba dentro de cada capa de la imagen, legible por cualquiera
+# que la tuviera (un `docker save`, una subida a un registro, una copia de
+# respaldo del servidor). Los secretos llegan al contenedor por `env_file` en
+# el compose, y data/ por volumen: dentro de la imagen no hacen falta.
+#
+# ANTES DE ANADIR UNA LINEA, comprobar que el codigo no lo lee en ejecucion:
+#   - tools/ SI hace falta: DESPLIEGUE.md lanza tools/*.py con `docker compose
+#     run web` (renovar_suscripciones, auditar_sql, crear_esquema...).
+#   - shared/schema.sql SI hace falta: lo lee tools/crear_esquema.py.
+#   - templates/ (raiz) SI se queda: es la carpeta de formatos, vacia en git.
+#   - data/plantillas_mpt la rellena shared/anexos_mpt.py al vuelo; no se
+#     construye con ella.
+
+# Secretos
+.env
+.env.*
+*.env
+
+# Datos de clientes y salidas en tiempo de ejecucion
+data/
+templates/output/
+
+# Control de versiones y herramientas del desarrollador
+.git
+.gitignore
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Pruebas y caches
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Documentacion: nadie la lee dentro del contenedor
+docs/
+*.md
+start.bat
+stop.bat
