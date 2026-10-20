@@ -2,6 +2,7 @@
 archivo de configuracion pueda commitearse sin credenciales dentro."""
 import os
 from logging.config import fileConfig
+from urllib.parse import urlparse
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -9,6 +10,53 @@ from sqlalchemy import engine_from_config, pool
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
+
+
+def _importar_es_gestionado():
+    """`shared.db._es_gestionado`, sin el `load_dotenv()` que trae al importarse.
+
+    POR QUE SE IMPORTA Y NO SE COPIA
+
+      Decidir "esta base exige TLS" en dos sitios con dos reglas distintas es
+      como acabo este archivo forzando sslmode=require contra todo, incluido el
+      Postgres del VPS (host `postgres`), que no habla TLS: la migracion moria
+      con "server does not support SSL connection" justo en el despliegue.
+
+    POR QUE SE DESHACE LO QUE CARGA load_dotenv
+
+      `shared/db.py` llama a `load_dotenv()` al importarse. Alembic nunca leyo
+      el .env -- la URL sale del entorno de quien lo lanza -- y empezar a
+      leerlo por un import haria que un `alembic upgrade head` en un portatil
+      sin variables saltara a la DATABASE_URL del .env, que es la de
+      produccion. Se devuelve el entorno tal como estaba antes del import.
+    """
+    antes = dict(os.environ)
+    try:
+        from shared.db import _es_gestionado
+    finally:
+        for clave in set(os.environ) - set(antes):
+            del os.environ[clave]
+        os.environ.update(antes)
+    return _es_gestionado
+
+
+_es_gestionado = _importar_es_gestionado()
+
+
+def _password_obligatoria() -> str:
+    """Como en `shared/db.py`: sin valor por defecto.
+
+    Antes caia a 'licitapro'. Una contrasena por defecto escrita en un
+    repositorio es una contrasena conocida en toda instalacion que no la
+    cambio, y ademas esconde el error real (falta la variable) detras de un
+    "password authentication failed" que apunta a otro sitio.
+    """
+    clave = os.getenv("POSTGRES_PASSWORD")
+    if not clave:
+        raise RuntimeError(
+            "Falta POSTGRES_PASSWORD (o DATABASE_URL). Alembic no adivina la "
+            "contrasena de la base: exportala antes de migrar.")
+    return clave
 
 
 def url_bd() -> str:
@@ -28,10 +76,14 @@ def url_bd() -> str:
       driver por defecto, que en SQLAlchemy 2 no es psycopg2; aqui el
       controlador instalado es psycopg2, asi que se fuerza.
 
-    POR QUE SE ANADE sslmode=require
+    POR QUE sslmode=require SOLO EN BASES GESTIONADAS
 
-      Supabase solo acepta TLS. Sin esto la conexion se rechaza con un mensaje
-      que no apunta a la causa.
+      Supabase solo acepta TLS, y sin esto la conexion se rechaza con un
+      mensaje que no apunta a la causa. Pero el Postgres del VPS y el local no
+      tienen TLS, y forzarlo alli rompe la conexion igual de mal. La regla es
+      la de `get_pool` (`_es_gestionado`), y vale tambien para las piezas
+      sueltas: un POSTGRES_HOST de Supabase necesita TLS igual que su URL.
+      Si la URL ya trae su propio sslmode, se respeta.
     """
     url = (os.getenv("DATABASE_URL") or "").strip()
     if url:
@@ -41,17 +93,19 @@ def url_bd() -> str:
             if url.startswith(viejo):
                 url = nuevo + url[len(viejo):]
                 break
-        if "sslmode=" not in url:
+        if "sslmode=" not in url and _es_gestionado(urlparse(url).hostname or ""):
             url += ("&" if "?" in url else "?") + "sslmode=require"
         return url
 
-    return (
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    url = (
         f"postgresql+psycopg2://{os.getenv('POSTGRES_USER', 'licitapro')}:"
-        f"{os.getenv('POSTGRES_PASSWORD', 'licitapro')}@"
-        f"{os.getenv('POSTGRES_HOST', 'localhost')}:"
+        f"{_password_obligatoria()}@"
+        f"{host}:"
         f"{os.getenv('POSTGRES_PORT', '5433')}/"
         f"{os.getenv('POSTGRES_DB', 'licitapro')}"
     )
+    return url + ("?sslmode=require" if _es_gestionado(host) else "")
 
 
 # LOS % DE LA URL HAY QUE DUPLICARLOS AQUI

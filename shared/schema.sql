@@ -264,6 +264,11 @@ CREATE INDEX IF NOT EXISTS idx_licit_fuente ON licitaciones(fuente);
 CREATE INDEX IF NOT EXISTS idx_licit_notif ON licitaciones(notificado);
 CREATE INDEX IF NOT EXISTS idx_kb_empresa ON knowledge_base(empresa_id, categoria);
 CREATE INDEX IF NOT EXISTS idx_prop_estado ON propuestas(estado);
+-- Una propuesta por licitacion y empresa: sin esto un doble clic en "Postular"
+-- creaba dos. Lo pone la migracion 0020; aqui para que una base nueva nazca
+-- con el. Mismo nombre que alli, asi el IF NOT EXISTS de la 0020 no duplica.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_propuestas_licitacion_empresa
+    ON propuestas(licitacion_id, empresa_id);
 CREATE INDEX IF NOT EXISTS idx_preg_pend ON preguntas(respondida);
 CREATE INDEX IF NOT EXISTS idx_contrato_estado ON contratos(estado);
 CREATE INDEX IF NOT EXISTS idx_plazos_fecha ON plazos(fecha_limite, completado);

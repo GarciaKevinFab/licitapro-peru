@@ -130,7 +130,14 @@ def match_keywords(texto: str, keywords: list[str]) -> bool:
 # ("1,234.56"). Un entero pelado en una celda casi nunca es plata: es el ano,
 # un correlativo o un conteo de items.
 _RE_FECHA_HORA = re.compile(r"\d{1,4}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{1,4}|\d{1,2}:\d{2}")
-_RE_MONEDA = re.compile(r"s/\.?|us\$|u\$s|\$|\bpen\b|\busd\b|\bsoles\b", re.IGNORECASE)
+# "S/" solo cuenta como moneda si es el simbolo de verdad: no pegado a una
+# letra por delante y con el numero detras (espacios y punto opcionales).
+# Antes bastaba con que apareciera "s/" en cualquier parte, y "MDS/GM",
+# "Bases/" o "ANEXOS/" encendian la moneda: con ella se aceptan enteros
+# sueltos, asi que "COT-123-2026-MDS/GM" salia como un monto de S/ 123.
+# `[^\W\d_]` es "una letra", tildes incluidas.
+_RE_MONEDA = re.compile(r"(?<![^\W\d_])s/\.?(?=\s*\d)|us\$|u\$s|\$|\bpen\b|\busd\b|\bsoles\b",
+                        re.IGNORECASE)
 _RE_NUMERO = re.compile(r"\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+")
 
 

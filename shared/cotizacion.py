@@ -57,6 +57,52 @@ _LINEA = re.compile(
 
 CENTIMO = Decimal("0.01")
 
+# Lo que cabe en las columnas: precio_unitario es NUMERIC(14,4) y cantidad
+# NUMERIC(14,3), o sea 10 y 11 digitos enteros. Se usa el limite mas estrecho
+# para los dos: ningun precio ni cantidad de una cotizacion real se acerca a
+# diez mil millones.
+#
+#   POR QUE IMPORTA: "1E+30" es un Decimal valido y finito. Pasaba el filtro,
+#   llegaba al UPDATE y Postgres respondia "numeric field overflow": un 500
+#   en vez de "el precio no es un numero valido".
+TOPE = Decimal("1E10")
+_DIEZMILESIMA = Decimal("0.0001")
+
+
+class FueraDeRango(ValueError):
+    """Un precio o una cantidad que no cabe en la columna, o no es un numero."""
+
+
+def _cabe(d: Decimal) -> bool:
+    """Si `d` entra en NUMERIC(14,4) una vez redondeado como lo redondea Postgres.
+
+    Se mira DESPUES de redondear a 4 decimales: 9999999999.99999 es menor que el
+    tope, pero Postgres lo guarda como 10000000000.0000 y desborda igual.
+    """
+    if not d.is_finite():
+        return False
+    try:
+        return abs(d.quantize(_DIEZMILESIMA, rounding=ROUND_HALF_UP)) < TOPE
+    except InvalidOperation:   # mas digitos de los que el contexto puede redondear
+        return False
+
+
+def validar_rango(valor, nombre: str = "valor") -> None:
+    """FueraDeRango si `valor` no se puede guardar. None pasa (columna nulable).
+
+    `a_decimal` ya descarta todo esto para lo que llega de un formulario; esto
+    protege a quien llame a `agregar`/`guardar` con un Decimal hecho a mano, que
+    sin ello se encontraria el error de Postgres a mitad de transaccion.
+    """
+    if valor is None:
+        return
+    try:
+        d = Decimal(valor)
+    except (InvalidOperation, TypeError, ValueError):
+        raise FueraDeRango(f"{nombre} no es un numero: {valor!r}") from None
+    if not _cabe(d):
+        raise FueraDeRango(f"{nombre} fuera de rango: {valor}")
+
 
 def es_cotizacion_menor(tipo: str | None) -> bool:
     return (tipo or "") in TIPOS_MENORES
@@ -82,7 +128,12 @@ def items_de_texto(texto: str | None) -> list[dict]:
 
 
 def a_decimal(valor) -> Decimal | None:
-    """Lo que llega de un formulario: "4", "4.00", "4,50", "" o basura."""
+    """Lo que llega de un formulario: "4", "4.00", "4,50", "" o basura.
+
+    None tambien para lo que no cabe en la base ("1E+30", "nan", "inf"): los
+    que llaman ya convierten None en "no es un numero valido" para el usuario,
+    que es justo lo que hay que decirle. Lanzar aqui seria un 500.
+    """
     if valor is None:
         return None
     crudo = str(valor).strip().replace(",", ".")
@@ -92,7 +143,7 @@ def a_decimal(valor) -> Decimal | None:
         d = Decimal(crudo)
     except InvalidOperation:
         return None
-    return d if d.is_finite() and d >= 0 else None
+    return d if _cabe(d) and d >= 0 else None
 
 
 def subtotal(item) -> Decimal | None:
@@ -135,7 +186,10 @@ def precios_rebajados(items: list[dict], porcentaje: Decimal) -> dict[int, Decim
         precio = (original * factor / paso).to_integral_value(rounding="ROUND_FLOOR") * paso
         if precio >= original:          # un precio ya redondo y pequeno
             precio = original - paso
-        nuevos[it["id"]] = max(precio, paso)
+        # El piso de un paso no puede dejarlo POR ENCIMA del original: un item
+        # de S/ 0.30 tiene paso 0.50, y max(precio, paso) lo subia a 0.50 en
+        # una "rebaja". Sin precio redondo por debajo, se queda en el suyo.
+        nuevos[it["id"]] = min(max(precio, paso), original)
     cantidades = {it["id"]: Decimal(it["cantidad"]) for it in con_precio}
     originales = {it["id"]: Decimal(it["precio_unitario"]) for it in con_precio}
 
@@ -209,16 +263,28 @@ async def sembrar(propuesta_id: int) -> int:
     return len(items)
 
 
-async def _recalcular(conn, propuesta_id: int) -> Decimal:
+async def _recalcular(conn, propuesta_id: int, venia_de_items: bool = False) -> Decimal:
+    """Pone en `precio_ofertado` la suma de los items. Devuelve la suma.
+
+    Sin ningun precio puesto no se pisa un monto que el usuario fijo a mano...
+    salvo que `venia_de_items`: entonces el monto guardado ERA la suma de los
+    items y ya no es la suma de nada, asi que pasa a NULL. Era el fallo de
+    `quitar`: al borrar el ultimo item con precio, la propuesta seguia
+    ofertando el total viejo, y el validador y el ZIP lo daban por bueno.
+
+    Se pasa el Decimal tal cual: asyncpg lo acepta para la columna REAL
+    (comprobado contra Postgres 17), y el dia que la columna pase a NUMERIC no
+    queda un float de por medio redondeando centimos.
+    """
     filas = await conn.fetch(
         "SELECT cantidad, precio_unitario FROM propuesta_items WHERE propuesta_id=$1",
         propuesta_id)
     suma = total(filas)
-    # Sin ningun precio puesto no se pisa un monto que el usuario fijo a mano.
-    if any(f["precio_unitario"] is not None for f in filas):
+    con_precio = any(f["precio_unitario"] is not None for f in filas)
+    if con_precio or venia_de_items:
         await conn.execute(
             "UPDATE propuestas SET precio_ofertado=$2, updated_at=NOW() WHERE id=$1",
-            propuesta_id, float(suma))
+            propuesta_id, suma if con_precio else None)
     return suma
 
 
@@ -231,6 +297,8 @@ async def guardar(propuesta_id: int, cambios: dict[int, tuple], condiciones: dic
     puede tocar items de otra propuesta.
     """
     limpias = {k: (condiciones.get(k) or "").strip()[:300] for k in CONDICIONES_INICIALES}
+    for cambio in cambios.values():
+        validar_rango(cambio[-1], "precio")
     async with connection() as conn, conn.transaction():
         for item_id, cambio in cambios.items():
             marca, presentacion, precio = cambio if len(cambio) == 3 else (cambio[0], None, cambio[1])
@@ -246,16 +314,34 @@ async def guardar(propuesta_id: int, cambios: dict[int, tuple], condiciones: dic
         return await _recalcular(conn, propuesta_id)
 
 
+# Primera clave del candado de `agregar`: separa estos candados de cualquier
+# otro pg_advisory_xact_lock que se use mas adelante con ids de otra tabla.
+_CANDADO_ITEMS = 0x1C07
+
+
 async def agregar(propuesta_id: int, descripcion: str, cantidad: Decimal,
                   unidad: str | None) -> None:
+    """Agrega un item al final de la propuesta.
+
+    POR QUE EL CANDADO
+
+      Antes se leia MAX(orden)+1 y se insertaba en otra sentencia. Dos altas a
+      la vez (doble clic, dos pestanas) leian el mismo maximo y la segunda
+      chocaba con UNIQUE(propuesta_id, orden): un 500. Calcular el orden dentro
+      del INSERT no basta por si solo, porque las dos transacciones ven la
+      misma foto de la tabla. El candado de transaccion por propuesta pone a la
+      segunda en cola hasta que la primera confirma, y entonces ya ve el item
+      nuevo. Se suelta solo al terminar la transaccion.
+    """
+    validar_rango(cantidad, "cantidad")
     async with connection() as conn, conn.transaction():
-        orden = await conn.fetchval(
-            "SELECT COALESCE(MAX(orden), 0) + 1 FROM propuesta_items WHERE propuesta_id=$1",
-            propuesta_id)
+        await conn.execute("SELECT pg_advisory_xact_lock($1, $2)",
+                           _CANDADO_ITEMS, propuesta_id)
         await conn.execute(
             """INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad, unidad)
-                   VALUES ($1,$2,$3,$4,$5)""",
-            propuesta_id, orden, descripcion.strip()[:500], cantidad,
+               SELECT $1, COALESCE(MAX(orden), 0) + 1, $2, $3, $4
+                 FROM propuesta_items WHERE propuesta_id=$1""",
+            propuesta_id, descripcion.strip()[:500], cantidad,
             (unidad or "").strip()[:30] or None)
         await conn.execute(
             """UPDATE propuestas SET cotizacion_condiciones =
@@ -265,10 +351,16 @@ async def agregar(propuesta_id: int, descripcion: str, cantidad: Decimal,
 
 async def quitar(propuesta_id: int, item_id: int) -> None:
     async with connection() as conn, conn.transaction():
+        # Si algun item tenia precio, el precio_ofertado salia de ellos y hay
+        # que recalcularlo aunque ya no quede ninguno con precio (-> NULL).
+        venia_de_items = await conn.fetchval(
+            """SELECT EXISTS (SELECT 1 FROM propuesta_items
+                               WHERE propuesta_id=$1 AND precio_unitario IS NOT NULL)""",
+            propuesta_id)
         await conn.execute(
             "DELETE FROM propuesta_items WHERE id=$1 AND propuesta_id=$2",
             item_id, propuesta_id)
-        await _recalcular(conn, propuesta_id)
+        await _recalcular(conn, propuesta_id, venia_de_items)
 
 
 def monto(valor) -> str:
