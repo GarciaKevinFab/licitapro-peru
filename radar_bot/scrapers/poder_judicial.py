@@ -15,12 +15,12 @@ class PoderJudicialScraper(BaseScraper):
     URL = PJ_URL
 
     async def _fetch_items(self, client):
-        resp = await client.get(self.URL)
-        if resp.status_code != 200:
+        resp = await self._pedir(client, self.URL)
+        if resp is None:
             # Intentar endpoint alternativo
             alt = "https://www.pj.gob.pe/wps/wcm/connect/Logistica/s_corte_suprema_logistica/as_procesos_seleccion/"
-            resp = await client.get(alt)
-            if resp.status_code != 200:
+            resp = await self._pedir(client, alt)
+            if resp is None:
                 return []
 
         soup = BeautifulSoup(resp.text, "lxml")

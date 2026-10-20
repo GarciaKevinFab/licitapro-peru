@@ -4,7 +4,12 @@ import logging
 from datetime import datetime
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from shared import fechas
 from shared.db import get_config, log_scraping_end, log_scraping_start, upsert_licitacion
@@ -70,21 +75,58 @@ class BaseScraper:
 
     FUENTE = "base"
     URL = ""
+    # REINTENTOS. Antes el @retry decoraba `scrape`, cuyo try interno se
+    # tragaba todo: nunca veia una excepcion y nunca reintentaba (y si lo
+    # hubiera hecho, habria abierto otra fila en scraping_log por intento).
+    # Ahora se reintenta solo la descarga y solo ante errores de red; un
+    # 404 no mejora por insistir.
+    REINTENTOS = 3
+    ESPERA_MIN = 5
 
     def __init__(self):
         self.log = logging.getLogger(f"radar.{self.FUENTE}")
+        self._fallos: list[str] = []
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=5, max=30))
+    async def _pedir(self, client: httpx.AsyncClient, url: str, **kwargs):
+        """GET que deja constancia. La respuesta si es 200; None si no.
+
+        Los scrapers heredados hacian `if resp.status_code != 200: return []`:
+        un 404 y un dia sin convocatorias acababan igual, "0 encontradas, 0
+        errores". El codigo queda en el log (warning) y en
+        `scraping_log.error_detalle`. Los errores de red NO se capturan aqui:
+        suben para que `scrape` reintente.
+        """
+        resp = await client.get(url, **kwargs)
+        if resp.status_code != 200:
+            self._fallos.append(f"{url}: HTTP {resp.status_code}")
+            self.log.warning("%s: %s respondio HTTP %s", self.FUENTE, url,
+                             resp.status_code)
+            return None
+        return resp
+
+    async def _fetch_con_reintento(self, client: httpx.AsyncClient) -> list:
+        async for intento in AsyncRetrying(
+                stop=stop_after_attempt(self.REINTENTOS),
+                wait=wait_exponential(min=self.ESPERA_MIN, max=30),
+                retry=retry_if_exception_type(httpx.TransportError),
+                reraise=True):
+            with intento:
+                self._fallos = []
+                return await self._fetch_items(client)
+        return []
+
     async def scrape(self, user_id: int = 0) -> list[dict]:
         log_id = await log_scraping_start(self.FUENTE)
         config = await get_config(user_id)
         nuevas = []
         encontradas = 0
         errores = 0
+        self._fallos = []
+        causa = None
 
         try:
             async with httpx.AsyncClient(timeout=30, headers=HEADERS, follow_redirects=True) as client:
-                items = await self._fetch_items(client)
+                items = await self._fetch_con_reintento(client)
                 encontradas = len(items)
 
                 for item in items:
@@ -104,9 +146,14 @@ class BaseScraper:
 
         except Exception as e:  # noqa: BLE001
             errores += 1
+            causa = f"{type(e).__name__}: {str(e)[:200]}"
             self.log.error(f"{self.FUENTE} scraping failed: {e}")
 
-        await log_scraping_end(log_id, encontradas, len(nuevas), errores)
+        errores += len(self._fallos)
+        detalle = " | ".join(x for x in [causa, *self._fallos] if x) or None
+        if detalle and encontradas == 0:
+            detalle = f"CAIDA -- {detalle}"
+        await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle)
         self.log.info(f"{self.FUENTE}: {encontradas} encontradas, {len(nuevas)} nuevas, {errores} errores")
         return nuevas
 

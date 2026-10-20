@@ -15,8 +15,8 @@ class EsSaludScraper(BaseScraper):
     URL = ESSALUD_URL
 
     async def _fetch_items(self, client):
-        resp = await client.get(self.URL)
-        if resp.status_code != 200:
+        resp = await self._pedir(client, self.URL)
+        if resp is None:
             return []
         soup = BeautifulSoup(resp.text, "lxml")
         items = soup.select("table tbody tr, .entry-content li a, .post-content a")

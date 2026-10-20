@@ -14,19 +14,23 @@ class OpenContractingScraper(BaseScraper):
 
     async def _fetch_items(self, client):
         params = {"country": "PE", "limit": 30}
+        # Sin try propio: los errores de red suben a BaseScraper.scrape, que
+        # los reintenta y deja la causa en scraping_log. El try de antes los
+        # convertia en una lista vacia y el reintento nunca ocurria.
+        resp = await self._pedir(client, self.URL, params=params)
+        if resp is None:
+            # Fallback: intentar endpoint alternativo
+            alt_url = "https://standard.open-contracting.org/latest/es/api/"
+            resp = await self._pedir(client, alt_url)
+            if resp is None:
+                return []
         try:
-            resp = await client.get(self.URL, params=params)
-            if resp.status_code != 200:
-                # Fallback: intentar endpoint alternativo
-                alt_url = "https://standard.open-contracting.org/latest/es/api/"
-                resp = await client.get(alt_url)
-                if resp.status_code != 200:
-                    return []
             data = resp.json()
-            return data.get("releases", data.get("results", []))
-        except Exception as e:  # noqa: BLE001
-            self.log.warning(f"Open Contracting API error: {e}")
+        except ValueError as e:
+            self._fallos.append(f"{resp.url}: no devolvio JSON")
+            self.log.warning(f"Open Contracting API no devolvio JSON: {e}")
             return []
+        return data.get("releases", data.get("results", []))
 
     def _parse_item(self, item) -> dict | None:
         tender = item.get("tender", {})

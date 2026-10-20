@@ -222,6 +222,10 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
     nuevas = []
     encontradas = 0
     errores = 0
+    # Lo que fallo en cada URL, para `error_detalle`. Antes un no-200 era un
+    # `continue` mudo y el AJAX caido iba a log.debug: la pasada terminaba
+    # culpando siempre al reCAPTCHA, aunque la causa fuera otra.
+    fallos: list[str] = []
 
     hoy = fechas.hoy()
     fecha_inicio = (hoy - timedelta(days=7)).strftime("%d/%m/%Y")
@@ -232,16 +236,21 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
             break
 
         try:
+            # TLS verificado: prod2 y prod6.seace.gob.pe presentan una cadena
+            # valida (Entrust, medido el 2026-10-20). verify=False sobraba.
             async with httpx.AsyncClient(
-                timeout=30, headers=HEADERS, follow_redirects=True, verify=False
+                timeout=30, headers=HEADERS, follow_redirects=True
             ) as client:
                 # Step 1: GET the page to get cookies + ViewState
                 resp = await client.get(base_url)
                 if resp.status_code != 200:
+                    fallos.append(f"{base_url}: HTTP {resp.status_code}")
+                    log.warning("SEACE %s respondio HTTP %s", base_url, resp.status_code)
                     continue
                 html = resp.text
                 viewstate = _extract_viewstate(html)
                 if not viewstate:
+                    fallos.append(f"{base_url}: sin ViewState")
                     log.warning(f"No ViewState from {base_url}")
                     continue
 
@@ -285,6 +294,11 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
 
                 try:
                     resp2 = await client.post(base_url, data=ajax_data, headers=headers)
+                    if resp2.status_code != 200 or len(resp2.text) <= 300:
+                        fallos.append(f"{base_url} AJAX: HTTP {resp2.status_code}, "
+                                      f"{len(resp2.text)} bytes")
+                        log.warning("SEACE AJAX %s: HTTP %s, %d bytes", base_url,
+                                    resp2.status_code, len(resp2.text))
                     if resp2.status_code == 200 and len(resp2.text) > 300:
                         rows = _parse_jsf_xml_table(resp2.text)
                         if rows:
@@ -339,18 +353,28 @@ async def scrape_seace(user_id: int = 0) -> list[dict]:
                                     nuevas.append(data)
                             except Exception as e:  # noqa: BLE001
                                 errores += 1
-                                log.debug(f"Error parsing SEACE row: {e}")
+                                log.warning(f"Error parsing SEACE row: {e}")
                 except Exception as e:  # noqa: BLE001
-                    log.debug(f"SEACE AJAX request failed: {e}")
+                    errores += 1
+                    fallos.append(f"{base_url} AJAX: {type(e).__name__}")
+                    log.warning(f"SEACE AJAX request failed: {e}")
 
         except Exception as e:  # noqa: BLE001
             errores += 1
+            fallos.append(f"{base_url}: {type(e).__name__}")
             log.warning(f"SEACE {base_url}: {e}")
 
     detail = ""
     if encontradas == 0:
-        detail = "reCAPTCHA v3 blocks search results. Requires browser automation or captcha service."
-        log.info(f"SEACE: {detail}")
+        if fallos:
+            # La causa medida primero; el reCAPTCHA es la sospecha de siempre.
+            detail = " | ".join(fallos)
+            log.warning(f"SEACE: {detail}")
+        else:
+            # Lo esperado hoy (ver arriba): info, para no gritar cada hora.
+            detail = ("reCAPTCHA v3 blocks search results. Requires browser "
+                      "automation or captcha service.")
+            log.info(f"SEACE: {detail}")
 
     await log_scraping_end(log_id, encontradas, len(nuevas), errores, detail)
     log.info(f"SEACE: {encontradas} encontradas, {len(nuevas)} nuevas, {errores} errores")

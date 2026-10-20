@@ -15,8 +15,8 @@ class SBSScraper(BaseScraper):
     URL = SBS_URL
 
     async def _fetch_items(self, client):
-        resp = await client.get(self.URL)
-        if resp.status_code != 200:
+        resp = await self._pedir(client, self.URL)
+        if resp is None:
             return []
         soup = BeautifulSoup(resp.text, "lxml")
         items = soup.select("table tbody tr, .content-list li, .list-group-item, .card-body")

@@ -36,6 +36,7 @@ POR QUE FILTRA ANTES DE GUARDAR
 """
 from __future__ import annotations
 
+import html
 import logging
 import re
 from datetime import datetime, timedelta
@@ -81,9 +82,11 @@ _RE_FECHA = re.compile(r"(\d{1,2})\s+de\s+([a-zA-Z]+)\s+de\s+(\d{4})")
 _RE_HREF = re.compile(r'href="([^"]+)"')
 
 # Lo que ES una compra. Sobre titulo + extracto, sin tildes y en minusculas.
+# `\b8\s*uit\b` con bordes: sin ellos "18 UIT" o "28 uit" (montos de un CAS,
+# de una resolucion) contaban como compra menor.
 _RE_COMPRA = re.compile(
     r"cotizacion|cotizaciones|cotizar|indagacion de mercado|solicitud de informacion"
-    r"|8\s*uit|adquisicion|requerimiento de bienes|requerimiento de servicio"
+    r"|\b8\s*uit\b|adquisicion|requerimiento de bienes|requerimiento de servicio"
     r"|estudio de mercado")
 
 # Lo que NO lo es aunque la consulta lo devuelva. Gana sobre la inclusion:
@@ -132,6 +135,10 @@ def _parsear_item(item: dict) -> dict | None:
     (fichas de institucion, paginas sueltas). Todo lo dudoso se descarta:
     mejor perder una publicacion rara que guardar otra fila invisible.
     """
+    # Sin id no hay fila: el id es la clave. Antes salia "gobpe_None", y todos
+    # los items sin id se pisaban unos a otros en esa misma fila.
+    if item.get("id") in (None, ""):
+        return None
     titulo = (item.get("name_with_parent") or "").strip()
     if not titulo:
         # A veces el titulo solo viene dentro del anchor de `url`.
@@ -146,12 +153,14 @@ def _parsear_item(item: dict) -> dict | None:
     href = ""
     m = _RE_HREF.search(item.get("url") or "")
     if m:
-        href = m.group(1)
+        # El href viene escrito dentro de HTML: "?a=1&amp;b=2". Sin decodificar,
+        # el enlace guardado pedia un parametro "amp;b" que no existe.
+        href = html.unescape(m.group(1))
         if href.startswith("/"):
             href = BASE + href
 
     # El deposito del documento (el PDF con el plazo y los requisitos).
-    pdf = item.get("action_url") or ""
+    pdf = html.unescape(item.get("action_url") or "")
     bases = [pdf] if pdf.startswith("http") else []
 
     from radar_bot.scrapers.orchestrator import _detectar_depto

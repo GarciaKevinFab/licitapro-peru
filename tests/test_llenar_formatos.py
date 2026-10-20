@@ -447,6 +447,14 @@ async def test_el_puente_baja_las_eett_y_las_guarda_achicadas(marca, monkeypatch
             self.pedidas.append(url)
             return Respuesta(_dos_paginas("EETT" if "eett" in url else "SC"))
 
+    # La descarga real pasa por red_segura (dominio, DNS, streaming); sus
+    # reglas se prueban en test_auditoria_scrapers. Aqui solo importa lo que
+    # se hace con el PDF bajado.
+    from radar_bot.scrapers import red_segura
+
+    async def _bajar(client, url, dominios, maximo):
+        return (await client.get(url)).content
+    monkeypatch.setattr(red_segura, "bajar", _bajar)
     monkeypatch.setattr(escaneos, "OBJETIVO", 10)   # todo pesa de mas: se comprime
     lic = f"prueba_{marca}"
     async with connection() as c:

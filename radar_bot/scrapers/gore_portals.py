@@ -37,14 +37,17 @@ class GOREPortalsScraper(BaseScraper):
         nuevas = []
         encontradas = 0
         errores = 0
+        self._fallos = []
 
         async with httpx.AsyncClient(timeout=20, headers=HEADERS, follow_redirects=True) as client:
             for depto, base_url in GORE_PORTALS.items():
                 for path in GORE_PATHS:
                     try:
                         url = f"{base_url}{path}"
-                        resp = await client.get(url)
-                        if resp.status_code != 200:
+                        # `_pedir` anota el no-200 (warning + scraping_log)
+                        # en vez del `continue` mudo de antes.
+                        resp = await self._pedir(client, url)
+                        if resp is None:
                             continue
 
                         soup = BeautifulSoup(resp.text, "lxml")
@@ -71,10 +74,13 @@ class GOREPortalsScraper(BaseScraper):
                         # se lee en el parte igual que una region sin
                         # convocatorias, que es justo como cinco fuentes
                         # estuvieron invisibles durante 21 pasadas.
-                        log.debug("%s%s no respondio (%s)", base_url, path, e)
+                        self._fallos.append(f"{base_url}{path}: {type(e).__name__}")
+                        log.warning("%s%s no respondio (%s)", base_url, path, e)
                         continue
 
-        await log_scraping_end(log_id, encontradas, len(nuevas), errores)
+        errores += len(self._fallos)
+        detalle = " | ".join(self._fallos) or None
+        await log_scraping_end(log_id, encontradas, len(nuevas), errores, detalle)
         self.log.info(f"GORE portals: {encontradas} encontradas, {len(nuevas)} nuevas")
         return nuevas
 
