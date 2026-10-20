@@ -10,13 +10,23 @@ QUE PASABA ANTES: NO SE GENERABA NUNCA
 
   Ahora la crea la ruta que el usuario ya pulsaba ("Generar documentos"), en el
   mismo sitio donde `zip_builder` la busca.
+
+QUIEN DECIDE SI VA CON IA
+
+  Quien llama, con `con_ia`. Antes la web, para forzar la plantilla cuando el
+  plan no incluia IA, vaciaba el global `ANTHROPIC_KEY` de este modulo y lo
+  restauraba despues: dos peticiones a la vez y una de ellas se quedaba sin
+  clave a mitad de la otra. Y devolvemos tambien COMO salio: si la IA fallo y
+  cayo a la plantilla, la web no puede decir "redactada con IA".
 """
+import asyncio
 import logging
 import os
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
+from prep_bot.document_gen import referencia
 from shared import ia
 from shared.config import ANTHROPIC_KEY, format_monto
 from shared.db import get_empresa
@@ -65,8 +75,12 @@ ESQUEMA = {
 
 
 async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
-                                     licitacion: dict, datos: dict) -> str | None:
+                                     licitacion: dict, datos: dict,
+                                     con_ia: bool | None = None) -> tuple[str, bool] | None:
     """Genera propuesta técnica completa usando Claude API.
+
+    Devuelve (ruta, si_salio_con_ia), o None si la empresa no existe.
+    `con_ia` None = con IA si hay clave configurada.
 
     Secciones estándar:
     1. Resumen ejecutivo
@@ -85,8 +99,10 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
         return None
 
     # Generar contenido con IA o plantilla
-    if ANTHROPIC_KEY:
-        contenido = await _generar_con_ia(licitacion, empresa, datos)
+    if con_ia is None:
+        con_ia = bool(ANTHROPIC_KEY)
+    if con_ia:
+        contenido, con_ia = await _generar_con_ia(licitacion, empresa, datos)
     else:
         contenido = _generar_plantilla(licitacion, empresa, datos)
 
@@ -104,7 +120,7 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
 
     subtitulo = doc.add_paragraph()
     subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitulo.add_run(f"\n{licitacion.get('nomenclatura', licitacion.get('id', ''))}").font.size = Pt(14)
+    subtitulo.add_run(f"\n{referencia(licitacion)}").font.size = Pt(14)
 
     doc.add_paragraph()
     info = doc.add_paragraph()
@@ -144,13 +160,15 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
     output_dir = os.path.join(TEMPLATES_DIR, "output")
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, f"propuesta_tecnica_{propuesta_id}.docx")
-    doc.save(path)
+    await asyncio.to_thread(doc.save, path)
     log.info(f"Propuesta técnica generada: {path}")
-    return path
+    return path, con_ia
 
 
-async def _generar_con_ia(licitacion: dict, empresa, datos: dict) -> dict:
-    """Genera contenido de propuesta técnica con Claude API."""
+async def _generar_con_ia(licitacion: dict, empresa, datos: dict) -> tuple[dict, bool]:
+    """Genera contenido de propuesta técnica con Claude API.
+
+    Devuelve (contenido, si_salio_de_la_ia): False cuando cayo a la plantilla."""
     equipo_text = ""
     if datos.get("equipo"):
         equipo_text = "\n".join(
@@ -191,14 +209,14 @@ Maximo tres o cuatro parrafos por seccion."""
 
     try:
         contenido, _uso = await ia.pedir_json(SISTEMA, prompt, ESQUEMA)
-        return contenido
+        return contenido, True
     except Exception:
         # Se cae a la plantilla: no lleva IA, pero produce un documento
         # presentable. Quedarse sin propuesta tecnica es peor -- en un concurso
         # publico o una licitacion publica es el documento que puntua.
         log.exception("La propuesta tecnica con IA fallo")
 
-    return _generar_plantilla(licitacion, empresa, datos)
+    return _generar_plantilla(licitacion, empresa, datos), False
 
 
 def _generar_plantilla(licitacion: dict, empresa, datos: dict) -> dict:

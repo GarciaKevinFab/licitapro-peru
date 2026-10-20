@@ -24,6 +24,9 @@ VALIDACIONES = [
 # dos papeles que nadie iba a mirar.
 NO_EXIGIDOS_EN_MENORES = {"partida_registral", "vigencia_poder"}
 
+# Campo de la validacion -> columna de `empresas` cuando se llaman distinto.
+_COLUMNA_EMPRESA = {"domicilio_legal": "direccion"}
+
 
 async def validar_propuesta(propuesta_id: int) -> dict:
     """Valida completitud de una propuesta.
@@ -57,9 +60,14 @@ async def validar_propuesta(propuesta_id: int) -> dict:
     ]
 
     for v in validaciones:
-        valor = sabido.get((v["cat"], v["campo"]))
-        if not valor and empresa:
-            valor = empresa.get(v["campo"])
+        # La tabla `empresas` manda (es lo que el usuario edita); la
+        # knowledge_base cubre lo que la tabla no tiene. El domicilio vive en
+        # `empresas.direccion`: buscarlo como "domicilio_legal" daba por
+        # faltante un domicilio que la empresa si tenia.
+        columna = _COLUMNA_EMPRESA.get(v["campo"], v["campo"])
+        valor = empresa.get(columna) if empresa and columna in empresa.keys() else None
+        if not valor:
+            valor = sabido.get((v["cat"], v["campo"]))
 
         if valor:
             campos_ok += 1

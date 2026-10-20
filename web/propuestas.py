@@ -8,16 +8,36 @@ maneja con formularios de verdad.
 La propiedad se valida SIEMPRE por la empresa de la propuesta, con un JOIN
 contra empresas.usuario_id: una propuesta es del usuario si su empresa lo es.
 No se guarda usuario_id en propuestas a proposito, para que no puedan discrepar.
+
+NADA SALE INCOMPLETO EN SILENCIO
+
+  Un documento al que le falta un dato obligatorio (`DocumentoIncompleto`),
+  un formato de la entidad que no se pudo llenar (`FormatoNoReconocido`) o un
+  validador que se cae terminan en un mensaje al usuario, no en un 500 ni en
+  un ZIP que parece completo. Lo que falta pero no invalida la oferta (unas
+  EETT que el puente aun no bajo, anexos en Word porque falta LibreOffice) se
+  avisa ANTES de descargar y viaja dentro del ZIP en 00_FALTANTES.txt.
+
+LAS DESCARGAS SE SIRVEN DESDE MEMORIA
+
+  Antes se escribia `cotizacion-{id}.pdf` o `envio-{id}.zip` en el disco y se
+  servia ese archivo. El mismo nombre para la version con DNIe y la escaneada:
+  dos descargas a la vez se pisaban, y los archivos se quedaban para siempre.
+  Ahora el contenido va en la respuesta y no queda nada en disco.
 """
 import asyncio
 import json
 import logging
 import os
+import re
+import unicodedata
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import asyncpg
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from shared import cotizacion, ia, llenar_formatos
 from shared.banderas import describir
@@ -30,14 +50,50 @@ from shared.db import (
     responder_pregunta,
 )
 from shared.documentos_menores import formato_dj, generar_cotizacion, generar_dj
+from shared.incompleto import DocumentoIncompleto
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.propuestas")
 router = APIRouter()
 
+# Topes de lo que se acepta en un formulario de precios. Las columnas son
+# NUMERIC(14,4) para el precio unitario y NUMERIC(14,3) para la cantidad: un
+# "1E+30" pasaba la validacion (es un numero finito) y reventaba en el UPDATE
+# con un 500. Mil millones de soles por item es mas de lo que cualquier
+# contratacion menor o licitacion regional va a ver.
+TOPE_PRECIO = Decimal("1000000000")
+TOPE_CANTIDAD = Decimal("1000000000")
+_DESBORDE = "Ese número es demasiado grande: revisa precios y cantidades."
+
 
 def _plantillas(request: Request):
     return request.app.state.templates
+
+
+def nombre_descarga(texto: str, extension: str) -> str:
+    """Nombre de archivo seguro para Content-Disposition.
+
+    La nomenclatura viene scrapeada del portal de la entidad: puede traer
+    comillas, saltos de linea o letras con tilde. Una comilla rompia la
+    cabecera y un CRLF la hacia invalida (500). Se deja ASCII, letras,
+    numeros, guion, guion bajo y punto.
+    """
+    plano = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+    plano = re.sub(r"[^A-Za-z0-9._-]+", "_", plano).strip("._-")[:120] or "documento"
+    return f"{plano}.{extension}"
+
+
+def _descarga(contenido: bytes, nombre: str, tipo: str) -> Response:
+    """Sirve `contenido` desde memoria como adjunto, sin tocar el disco."""
+    return Response(content=contenido, media_type=tipo, headers={
+        "Content-Disposition": f'attachment; filename="{nombre}"'})
+
+
+async def _leer_y_borrar(ruta: str) -> bytes:
+    """Lee el PDF que dejo un generador de shared/ y lo quita del disco."""
+    contenido = await asyncio.to_thread(Path(ruta).read_bytes)
+    await asyncio.to_thread(Path(ruta).unlink, True)
+    return contenido
 
 
 async def _propuesta_del_usuario(propuesta_id: int, usuario_id: int):
@@ -222,15 +278,29 @@ async def postular(request: Request, licitacion_id: str = Form(...),
                                 status_code=303)
 
     async with connection() as conn:
+        if not await conn.fetchval("SELECT EXISTS(SELECT 1 FROM licitaciones WHERE id=$1)",
+                                   licitacion_id):
+            # Sin esto el INSERT chocaba con la clave foranea y salia un 500.
+            return HTMLResponse("Esa licitación no existe o ya no está publicada.",
+                                status_code=404)
         ya = await conn.fetchval(
             "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
             licitacion_id, empresa_id)
         if ya:
             return RedirectResponse(f"/propuestas/{ya}", status_code=303)
-        propuesta_id = await conn.fetchval(
-            """INSERT INTO propuestas (licitacion_id, empresa_id, estado)
-               VALUES ($1, $2, 'iniciado') RETURNING id""",
-            licitacion_id, empresa_id)
+        try:
+            propuesta_id = await conn.fetchval(
+                """INSERT INTO propuestas (licitacion_id, empresa_id, estado)
+                   VALUES ($1, $2, 'iniciado') RETURNING id""",
+                licitacion_id, empresa_id)
+        except asyncpg.UniqueViolationError:
+            # Doble clic: la otra peticion inserto entre la consulta de arriba
+            # y esta. El indice UNIQUE(licitacion_id, empresa_id) la frena; se
+            # lleva al usuario a la que ya existe, que es lo que queria.
+            ya = await conn.fetchval(
+                "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
+                licitacion_id, empresa_id)
+            return RedirectResponse(f"/propuestas/{ya}", status_code=303)
 
     # Las preguntas se generan al abrir la propuesta: asi el usuario ve de
     # entrada que le falta, en vez de descubrirlo al generar el expediente.
@@ -283,7 +353,8 @@ async def listar(request: Request, aviso: str = "", error: str = "", cerradas: i
 
 
 @router.get("/propuestas/{propuesta_id}", response_class=HTMLResponse)
-async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: str = ""):
+async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: str = "",
+                  confirmar_paquete: int = 0):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -303,32 +374,33 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         except Exception:
             log.exception("No se pudieron cerrar las preguntas resueltas de %s", propuesta_id)
 
-    # Cada consulta es un viaje de ~50 ms hasta la base: las que no dependen
-    # unas de otras van a la vez, cada una con su conexion del pool. En serie,
-    # la ficha tardaba dos segundos.
-    await asyncio.gather(cotizacion.sembrar(propuesta_id), cerrar_resueltas())
+    # EN SERIE Y NO CON gather. Con gather cada consulta tomaba su conexion
+    # del pool a la vez: siete por cada vez que alguien abria una ficha. El
+    # pool tiene diez y `acquire` no tiene tiempo de espera, asi que dos fichas
+    # abiertas a la vez mas un webhook bastaban para colgar la app entera sin
+    # un solo error. En serie se usa una conexion cada vez; cuesta unos cientos
+    # de milisegundos y no tumba el sitio.
+    await cotizacion.sembrar(propuesta_id)
+    await cerrar_resueltas()
 
-    async def leer_preguntas():
-        async with connection() as conn:
-            return await conn.fetch(
-                """SELECT * FROM preguntas WHERE propuesta_id=$1
-                   ORDER BY respondida, id""", propuesta_id)
-
-    async def leer_empresa():
-        async with connection() as conn:
-            return await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
+    async with connection() as conn:
+        preguntas = await conn.fetch(
+            """SELECT * FROM preguntas WHERE propuesta_id=$1
+               ORDER BY respondida, id""", propuesta_id)
+        empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
 
     # Que falta para que el expediente sea presentable, y cuanto se ha pagado
     # por trabajos parecidos. Los dos modulos existian desde el principio y no
     # los llamaba nadie: el ZIP se armaba con los campos legales vacios, y
     # `historico_precios` -- que los scrapers llenan en cada corrida -- no lo
     # leia ninguna consulta del producto.
-    (preguntas, items, validacion, condiciones, empresa, formatos,
-     documentos) = await asyncio.gather(
-        leer_preguntas(), cotizacion.items_de(propuesta_id), _validacion(propuesta_id),
-        cotizacion.condiciones_de(propuesta_id), leer_empresa(),
-        llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"]),
-        documentos_de(prop["licitacion_id"]))
+    items = await cotizacion.items_de(propuesta_id)
+    validacion = await _validacion(propuesta_id)
+    condiciones = await cotizacion.condiciones_de(propuesta_id)
+    formatos = await llenar_formatos.disponibles(propuesta_id, prop["licitacion_id"])
+    documentos = await documentos_de(prop["licitacion_id"])
+    armado = paquete_armado(propuesta_id)
+    contenido_armado = await asyncio.to_thread(_contenido_zip, armado) if armado else None
     menor = cotizacion.es_cotizacion_menor(prop["tipo"])
     return _plantillas(request).TemplateResponse("propuesta.html", {
         "portal": _envio_portal(dict(prop), dict(empresa) if empresa else {}, condiciones,
@@ -350,25 +422,52 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
         "monto": cotizacion.monto, "cantidad_legible": cotizacion.cantidad_legible,
         "precio_legible": cotizacion.precio_legible,
         "formato_dj": formato_dj(dict(prop)),
-        "armado": _contenido_zip(armado) if (armado := paquete_armado(propuesta_id)) else None,
+        "armado": contenido_armado,
         "otras_empresas": [e for e in await empresas_de(usuario["id"]) if e["id"] != prop["emp_id"]],
         "aviso": aviso, "error": error,
+        # Tras un aviso del paquete de envio, el enlace para bajarlo igual.
+        "confirmar_paquete": bool(confirmar_paquete),
     })
 
 
-async def _validacion(propuesta_id: int) -> dict | None:
-    """Que le falta a la propuesta. None si el validador se cae.
+NO_SE_PUDO_VALIDAR = ("No pudimos validar tu propuesta, así que no armamos nada todavía. "
+                      "Inténtalo de nuevo en un momento.")
 
-    Se traga el error a proposito: un fallo aqui no puede dejar sin ficha a
-    alguien que solo queria leer sus preguntas. Lo que NO se traga es el fallo
-    al generar el ZIP, donde si hay que parar.
+
+async def _validacion(propuesta_id: int) -> dict:
+    """Que le falta a la propuesta. Si el validador se cae, un resultado con
+    `error`: FALLA CERRADA.
+
+    Antes devolvia None, y la ruta del expediente hacia `if validacion and
+    validacion.get("faltantes")`: con el validador caido eso es falso y el ZIP
+    se armaba sin DNI ni domicilio. Ahora un fallo aqui bloquea el armado
+    (ver `_bloqueo`) pero no deja sin ficha a quien solo queria leer sus
+    preguntas: la ficha se pinta con el aviso.
     """
     try:
         from prep_bot.autofill.validator import validar_propuesta
-        return await validar_propuesta(propuesta_id)
+        resultado = await validar_propuesta(propuesta_id)
     except Exception:
         log.exception("Validacion de %s fallo", propuesta_id)
-        return None
+        resultado = None
+    if not isinstance(resultado, dict):
+        return {"completa": False, "error": NO_SE_PUDO_VALIDAR, "faltantes": [], "warnings": []}
+    if resultado.get("error"):
+        log.warning("Validacion de %s: %s", propuesta_id, resultado["error"])
+        resultado = {**resultado, "error": NO_SE_PUDO_VALIDAR}
+    resultado.setdefault("faltantes", [])
+    resultado.setdefault("warnings", [])
+    return resultado
+
+
+def _bloqueo(validacion: dict, que: str) -> str | None:
+    """El mensaje que impide armar `que`, o None si se puede seguir."""
+    if validacion.get("error"):
+        return validacion["error"]
+    if validacion["faltantes"]:
+        falta = ", ".join(f["desc"] for f in validacion["faltantes"])
+        return f"Antes de armar {que} falta: {falta}"
+    return None
 
 
 async def _precio_de_mercado(prop) -> dict | None:
@@ -485,28 +584,28 @@ async def _propuesta_tecnica(usuario_id: int, prop) -> str:
                       "nomenclatura": prop["nomenclatura"],
                       "descripcion": prop["descripcion"],
                       "monto_referencial": prop["monto_referencial"]}
-        if con_ia:
-            if await generar_propuesta_tecnica(
-                    prop["id"], prop["emp_id"], licitacion, datos):
-                return "Propuesta técnica redactada con IA."
-        else:
-            # Sin ANTHROPIC_KEY la propia funcion cae a la plantilla; sin cuota
-            # hay que forzarla desde aqui, que es donde se conoce el plan.
-            import prep_bot.autofill.proposal as pp
-            clave, pp.ANTHROPIC_KEY = pp.ANTHROPIC_KEY, ""
-            try:
-                await generar_propuesta_tecnica(
-                    prop["id"], prop["emp_id"], licitacion, datos)
-            finally:
-                pp.ANTHROPIC_KEY = clave
-            motivo = ("tu plan no incluye IA" if not permiso["por_plan"]
-                      else "no hay clave de IA configurada")
-            return f"Propuesta técnica con plantilla, porque {motivo}."
+        # La decision de usar IA viaja como parametro. Antes se vaciaba el
+        # global ANTHROPIC_KEY del modulo y se restauraba despues: otra
+        # peticion a la vez se quedaba sin clave a mitad.
+        resultado = await generar_propuesta_tecnica(
+            prop["id"], prop["emp_id"], licitacion, datos, con_ia=con_ia)
     except Exception:
         log.exception("Propuesta tecnica de %s fallo", prop["id"])
         return "La propuesta técnica no se pudo generar; el resto sí."
 
-    return "La propuesta técnica no se pudo generar; el resto sí."
+    if not resultado:
+        return "La propuesta técnica no se pudo generar; el resto sí."
+    _ruta, salio_con_ia = resultado
+    if salio_con_ia:
+        return "Propuesta técnica redactada con IA."
+    if con_ia:
+        # Se pidio a la IA y fallo: salio la plantilla. Decir "con IA" aqui
+        # seria venderle al usuario un documento que no recibio.
+        return ("Propuesta técnica con plantilla: la IA no respondió. Revísala antes de "
+                "enviar o vuelve a generarla en un rato.")
+    motivo = ("tu plan no incluye IA" if not permiso["por_plan"]
+              else "no hay clave de IA configurada")
+    return f"Propuesta técnica con plantilla, porque {motivo}."
 
 
 @router.post("/propuestas/{propuesta_id}/expediente")
@@ -525,28 +624,35 @@ async def armar_expediente(request: Request, propuesta_id: int):
     # representante o la partida registral no es un expediente incompleto: es
     # una oferta que la entidad devuelve en mesa de partes. Generarlo igual y
     # dejar que el proveedor lo descubra alli es el peor momento posible para
-    # enterarse, porque el plazo ya venció.
+    # enterarse, porque el plazo ya venció. Y si el validador se cae, tampoco
+    # se arma: no saber si falta algo no es lo mismo que saber que no falta.
     validacion = await _validacion(propuesta_id)
-    if validacion and validacion.get("faltantes"):
-        falta = ", ".join(f["desc"] for f in validacion["faltantes"])
-        return RedirectResponse(
-            f"/propuestas/{propuesta_id}?error="
-            f"{quote_plus(f'Antes de armar el expediente falta: {falta}')}",
-            status_code=303)
+    bloqueo = _bloqueo(validacion, "el expediente")
+    if bloqueo:
+        return _volver(propuesta_id, ancla="expediente", error=bloqueo)
 
+    from prep_bot.zip_builder import ExpedienteError, generar_expediente_zip
     try:
-        from prep_bot.zip_builder import generar_expediente_zip
-        ruta = await generar_expediente_zip(propuesta_id)
+        expediente = await generar_expediente_zip(propuesta_id)
+    except DocumentoIncompleto as e:
+        return _volver(propuesta_id, ancla="expediente", error=e.mensaje())
+    except (ExpedienteError, llenar_formatos.FormatoNoReconocido) as e:
+        return _volver(propuesta_id, ancla="expediente",
+                       error=f"No se pudo armar el expediente: {e}")
     except Exception:
         log.exception("ZIP fallo en %s", propuesta_id)
-        ruta = None
+        return _volver(propuesta_id, ancla="expediente", error=(
+            "No se pudo armar el expediente por un error interno. Ya quedó registrado; "
+            "inténtalo de nuevo en un momento."))
 
-    if not ruta:
-        return RedirectResponse(
-            f"/propuestas/{propuesta_id}?error=No+se+pudo+armar+el+expediente",
-            status_code=303)
-    return RedirectResponse(f"/propuestas/{propuesta_id}?aviso=Expediente+listo",
-                            status_code=303)
+    # Los avisos de la validacion (preguntas sin responder, sin experiencia) y
+    # los del armado (propuesta tecnica que no va, un anexo que no salio) se
+    # dicen aqui: antes solo se mostraban los `faltantes`.
+    avisos = list(validacion["warnings"]) + expediente.advertencias
+    texto = "Expediente listo."
+    if avisos:
+        texto += " Revisa antes de enviar (va también en 00_FALTANTES.txt): " + "; ".join(avisos)
+    return _volver(propuesta_id, ancla="expediente", aviso=texto)
 
 
 @router.get("/propuestas/{propuesta_id}/descargar")
@@ -566,8 +672,11 @@ async def descargar(request: Request, propuesta_id: int):
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error=El+archivo+ya+no+esta+en+el+servidor",
             status_code=303)
-    return FileResponse(ruta, filename=os.path.basename(ruta),
-                        media_type="application/zip")
+    # El nombre de descarga sale de la nomenclatura, saneada: el de disco es
+    # interno (lleva el id de la propuesta) y no le dice nada al usuario.
+    nombre = nombre_descarga(f"Expediente_{prop['nomenclatura'] or propuesta_id}", "zip")
+    return FileResponse(ruta, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{nombre}"'})
 
 
 @router.post("/propuestas/{propuesta_id}/otra-empresa")
@@ -607,19 +716,28 @@ async def postular_con_otra_empresa(request: Request, propuesta_id: int,
             aviso = "Esa empresa ya tiene propuesta para esta convocatoria: no se copió nada."
             return RedirectResponse(f"/propuestas/{ya}?error={quote_plus(aviso)}",
                                     status_code=303)
-        async with conn.transaction():
-            nueva = await conn.fetchval(
-                """INSERT INTO propuestas (licitacion_id, empresa_id, estado,
-                                           cotizacion_condiciones, precio_ofertado)
-                   VALUES ($1, $2, 'listo', $3::jsonb, $4) RETURNING id""",
-                prop["licitacion_id"], empresa_id, json.dumps(condiciones), float(suma))
-            for it in items:
-                await conn.execute(
-                    """INSERT INTO propuesta_items (propuesta_id, orden, descripcion, cantidad,
-                                                    unidad, marca, presentacion, precio_unitario)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
-                    nueva, it["orden"], it["descripcion"], it["cantidad"], it["unidad"],
-                    it["marca"], it["presentacion"], precios[it["id"]])
+        try:
+            async with conn.transaction():
+                nueva = await conn.fetchval(
+                    """INSERT INTO propuestas (licitacion_id, empresa_id, estado,
+                                               cotizacion_condiciones, precio_ofertado)
+                       VALUES ($1, $2, 'listo', $3::jsonb, $4) RETURNING id""",
+                    prop["licitacion_id"], empresa_id, json.dumps(condiciones), float(suma))
+                for it in items:
+                    await conn.execute(
+                        """INSERT INTO propuesta_items (propuesta_id, orden, descripcion,
+                                                        cantidad, unidad, marca, presentacion,
+                                                        precio_unitario)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
+                        nueva, it["orden"], it["descripcion"], it["cantidad"], it["unidad"],
+                        it["marca"], it["presentacion"], precios[it["id"]])
+        except asyncpg.UniqueViolationError:
+            # Doble clic: la otra peticion ya creo la propuesta de esa empresa.
+            # La transaccion se deshizo entera; se lleva a la que ya existe.
+            ya = await conn.fetchval(
+                "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
+                prop["licitacion_id"], empresa_id)
+            return RedirectResponse(f"/propuestas/{ya}#siguiente", status_code=303)
     try:
         from prep_bot.questioner import generar_preguntas_propuesta
         await generar_preguntas_propuesta(nueva, empresa_id)
@@ -657,17 +775,29 @@ async def marcar_enviada(request: Request, propuesta_id: int, enviada: int = For
 
 
 @router.post("/propuestas/{propuesta_id}/precio")
-async def fijar_precio(request: Request, propuesta_id: int, precio: float = Form(...)):
+async def fijar_precio(request: Request, propuesta_id: int, precio: str = Form(...)):
+    """El precio ofertado de una propuesta de un solo monto.
+
+    Llega como texto y no como `float`: FastAPI aceptaba "nan", "inf" y
+    negativos como floats validos, y un precio NaN se guardaba y salia en la
+    propuesta economica.
+    """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
     if not await _propuesta_del_usuario(propuesta_id, usuario["id"]):
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
+    valor = cotizacion.a_decimal(precio)
+    if valor is None or valor <= 0:
+        return _volver(propuesta_id, ancla="expediente",
+                       error="El precio tiene que ser un número mayor que cero.")
+    if valor > TOPE_PRECIO:
+        return _volver(propuesta_id, ancla="expediente", error=_DESBORDE)
     async with connection() as conn:
         await conn.execute(
             "UPDATE propuestas SET precio_ofertado=$2, updated_at=NOW() WHERE id=$1",
-            propuesta_id, precio)
+            propuesta_id, float(valor))
     return RedirectResponse(f"/propuestas/{propuesta_id}?aviso=Precio+guardado",
                             status_code=303)
 
@@ -713,27 +843,32 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             status_code=303)
 
     cci = await kb_get(prop["emp_id"], "financiero", "cci")
+    imagenes = await _imagenes(prop["emp_id"], modo)
+    if imagenes is None:
+        return _volver(propuesta_id, ancla="firma", error=SIN_FIRMA)
+    nombre = f"declaracion-jurada-{propuesta_id}-{_modo(modo)}.pdf"
     # Si el usuario subio la DJ de la entidad, sale ESA llena. Si no se puede
     # llenar, se le dice por que y puede pedir la propia con ?propio=1.
     if not propio:
         try:
             pdf = await llenar_formatos.dj_llena(
-                propuesta_id, prop["licitacion_id"], dict(empresa), cci,
-                await _imagenes(prop["emp_id"], modo))
+                propuesta_id, prop["licitacion_id"], dict(empresa), cci, imagenes)
+        except DocumentoIncompleto as e:
+            return _volver(propuesta_id, ancla="firma", error=e.mensaje())
         except llenar_formatos.FormatoNoReconocido as e:
             return _volver(propuesta_id, error=(
                 f"No pudimos llenar la declaración jurada de la entidad: {e} Puedes "
                 "descargar la nuestra o subir el formato a mano."))
         if pdf:
-            return FileResponse(_escribir(f"declaracion-jurada-formato-{propuesta_id}.pdf", pdf),
-                                filename=f"declaracion-jurada-{propuesta_id}.pdf",
-                                media_type="application/pdf")
+            return _descarga(pdf, nombre, "application/pdf")
 
     # El formato lo decide la entidad: el GOREMAD exige el suyo, con la CCI.
-    con_dnie = (modo or "dnie").lower() != "escaneada"
-    nombre = f"declaracion-jurada-{propuesta_id}.pdf"
+    con_dnie = _modo(modo) != "escaneada"
     try:
         ruta = await generar_dj(dict(prop), dict(empresa), cci, con_dnie)
+        contenido = await _leer_y_borrar(ruta)
+    except DocumentoIncompleto as e:
+        return _volver(propuesta_id, ancla="firma", error=e.mensaje())
     except Exception:
         log.exception("No se pudo generar la declaracion jurada de la propuesta %s",
                       propuesta_id)
@@ -742,7 +877,7 @@ async def declaracion_jurada(request: Request, propuesta_id: int,
             + quote_plus("No se pudo generar el documento. Inténtalo de nuevo."),
             status_code=303)
 
-    return FileResponse(ruta, filename=nombre, media_type="application/pdf")
+    return _descarga(contenido, nombre, "application/pdf")
 
 
 # ─── Cotizacion por items ────────────────────────────────
@@ -777,10 +912,18 @@ async def guardar_items(request: Request, propuesta_id: int):
         if str(crudo).strip() and precio is None:
             return _volver(propuesta_id,
                            error=f"El precio del ítem {n} no es un número válido")
+        if precio is not None and precio > TOPE_PRECIO:
+            return _volver(propuesta_id, error=f"El precio del ítem {n}: {_DESBORDE}")
         cambios[it["id"]] = (form.get(f"marca_{it['id']}", ""),
                              form.get(f"presentacion_{it['id']}", ""), precio)
 
-    suma = await cotizacion.guardar(propuesta_id, cambios, dict(form))
+    try:
+        suma = await cotizacion.guardar(propuesta_id, cambios, dict(form))
+    except asyncpg.DataError:
+        # El total de precio por cantidad tambien puede desbordar la columna,
+        # aunque cada precio por separado quepa.
+        log.warning("Precios fuera de rango en la propuesta %s", propuesta_id)
+        return _volver(propuesta_id, error=_DESBORDE)
     return _volver(propuesta_id,
                    aviso=f"Cotización guardada. Total S/ {cotizacion.monto(suma)}")
 
@@ -800,7 +943,13 @@ async def agregar_item(request: Request, propuesta_id: int,
     if not descripcion.strip() or not cant:
         return _volver(propuesta_id,
                        error="El ítem necesita descripción y una cantidad mayor que cero")
-    await cotizacion.agregar(propuesta_id, descripcion, cant, unidad)
+    if cant > TOPE_CANTIDAD:
+        return _volver(propuesta_id, error=_DESBORDE)
+    try:
+        await cotizacion.agregar(propuesta_id, descripcion, cant, unidad)
+    except asyncpg.DataError:
+        log.warning("Cantidad fuera de rango en la propuesta %s", propuesta_id)
+        return _volver(propuesta_id, error=_DESBORDE)
     return _volver(propuesta_id, aviso="Ítem agregado")
 
 
@@ -834,54 +983,65 @@ async def descargar_cotizacion(request: Request, propuesta_id: int, modo: str = 
     async with connection() as conn:
         empresa = await conn.fetchrow("SELECT * FROM empresas WHERE id=$1", prop["emp_id"])
     condiciones = await cotizacion.condiciones_de(propuesta_id)
+    imagenes = await _imagenes(prop["emp_id"], modo)
+    if imagenes is None:
+        return _volver(propuesta_id, error=SIN_FIRMA)
+    nombre = f"cotizacion-{propuesta_id}-{_modo(modo)}.pdf"
     if not propio:
         try:
             pdf = await llenar_formatos.sc_llena(
                 propuesta_id, prop["licitacion_id"], dict(empresa), items, condiciones,
-                await _imagenes(prop["emp_id"], modo))
+                imagenes)
+        except DocumentoIncompleto as e:
+            return _volver(propuesta_id, error=e.mensaje())
         except llenar_formatos.FormatoNoReconocido as e:
             return _volver(propuesta_id, error=(
                 f"No pudimos llenar la solicitud de cotización de la entidad: {e} Puedes "
                 "descargar la nuestra o subir el formato a mano."))
         if pdf:
-            return FileResponse(_escribir(f"cotizacion-formato-{propuesta_id}.pdf", pdf),
-                                filename=f"cotizacion-{propuesta_id}.pdf",
-                                media_type="application/pdf")
+            return _descarga(pdf, nombre, "application/pdf")
     try:
         ruta = await generar_cotizacion(
             dict(prop), dict(empresa), items, condiciones,
             await kb_get(prop["emp_id"], "financiero", "cci"),
-            con_dnie=(modo or "dnie").lower() != "escaneada")
+            con_dnie=_modo(modo) != "escaneada")
+        contenido = await _leer_y_borrar(ruta)
+    except DocumentoIncompleto as e:
+        return _volver(propuesta_id, error=e.mensaje())
     except Exception:
         log.exception("No se pudo generar la cotizacion de la propuesta %s", propuesta_id)
         return _volver(propuesta_id,
                        error="No se pudo generar la cotización. Inténtalo de nuevo.")
-    return FileResponse(ruta, filename=f"cotizacion-{propuesta_id}.pdf",
-                        media_type="application/pdf")
+    return _descarga(contenido, nombre, "application/pdf")
 
 
 # ─── Formatos de la entidad (SC y DJ en su propio PDF) ───
 
-def _salida(nombre: str) -> str:
-    from shared.pdf_firmable import SALIDA
-    SALIDA.mkdir(parents=True, exist_ok=True)
-    return str(SALIDA / nombre)
+def _modo(modo: str | None) -> str:
+    """'escaneada' o 'dnie': lo que llega en la URL, normalizado."""
+    return "escaneada" if (modo or "dnie").strip().lower() == "escaneada" else "dnie"
 
 
-def _escribir(nombre: str, contenido: bytes) -> str:
-    destino = _salida(nombre)
-    with open(destino, "wb") as f:
-        f.write(contenido)
-    return destino
+SIN_FIRMA = ("Para descargar con firma escaneada, sube la firma y el sello de la empresa "
+             "en los datos de la empresa. Sin ellos el documento saldría sin firmar.")
 
 
-async def _imagenes(empresa_id: int, modo: str) -> dict:
+async def _imagenes(empresa_id: int, modo: str) -> dict | None:
     """Firma y sello solo en la descarga "con firma escaneada". Para firmar con
-    DNIe el documento sale limpio: ReFirma pone su propia firma."""
-    if (modo or "dnie").lower() != "escaneada":
+    DNIe el documento sale limpio: ReFirma pone su propia firma.
+
+    None si se pidio la escaneada y falta la firma o el sello (en la base o en
+    el disco: `rutas_de` mira los dos). Antes salia el documento "firmado"
+    sin firma y la descarga decia que todo habia ido bien; la entidad recibia
+    una cotizacion sin firmar.
+    """
+    if _modo(modo) != "escaneada":
         return {}
     from shared.archivos import rutas_de
-    return await rutas_de(empresa_id)
+    imagenes = await rutas_de(empresa_id)
+    if not (imagenes.get("firma") and imagenes.get("sello")):
+        return None
+    return imagenes
 
 
 @router.post("/propuestas/{propuesta_id}/formato")
@@ -898,9 +1058,16 @@ async def subir_formato(request: Request, propuesta_id: int, tipo: str = Form(..
         return _volver(propuesta_id, error="Tipo de formato desconocido")
     contenido = await archivo.read(llenar_formatos.MAX_BYTES + 1)
     try:
-        llenar_formatos.guardar(propuesta_id, tipo, contenido)
+        # Abrir y validar el PDF es trabajo de CPU: fuera del bucle de eventos.
+        await asyncio.to_thread(llenar_formatos.guardar, propuesta_id, tipo, contenido)
     except llenar_formatos.FormatoNoReconocido as e:
         return _volver(propuesta_id, error=str(e))
+    except Exception:
+        # Un PDF corrupto de una forma que el validador no previo: mensaje y
+        # no 500.
+        log.exception("Formato %s de la propuesta %s ilegible", tipo, propuesta_id)
+        return _volver(propuesta_id, error="No pudimos leer ese PDF. Prueba a guardarlo de "
+                                           "nuevo como PDF y vuelve a subirlo.")
     return _volver(propuesta_id, aviso=(
         f"{llenar_formatos.TIPOS[tipo]} cargada: al descargarla sale con su formato, ya llena."))
 
@@ -914,7 +1081,7 @@ async def borrar_formato(request: Request, propuesta_id: int, tipo: str):
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
     if tipo in llenar_formatos.TIPOS:
-        llenar_formatos.borrar(propuesta_id, tipo)
+        await asyncio.to_thread(llenar_formatos.borrar, propuesta_id, tipo)
     return _volver(propuesta_id, aviso="Formato quitado: se usará el nuestro.")
 
 
@@ -1039,15 +1206,19 @@ async def descargar_anexo(request: Request, propuesta_id: int, tipo: str):
     if not prop:
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
+    imagenes = await _imagenes(prop["emp_id"], "escaneada")
+    if imagenes is None:
+        return _volver(propuesta_id, error=SIN_FIRMA)
     try:
-        contenido = await _anexo(prop, tipo, await _imagenes(prop["emp_id"], "escaneada"))
+        contenido = await _anexo(prop, tipo, imagenes)
+    except DocumentoIncompleto as e:
+        return _volver(propuesta_id, error=e.mensaje())
     except llenar_formatos.FormatoNoReconocido as e:
         return _volver(propuesta_id, error=f"No pudimos sellar el adjunto: {e}")
     if contenido is None:
         return _volver(propuesta_id, error="Ese adjunto todavía no está: súbelo en la empresa "
                        "o espera a que el puente baje las EETT.")
-    destino = _escribir(f"anexo-{propuesta_id}-{tipo}.pdf", contenido)
-    return FileResponse(destino, filename=_ANEXOS[tipo], media_type="application/pdf")
+    return _descarga(contenido, _ANEXOS[tipo], "application/pdf")
 
 
 # Cuando el usuario firma a mano la cotizacion y los anexos, el envio se arma
@@ -1078,13 +1249,35 @@ async def _experiencia(empresa_id: int) -> list[dict]:
     return [dict(f) for f in filas]
 
 
+class _FaltaObligatorio(Exception):
+    """Falta un documento sin el cual la oferta no vale. El mensaje es para el
+    usuario y el envio NO se arma."""
+
+
+# Lo que acredita al postor: sin la ficha RUC o la constancia del RNP la
+# entidad no evalua la oferta. Las EETT/TDR son de la entidad y las baja el
+# puente: si aun no estan, se avisa y se puede descargar igual.
+_FALTA_OBLIGATORIO = {"ficha": "la ficha RUC", "rnp": "la constancia del RNP"}
+
+
+def _aviso_sin_eett(mpt: bool) -> str:
+    if mpt:
+        return ("Va sin el TDR de la municipalidad: todavía no lo bajó el puente. "
+                "Agrégalo firmado y sellado antes de enviar.")
+    return ("Va sin la ficha técnica (las especificaciones técnicas de la entidad): "
+            "todavía no las bajó el puente. Agrégalas firmadas y selladas antes de enviar.")
+
+
 async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict,
-                      cci: str | None, imagenes: dict) -> list[tuple[str, bytes]]:
+                      cci: str | None, imagenes: dict,
+                      advertencias: list[str]) -> list[tuple[str, bytes]]:
     """La postulacion a la Municipalidad de Tambopata, en el orden que piden:
     la SC del SIGA llena, los anexos 05 a 10 llenos, y lo que acredita al
     postor (ficha RUC, RNP) con el TDR, todo firmado y sellado.
 
-    La SC es obligatoria: sin ella no hay oferta. Los demas van si estan."""
+    La SC, los anexos, la ficha RUC y el RNP son obligatorios: sin ellos no
+    hay oferta y se levanta. El TDR y los anexos en Word (sin LibreOffice) van
+    a `advertencias`."""
     from radar_bot.scrapers.mpt_tambopata import numero_em
     from shared import anexos_mpt, fechas
 
@@ -1106,28 +1299,112 @@ async def _paquete_mpt(prop, empresa: dict, items: list[dict], condiciones: dict
         "experiencia": await _experiencia(emp_id),
     }
     anexos, aviso = await anexos_mpt.anexos_pdf(datos)
+    if not anexos:
+        raise _FaltaObligatorio("No se pudieron generar los anexos de la municipalidad. "
+                                "Inténtalo de nuevo en un momento.")
     if aviso:
+        # Antes solo iba al log: el ZIP salia con los anexos en .docx, sin
+        # firma estampada, y el usuario lo subia asi.
         log.warning("Paquete MPT %s: %s", prop["id"], aviso)
+        advertencias.append(f"{aviso} Ábrelos en Word, expórtalos a PDF y fírmalos antes "
+                            "de enviar.")
     for k, (nombre, contenido) in enumerate(sorted(anexos.items()), start=2):
         archivos.append((f"{k:02d}_{nombre}", contenido))
     siguiente = len(archivos) + 1
     for tipo, rotulo in (("ficha", "Ficha_RUC"), ("rnp", "Constancia_RNP"),
                          ("eett", "TDR_Especificaciones_Tecnicas")):
         contenido = await _anexo(prop, tipo, imagenes)
-        if contenido is not None:
-            archivos.append((f"{siguiente:02d}_{rotulo}.pdf", contenido))
-            siguiente += 1
+        if contenido is None:
+            if tipo in _FALTA_OBLIGATORIO:
+                raise _FaltaObligatorio(_mensaje_faltan([tipo]))
+            advertencias.append(_aviso_sin_eett(mpt=True))
+            continue
+        archivos.append((f"{siguiente:02d}_{rotulo}.pdf", contenido))
+        siguiente += 1
     return archivos
 
 
-@router.get("/propuestas/{propuesta_id}/paquete")
-async def paquete_envio(request: Request, propuesta_id: int):
-    """ZIP con todo lo que se adjunta en el portal, como se manda en papel:
-    cotizacion y DJ llenas, mas ficha RUC, constancia del RNP y EETT de la
-    entidad, todo con la firma y el sello escaneados en cada hoja."""
+async def _paquete_portal(prop, empresa: dict, items: list[dict], condiciones: dict,
+                          cci: str | None, imagenes: dict,
+                          advertencias: list[str]) -> list[tuple[str, bytes]]:
+    """El envio por el portal de cotizaciones (GOREMAD y parecidos)."""
+    archivos: list[tuple[str, bytes]] = []
+    sc = await llenar_formatos.sc_llena(prop["id"], prop["licitacion_id"], empresa,
+                                        items, condiciones, imagenes)
+    if sc is None:
+        advertencias.append("La solicitud de cotización de la entidad no está cargada: va la "
+                            "cotización en nuestro formato. Si la entidad exige la suya, "
+                            "súbela en «Formatos de la entidad».")
+        ruta = await generar_cotizacion(dict(prop), empresa, items, condiciones, cci,
+                                        con_dnie=False)
+        sc = await _leer_y_borrar(ruta)
+    archivos.append(("01_Cotizacion.pdf", sc))
+    dj = await llenar_formatos.dj_llena(prop["id"], prop["licitacion_id"], empresa,
+                                        cci, imagenes)
+    if dj is None:
+        ruta = await generar_dj(dict(prop), empresa, cci, False)
+        dj = await _leer_y_borrar(ruta)
+    archivos.append(("02_Declaracion_Jurada_de_Postor.pdf", dj))
+    for tipos, nombre_pdf in _ANEXOS_GOREMAD:
+        partes = []
+        for t in tipos:
+            contenido = await _anexo(prop, t, imagenes)
+            if contenido is not None:
+                partes.append(contenido)
+            elif t in _FALTA_OBLIGATORIO:
+                raise _FaltaObligatorio(_mensaje_faltan([t]))
+            else:
+                advertencias.append(_aviso_sin_eett(mpt=False))
+        if partes:
+            contenido = partes[0] if len(partes) == 1 else await asyncio.to_thread(
+                _unir_pdfs, partes)
+            archivos.append((nombre_pdf, contenido))
+    return archivos
+
+
+def _mensaje_faltan(tipos: list[str]) -> str:
+    nombres = " y ".join(_FALTA_OBLIGATORIO[t] for t in tipos)
+    varias = len(tipos) > 1
+    return (f"No se puede armar el envío: falta {nombres} de la empresa. "
+            f"{'Súbelas' if varias else 'Súbela'} en los datos de la empresa; sin "
+            f"{'ellas' if varias else 'ella'} la entidad no evalúa la oferta.")
+
+
+def _zip_en_memoria(archivos: list[tuple[str, bytes]], advertencias: list[str]) -> bytes:
+    """El ZIP del envio, sin pasar por el disco. Si hubo avisos, van dentro en
+    00_FALTANTES.txt: quien abra el ZIP despues (otra persona de la empresa,
+    el mismo usuario dias mas tarde) tambien los ve."""
     import io
     import zipfile
 
+    from prep_bot.zip_builder import texto_faltantes
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n, contenido in archivos:
+            z.writestr(n, contenido)
+        if advertencias:
+            z.writestr("00_FALTANTES.txt", texto_faltantes(advertencias))
+    return buf.getvalue()
+
+
+@router.get("/propuestas/{propuesta_id}/paquete")
+async def paquete_envio(request: Request, propuesta_id: int, confirmar: int = 0):
+    """ZIP con todo lo que se adjunta en el portal, como se manda en papel:
+    cotizacion y DJ llenas, mas ficha RUC, constancia del RNP y EETT de la
+    entidad, todo con la firma y el sello escaneados en cada hoja.
+
+    QUE BLOQUEA Y QUE SOLO AVISA
+
+      Bloquea (vuelve a la ficha con el motivo, no hay ZIP): que el validador
+      no pueda validar o falte un dato obligatorio, que la empresa no tenga
+      firma y sello, que falte la ficha RUC o la constancia del RNP, que la SC
+      o un anexo no se puedan llenar o les falte un dato.
+
+      Avisa (vuelve a la ficha con los avisos y un enlace "descargar de todos
+      modos", que es esta misma ruta con ?confirmar=1): las EETT/TDR que el
+      puente aun no bajo, los anexos que salieron en Word, los avisos del
+      validador. El ZIP que se baja asi lleva 00_FALTANTES.txt.
+    """
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -1135,61 +1412,57 @@ async def paquete_envio(request: Request, propuesta_id: int):
     if not prop:
         return RedirectResponse("/propuestas?error=Esa+propuesta+no+es+tuya",
                                 status_code=303)
-    nombre = (prop["nomenclatura"] or f"propuesta-{propuesta_id}").replace("/", "-")
+    mpt = prop["fuente"] == "mpt_tambopata"
+    prefijo = "Postulacion" if mpt else "Envio"
+    nombre = nombre_descarga(f"{prefijo}_{prop['nomenclatura'] or f'propuesta-{propuesta_id}'}",
+                             "zip")
     armado = paquete_armado(propuesta_id)
     if armado:
-        prefijo = "Postulacion" if prop["fuente"] == "mpt_tambopata" else "Envio"
-        return FileResponse(armado, filename=f"{prefijo}_{nombre}.zip",
-                            media_type="application/zip")
+        return FileResponse(armado, media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="{nombre}"'})
     items = await cotizacion.items_de(propuesta_id)
     if not items or any(it.get("precio_unitario") is None for it in items):
         return _volver(propuesta_id, error="Pon precio a todos los ítems antes de armar el envío.")
+
+    def volver(error: str) -> RedirectResponse:
+        return _volver(propuesta_id, ancla="siguiente", error=error)
+
+    validacion = await _validacion(propuesta_id)
+    bloqueo = _bloqueo(validacion, "el envío")
+    if bloqueo:
+        return volver(bloqueo)
+    imagenes = await _imagenes(prop["emp_id"], "escaneada")
+    if imagenes is None:
+        return volver("Sube la firma y el sello de la empresa en los datos de la empresa: el "
+                      "envío va firmado y sellado en cada hoja, y sin ellos saldría sin firmar.")
+    disponibles = _anexos_de(prop["emp_id"])
+    faltan = [t for t in _FALTA_OBLIGATORIO if not disponibles[t]]
+    if faltan:
+        return volver(_mensaje_faltan(faltan))
+
     async with connection() as conn:
         empresa = dict(await conn.fetchrow("SELECT * FROM empresas WHERE id=$1",
                                            prop["emp_id"]))
-    imagenes = await _imagenes(prop["emp_id"], "escaneada")
     cci = await kb_get(prop["emp_id"], "financiero", "cci")
     condiciones = await cotizacion.condiciones_de(propuesta_id)
 
-    archivos: list[tuple[str, bytes]] = []
-    if prop["fuente"] == "mpt_tambopata":
-        try:
-            archivos = await _paquete_mpt(prop, empresa, items, condiciones, cci, imagenes)
-        except llenar_formatos.FormatoNoReconocido as e:
-            return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for n, contenido in archivos:
-                z.writestr(n, contenido)
-        destino = _escribir(f"envio-{propuesta_id}.zip", buf.getvalue())
-        return FileResponse(destino, filename=f"Postulacion_{nombre}.zip",
-                            media_type="application/zip")
+    advertencias: list[str] = list(validacion["warnings"])
+    armar = _paquete_mpt if mpt else _paquete_portal
     try:
-        sc = await llenar_formatos.sc_llena(propuesta_id, prop["licitacion_id"], empresa,
-                                            items, condiciones, imagenes)
-        if sc is None:
-            ruta = await generar_cotizacion(dict(prop), empresa, items, condiciones, cci,
-                                            con_dnie=False)
-            sc = await asyncio.to_thread(Path(ruta).read_bytes)
-        archivos.append(("01_Cotizacion.pdf", sc))
-        dj = await llenar_formatos.dj_llena(propuesta_id, prop["licitacion_id"], empresa,
-                                            cci, imagenes)
-        if dj is None:
-            ruta = await generar_dj(dict(prop), empresa, cci, False)
-            dj = await asyncio.to_thread(Path(ruta).read_bytes)
-        archivos.append(("02_Declaracion_Jurada_de_Postor.pdf", dj))
-        for tipos, nombre_pdf in _ANEXOS_GOREMAD:
-            partes = [c for t in tipos if (c := await _anexo(prop, t, imagenes)) is not None]
-            if partes:
-                contenido = partes[0] if len(partes) == 1 else await asyncio.to_thread(
-                    _unir_pdfs, partes)
-                archivos.append((nombre_pdf, contenido))
+        archivos = await armar(prop, empresa, items, condiciones, cci, imagenes, advertencias)
+    except DocumentoIncompleto as e:
+        return volver(e.mensaje())
     except llenar_formatos.FormatoNoReconocido as e:
-        return _volver(propuesta_id, error=f"No pudimos llenar el formato de la entidad: {e}")
+        return volver(f"No pudimos llenar el formato de la entidad: {e}")
+    except _FaltaObligatorio as e:
+        return volver(str(e))
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for n, contenido in archivos:
-            z.writestr(n, contenido)
-    destino = _escribir(f"envio-{propuesta_id}.zip", buf.getvalue())
-    return FileResponse(destino, filename=f"Envio_{nombre}.zip", media_type="application/zip")
+    if advertencias and not confirmar:
+        texto = ("Antes de descargar el ZIP, revisa: " + "; ".join(advertencias)
+                 + " Si aun así lo quieres, descárgalo abajo: los avisos van dentro, "
+                   "en 00_FALTANTES.txt.")
+        return RedirectResponse(
+            f"/propuestas/{propuesta_id}?error={quote_plus(texto)}&confirmar_paquete=1#siguiente",
+            status_code=303)
+    contenido = await asyncio.to_thread(_zip_en_memoria, archivos, advertencias)
+    return _descarga(contenido, nombre, "application/zip")
