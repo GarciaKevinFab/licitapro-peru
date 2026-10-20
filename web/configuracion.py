@@ -19,11 +19,11 @@ from shared.db import (
     token_telegram_vigente,
     update_config,
 )
-from shared.seguridad import nuevo_token_telegram, verificar_password
+from shared.seguridad import nuevo_token_telegram
 from shared.suscripciones import regiones_permitidas
 from shared.whatsapp import configurado as whatsapp_configurado
 from shared.whatsapp import enviar_plantilla, normalizar_numero
-from web.auth import usuario_actual
+from web.auth import usuario_actual, verificar_password_de
 
 log = logging.getLogger("web.configuracion")
 router = APIRouter()
@@ -278,7 +278,9 @@ async def borrar_mi_cuenta(request: Request, password: str = Form(""),
                 "Marca la casilla para confirmar que entiendes que el borrado "
                 "no tiene vuelta atrás."), status_code=303)
 
-    if not verificar_password(password, usuario["password_hash"]):
+    # `usuario_actual` ya no devuelve el hash (no debe llegar a las plantillas):
+    # se comprueba contra la base.
+    if not await verificar_password_de(usuario["id"], password):
         log.warning("Intento de borrado de la cuenta %s con contrasena incorrecta",
                     usuario["id"])
         return RedirectResponse(

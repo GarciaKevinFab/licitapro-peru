@@ -305,3 +305,26 @@ async def test_lifespan_abre_y_cierra_el_pool():
     assert pool._closed
     # Las pruebas siguientes lo recrean al primer uso.
     await db.get_pool()
+
+
+@sin_base
+async def test_borrar_la_cuenta_comprueba_la_contrasena_contra_la_base(cliente, usuario):
+    """`usuario_actual` ya no trae el hash: el borrado lo pide a la base.
+
+    Con el hash fuera del dict, la ruta leia `usuario["password_hash"]` y daba
+    un 500 al intentar borrar la cuenta.
+    """
+    from shared.db import connection
+
+    await _entrar(cliente, usuario)
+    r = await cliente.post("/configuracion/cuenta/borrar",
+                           data={"password": "no-es-la-clave", "confirmo": "1"})
+    assert r.status_code == 303 and "error=" in r.headers["location"]
+    async with connection() as c:
+        assert await c.fetchval("SELECT 1 FROM usuarios WHERE id=$1", usuario["id"])
+
+    r = await cliente.post("/configuracion/cuenta/borrar",
+                           data={"password": usuario["password"], "confirmo": "1"})
+    assert r.status_code == 303
+    async with connection() as c:
+        assert not await c.fetchval("SELECT 1 FROM usuarios WHERE id=$1", usuario["id"])
