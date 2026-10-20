@@ -175,7 +175,7 @@ async def ingresos_del_mes() -> float:
         total = await conn.fetchval(
             """SELECT COALESCE(SUM(monto), 0) FROM pagos_suscripcion
                 WHERE estado = 'pagado'
-                  AND confirmado_en >= date_trunc('month', CURRENT_DATE)""")
+                  AND confirmado_en >= date_trunc('month', (NOW() AT TIME ZONE 'America/Lima'))""")
     return float(total or 0)
 
 
@@ -321,7 +321,7 @@ async def detalle_cuenta(usuario_id: int) -> dict | None:
                       COALESCE(SUM(tokens_entrada), 0) AS tokens_entrada,
                       COALESCE(SUM(tokens_salida), 0) AS tokens_salida
                  FROM analisis_ia
-                WHERE usuario_id = $1 AND creado_en >= date_trunc('month', CURRENT_DATE)""",
+                WHERE usuario_id = $1 AND creado_en >= date_trunc('month', (NOW() AT TIME ZONE 'America/Lima'))""",
             usuario_id)
         correo_avisos = await conn.fetchval(
             "SELECT email_notificaciones FROM user_config WHERE usuario_id = $1", usuario_id)

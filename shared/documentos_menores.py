@@ -18,6 +18,7 @@ LA DECLARACION JURADA DEPENDE DE LA ENTIDAD
 from __future__ import annotations
 
 import re
+import uuid
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -165,7 +166,7 @@ async def generar_dj(prop: dict, emp: dict, cci: str | None, con_dnie: bool) -> 
     else:
         titulo, sub, parrafos = _generica(emp, prop)
     return await generar_pdf(
-        nombre_archivo=f"declaracion-jurada-{prop['id']}.pdf", titulo=titulo,
+        nombre_archivo=f"declaracion-jurada-{prop['id']}-{uuid.uuid4().hex[:12]}.pdf", titulo=titulo,
         subtitulo=sub, parrafos=parrafos, empresa=emp, con_dnie=con_dnie)
 
 
@@ -253,5 +254,5 @@ async def generar_cotizacion(prop: dict, emp: dict, items: list[dict], condicion
         + (f"<br/>Contacto para coordinaciones de entrega y consultas: {contacto}"
            if contacto else ""))
     return await generar_pdf(
-        nombre_archivo=f"cotizacion-{prop['id']}.pdf", titulo="COTIZACIÓN",
+        nombre_archivo=f"cotizacion-{prop['id']}-{uuid.uuid4().hex[:12]}.pdf", titulo="COTIZACIÓN",
         subtitulo=_e(referencia(prop)), parrafos=parrafos, empresa=emp, con_dnie=con_dnie)

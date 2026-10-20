@@ -324,12 +324,25 @@ async def get_empresas_activas():
 
 # ─── Propuestas ──────────────────────────────────────────
 async def crear_propuesta(licitacion_id: str, empresa_id: int) -> int:
+    """La propuesta de esa empresa a esa licitacion; la crea si no existe.
+
+    Una empresa tiene a lo sumo una propuesta por licitacion (indice unico de
+    la migracion 0020). Un doble clic en "Licitar" devuelve la que ya hay en
+    vez de reventar con la violacion del indice.
+    """
     async with connection() as conn:
-        return await conn.fetchval(
+        nueva = await conn.fetchval(
             """INSERT INTO propuestas (licitacion_id, empresa_id, estado)
-            VALUES ($1, $2, 'iniciado') RETURNING id""",
+               VALUES ($1, $2, 'iniciado')
+               ON CONFLICT (licitacion_id, empresa_id) DO NOTHING
+               RETURNING id""",
             licitacion_id, empresa_id,
         )
+        if nueva is not None:
+            return nueva
+        return await conn.fetchval(
+            "SELECT id FROM propuestas WHERE licitacion_id=$1 AND empresa_id=$2",
+            licitacion_id, empresa_id)
 
 
 async def get_preguntas_pendientes(propuesta_id: int):
