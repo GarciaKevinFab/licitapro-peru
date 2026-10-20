@@ -33,7 +33,6 @@ from shared.db import (
 )
 from shared.firma_manager import guardar_firma, obtener_todas_firmas
 
-
 # ─── Autorizacion ────────────────────────────────────────
 # Antes ningun comando de este bot miraba QUIEN escribia: cualquiera que diera
 # con el bot veia las propuestas y los datos de TODAS las empresas, respondia
@@ -138,7 +137,7 @@ async def _avisar(app, chat_id: int | None, texto: str, **kwargs) -> None:
         return
     try:
         await app.bot.send_message(chat_id, texto, **kwargs)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("No se pudo avisar al chat %s", chat_id, exc_info=True)
 
 

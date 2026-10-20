@@ -160,8 +160,8 @@ def _salida(tmp_path, monkeypatch):
 async def test_si_el_validador_se_cae_no_se_arma_nada(usuario, empresa, cliente, marca,
                                                       monkeypatch):
     """Falla CERRADA: no saber si falta algo no es saber que no falta nada."""
-    import prep_bot.autofill.validator as validator
     import prep_bot.zip_builder as zb
+    from prep_bot.autofill import validator
 
     async def _se_cae(_pid):
         raise RuntimeError("base caida")

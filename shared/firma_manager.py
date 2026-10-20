@@ -3,6 +3,7 @@
 Permite subir imágenes de firma del representante legal, sello de empresa
 y logo. Se usan automáticamente al generar documentos DOCX.
 """
+import asyncio
 import logging
 import os
 
@@ -45,8 +46,7 @@ async def guardar_firma(empresa_id: int, tipo: str, origen: bytes | str) -> str:
     else:
         # Se lee uno de mas que el limite: basta para que guardar_imagen diga
         # "demasiado grande" sin cargar en memoria un archivo de gigas.
-        with open(origen, "rb") as f:
-            datos = f.read(MAX_BYTES + 1)
+        datos = await asyncio.to_thread(_leer_con_tope, origen)
     return await guardar_imagen(empresa_id, tipo, datos)
 
 
@@ -121,3 +121,9 @@ def insertar_imagen_en_docx(doc, image_path: str, width_cm: float = 4.0):
             log.warning(f"No se pudo insertar imagen {image_path}: {e}")
     return False
 
+
+def _leer_con_tope(origen) -> bytes:
+    """Uno de mas que el limite: basta para que guardar_imagen diga
+    "demasiado grande" sin cargar en memoria un archivo de gigas."""
+    with open(origen, "rb") as f:
+        return f.read(MAX_BYTES + 1)

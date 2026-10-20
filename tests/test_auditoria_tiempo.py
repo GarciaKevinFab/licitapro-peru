@@ -37,7 +37,7 @@ async def sesion_en(request, monkeypatch):
     es exactamente la palanca que usa el VPS: asi se prueba el camino real y
     no una conexion armada a mano que podria comportarse distinto.
     """
-    import shared.db as db
+    from shared import db
 
     monkeypatch.setenv("POSTGRES_ZONA_SESION", request.param)
     original = db._pool
@@ -140,7 +140,7 @@ async def test_el_mes_de_la_cuota_de_ia_empieza_el_dia_1_de_lima(sesion_en):
     async with connection() as c:
         inicio = await c.fetchval(f"SELECT {_INICIO_MES_LIMA}")
     hoy = fechas.hoy()
-    assert inicio == datetime(hoy.year, hoy.month, 1)
+    assert inicio == datetime(hoy.year, hoy.month, 1)  # noqa: DTZ001 - naive a proposito: hora de pared de Lima, como la columna
 
 
 @sin_base
@@ -276,7 +276,7 @@ async def test_el_csv_sale_con_las_celdas_neutralizadas():
                      ["Concepto", "Monto", "Objeto"], "x.csv")
     cuerpo = "".join([trozo async for trozo in respuesta.body_iterator])
     linea = cuerpo.splitlines()[1]
-    assert linea.startswith("\"'=cmd") or linea.startswith("'=cmd")
+    assert linea.startswith(("\"'=cmd", "'=cmd"))
     assert ";-250.0;" in linea
 
 

@@ -1,8 +1,10 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
+import asyncio
 import html
 import logging
 import os
 from datetime import timedelta
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -202,9 +204,9 @@ async def _enviar_documento(update: Update, path: str, texto: str) -> None:
     Antes se respondia con la ruta en disco: al cliente no le servia para nada
     (no tiene acceso al servidor) y le describia la estructura de carpetas.
     """
-    with open(path, "rb") as f:
-        await update.message.reply_document(
-            document=f, filename=os.path.basename(path), caption=texto)
+    contenido = await asyncio.to_thread(Path(path).read_bytes)
+    await update.message.reply_document(
+        document=contenido, filename=os.path.basename(path), caption=texto)
 
 
 # ─── Handlers ────────────────────────────────────────────

@@ -235,7 +235,7 @@ def _url_bd_de_env_py():
                  and n.name in {"url_bd", "_password_obligatoria"}]
     assert len(funciones) == 2
     espacio = {"os": os, "urlparse": urlparse, "_es_gestionado": _es_gestionado}
-    exec(compile(ast.Module(body=funciones, type_ignores=[]), "env.py", "exec"), espacio)
+    exec(compile(ast.Module(body=funciones, type_ignores=[]), "env.py", "exec"), espacio)  # noqa: S102 - codigo del propio repo (migrations/env.py), no entrada externa
     return espacio["url_bd"]
 
 

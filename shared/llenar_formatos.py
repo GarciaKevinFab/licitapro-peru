@@ -149,7 +149,7 @@ def guardar(propuesta_id: int, tipo: str, contenido: bytes) -> None:
                 raise FormatoNoReconocido("El PDF no tiene páginas.")
     except FormatoNoReconocido:
         raise
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise FormatoNoReconocido("No se pudo leer el PDF. ¿Está dañado o protegido?") from e
     destino = ruta(propuesta_id, tipo)
     destino.parent.mkdir(parents=True, exist_ok=True)

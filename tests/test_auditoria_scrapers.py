@@ -193,8 +193,8 @@ def test_ningun_scraper_apaga_tls_para_todo_el_cliente():
 # ─── Documentos y ficha del GOREMAD ───────────────────────
 
 async def test_un_documento_que_no_baja_queda_marcado_y_avisa(monkeypatch, caplog):
-    from radar_bot.scrapers import orchestrator as o
     import shared.db
+    from radar_bot.scrapers import orchestrator as o
     guardados = []
 
     async def _conocidos(lic):

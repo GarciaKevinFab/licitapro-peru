@@ -125,7 +125,7 @@ os.environ["DATABASE_URL"] = _URL_PRUEBAS
 # un POSTGRES_HOST o POSTGRES_PORT del .env que entrara despues de la
 # comprobacion cambiaria la base a la que se conecta la app sin que el
 # blindaje lo hubiera visto.
-import shared.db  # noqa: E402,F401
+import shared.db  # noqa: F401
 
 # El puerto por defecto de get_pool es el 5433 (el de docker-compose). Se fija
 # aqui en el entorno, no solo en la comprobacion: si no, el blindaje miraria el

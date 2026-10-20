@@ -94,7 +94,7 @@ def validar_url(url: str | httpx.URL, dominios) -> httpx.URL:
     """
     try:
         u = url if isinstance(url, httpx.URL) else httpx.URL(str(url).strip())
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise DescargaRechazada(f"URL invalida: {e}") from e
     if u.scheme not in _ESQUEMAS:
         raise DescargaRechazada(f"esquema {u.scheme!r} no permitido")

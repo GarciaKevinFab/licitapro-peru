@@ -398,7 +398,7 @@ def _directorios_de_propuestas() -> dict[str, Path]:
     try:
         from web.propuestas import PAQUETES
     except ImportError:  # un bot sin las dependencias de la web
-        PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))  # noqa: N806
+        PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
     plantillas = Path(os.getenv("TEMPLATES_DIR", "templates")) / "output"
     return {"formatos": FORMATOS, "expedientes": EXPEDIENTES,
             "paquetes": PAQUETES, "plantillas": plantillas}

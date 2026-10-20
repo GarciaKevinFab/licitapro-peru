@@ -53,7 +53,7 @@ def _png(lado=50, formato="PNG") -> bytes:
 async def test_dos_peticiones_al_primer_uso_comparten_un_solo_pool(monkeypatch):
     """Sin candado, cada `get_pool` concurrente creaba su pool y uno quedaba
     huerfano con sus conexiones abiertas."""
-    import shared.db as db
+    from shared import db
 
     original = db._pool
     monkeypatch.setattr(db, "_pool", None)
@@ -81,7 +81,7 @@ async def test_dos_peticiones_al_primer_uso_comparten_un_solo_pool(monkeypatch):
 
 @sin_base
 async def test_sin_conexion_libre_se_rinde_con_error_y_no_se_cuelga(monkeypatch):
-    import shared.db as db
+    from shared import db
 
     pool = await db.get_pool()
     monkeypatch.setattr(db, "SEGUNDOS_ESPERA_CONEXION", 0.2)
@@ -118,8 +118,8 @@ class _Contador:
 
 @sin_base
 async def test_buscar_valor_y_kb_usan_una_sola_conexion(empresa, monkeypatch):
-    import shared.db as db
     import shared.knowledge_base as kb
+    from shared import db
 
     contador = _Contador(db.connection)
     monkeypatch.setattr(db, "connection", contador)
@@ -140,7 +140,7 @@ async def test_buscar_valor_y_kb_usan_una_sola_conexion(empresa, monkeypatch):
 
 @sin_base
 async def test_responder_pregunta_no_anida_conexiones(empresa, marca, monkeypatch):
-    import shared.db as db
+    from shared import db
 
     lid = f"LIC-ROB-{marca}"
     async with db.connection() as c:
@@ -568,7 +568,7 @@ async def test_un_rnp_vencido_se_avisa(usuario, empresa, cliente, monkeypatch, t
 @sin_base
 async def test_una_imagen_demasiado_grande_se_corta_antes_de_leerla(
         usuario, empresa, cliente, monkeypatch):
-    import shared.archivos as archivos
+    from shared import archivos
 
     monkeypatch.setattr("web.empresas.MAX_BYTES_IMAGEN", 1000)
     llamado = []
@@ -654,12 +654,11 @@ async def test_borrar_la_cuenta_no_deja_documentos_en_disco(marca, tmp_path, mon
     import shared.constancia_rnp as rnp
     import shared.ficha_ruc as ficha
     import shared.llenar_formatos as formatos
-    import shared.pdf_firmable as pdf_firmable
-    import web.propuestas as propuestas
-    from shared import membrete
+    from shared import membrete, pdf_firmable
     from shared.admin_cuentas import borrar_cuenta_completa
     from shared.db import borrar_cuenta, connection, crear_usuario
     from shared.seguridad import hashear_password
+    from web import propuestas
 
     monkeypatch.setattr(membrete, "DIR", tmp_path / "membretes")
     monkeypatch.setattr(ficha, "DIR_PDF", tmp_path / "ficha")

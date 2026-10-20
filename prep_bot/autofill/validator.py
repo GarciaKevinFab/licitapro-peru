@@ -65,7 +65,7 @@ async def validar_propuesta(propuesta_id: int) -> dict:
         # `empresas.direccion`: buscarlo como "domicilio_legal" daba por
         # faltante un domicilio que la empresa si tenia.
         columna = _COLUMNA_EMPRESA.get(v["campo"], v["campo"])
-        valor = empresa.get(columna) if empresa and columna in empresa.keys() else None
+        valor = empresa.get(columna) if empresa and columna in empresa else None
         if not valor:
             valor = sabido.get((v["cat"], v["campo"]))
 

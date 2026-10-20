@@ -658,7 +658,6 @@ async def test_las_eett_se_sueltan_a_los_3_dias_y_la_sc_a_los_30(marca):
 async def test_el_envio_por_el_portal_deja_datos_y_adjuntos_listos(
         usuario, empresa, cliente, marca, tmp_path, monkeypatch):
     import zipfile
-
     from urllib.parse import unquote_plus
 
     from shared import constancia_rnp, ficha_ruc, llenar_formatos

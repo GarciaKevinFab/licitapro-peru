@@ -26,9 +26,8 @@ QUE FORMATO ES
 """
 from __future__ import annotations
 
-from decimal import Decimal
-
 import logging
+from decimal import Decimal
 
 from shared.config import normalizar
 from shared.llenar_formatos import (

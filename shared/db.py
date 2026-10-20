@@ -279,8 +279,8 @@ async def kb_get(empresa_id: int, categoria: str, clave: str,
     # Leer y contar el uso en un solo viaje: eran dos consultas por dato, y la
     # ficha de una propuesta pide una docena de datos. `conn` reutiliza la de
     # quien llama (ver `_conexion_o_nueva`).
-    async with _conexion_o_nueva(conn) as conn:
-        return await conn.fetchval(
+    async with _conexion_o_nueva(conn) as c:
+        return await c.fetchval(
             """UPDATE knowledge_base SET usado_count = usado_count + 1
                 WHERE empresa_id=$1 AND categoria=$2 AND clave=$3
             RETURNING valor""",
@@ -292,8 +292,8 @@ async def kb_todos(empresa_id: int, conn=None) -> dict[tuple[str, str], str]:
     """Todo lo que se sabe de la empresa, {(categoria, clave): valor}, en un
     solo viaje. Para quien revisa muchos datos a la vez (el validador pedia
     uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar."""
-    async with _conexion_o_nueva(conn) as conn:
-        filas = await conn.fetch(
+    async with _conexion_o_nueva(conn) as c:
+        filas = await c.fetch(
             "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
             empresa_id)
     return {(f["categoria"], f["clave"]): f["valor"] for f in filas}
@@ -301,8 +301,8 @@ async def kb_todos(empresa_id: int, conn=None) -> dict[tuple[str, str], str]:
 
 async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str,
                  fuente="usuario_respuesta", conn=None):
-    async with _conexion_o_nueva(conn) as conn:
-        await conn.execute(
+    async with _conexion_o_nueva(conn) as c:
+        await c.execute(
             """INSERT INTO knowledge_base (empresa_id, categoria, clave, valor, fuente)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (empresa_id, categoria, clave) 

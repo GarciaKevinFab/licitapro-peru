@@ -273,7 +273,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # comandos. Antes "Licitar" creaba la propuesta SIEMPRE con la empresa 1,
     # que es de un cliente concreto, pulsara quien pulsara.
     usuario = await cuenta_de(update)
-    if not usuario and (data.startswith("licitar_") or data.startswith("pasar_")):
+    if not usuario and data.startswith(("licitar_", "pasar_")):
         await query.edit_message_text(
             "🔒 Este chat no está vinculado a ninguna cuenta. Conéctalo desde "
             "<b>Configuración</b> en tu panel de LicitaPro.", parse_mode="HTML")

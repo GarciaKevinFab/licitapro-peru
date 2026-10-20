@@ -8,6 +8,7 @@ import hashlib
 import logging
 import os
 import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -120,12 +121,12 @@ async def test_post_desde_el_mismo_origen_pasa(cliente):
 
 def test_documentacion_de_la_api_apagada_fuera_de_desarrollo():
     entorno = {**os.environ, "LICITAPRO_ENTORNO": "produccion",
-               "LICITAPRO_SECRET_KEY": "clave_de_pruebas_de_al_menos_32_caracteres_x",
+               "LICITAPRO_SECRET_KEY": secrets.token_urlsafe(32),
                "PYTHONPATH": str(RAIZ)}
     codigo = ("from web.app import app;"
               "print(app.docs_url, app.redoc_url, app.openapi_url)")
     salida = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ, env=entorno,
-                            capture_output=True, text=True, timeout=120)
+                            capture_output=True, text=True, timeout=120, check=False)
     assert salida.returncode == 0, salida.stderr[-2000:]
     assert salida.stdout.strip().splitlines()[-1] == "None None None"
 

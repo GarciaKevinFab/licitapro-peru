@@ -356,8 +356,7 @@ def _dj_con_partida() -> bytes:
 
 
 def test_el_ruc_de_la_dj_va_en_su_linea_y_no_en_la_partida():
-    from shared.llenar_formatos import llenar_declaracion_jurada
-    from shared.llenar_formatos import TINTA
+    from shared.llenar_formatos import TINTA, llenar_declaracion_jurada
     pdf = llenar_declaracion_jurada(_dj_con_partida(), EMPRESA, None, "10", "10")
     objetivo = tuple(round(v, 2) for v in TINTA)
     with pdfplumber.open(io.BytesIO(pdf)) as doc:
@@ -387,9 +386,8 @@ def test_una_sc_con_una_forma_rara_es_formato_no_reconocido():
     c.drawString(450, alto - 338, "PRECIO")
     c.drawString(512, alto - 338, "PRECIO")
     c.save()
-    with pdfplumber.open(io.BytesIO(buf.getvalue())) as doc:
-        with pytest.raises(FormatoNoReconocido):
-            _localizar_tabla(doc.pages[0])
+    with pdfplumber.open(io.BytesIO(buf.getvalue())) as doc, pytest.raises(FormatoNoReconocido):
+        _localizar_tabla(doc.pages[0])
     with pytest.raises(FormatoNoReconocido):
         llenar_solicitud(buf.getvalue(), EMPRESA, _items(), {}, "X", Decimal(1))
 

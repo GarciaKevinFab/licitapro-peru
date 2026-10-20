@@ -23,6 +23,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import unquote_plus
 
 import pytest
@@ -247,8 +248,8 @@ async def test_el_checkout_con_sesion_tampoco_sube_sin_pagar(
 async def test_si_culqi_falla_al_cambiar_el_plan_se_queda_el_viejo(
         cliente, usuario, monkeypatch):
     """La suscripcion vieja ya se cancelo, pero el plan nuevo no se pago."""
-    from tests.test_suscripcion_culqi import _CulqiFalso, _instalar
     from shared.suscripciones import activar_por_culqi
+    from tests.test_suscripcion_culqi import _CulqiFalso, _instalar
 
     await activar_por_culqi(
         usuario_id=usuario["id"], plan_codigo="basico", periodo="mensual",
@@ -525,7 +526,7 @@ async def test_no_se_confirma_la_orden_de_otro(cliente, usuario, izipay_simulado
 # ─── 8. El importe de Izipay en Decimal ─────────────────
 
 @pytest.mark.parametrize("entrada,esperado", [
-    (Decimal("99"), "99.00"), (Decimal("0.285"), "0.29"), (0.285, "0.29"),
+    (Decimal(99), "99.00"), (Decimal("0.285"), "0.29"), (0.285, "0.29"),
     ("1990.005", "1990.01"), (Decimal("49.1"), "49.10"),
 ])
 def test_el_importe_se_formatea_sin_float(entrada, esperado):
@@ -546,7 +547,7 @@ async def test_el_token_de_izipay_lleva_el_importe_exacto(monkeypatch):
     enviado = {}
 
     class _Respuesta:
-        headers = {"content-type": "application/json"}
+        headers: ClassVar[dict] = {"content-type": "application/json"}
 
         def json(self):
             return {"code": "00", "response": {"token": "tok"}}
