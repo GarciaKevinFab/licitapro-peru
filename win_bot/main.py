@@ -1,4 +1,5 @@
 """Bot 3: LicitaWin — Detecta adjudicaciones, trackea plazos y pagos."""
+import html
 import logging
 import os
 from datetime import timedelta
@@ -15,9 +16,9 @@ from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import (
     connection,
-    get_contratos_activos,
     get_plazos_proximos,
     get_pool,
+    get_usuario_por_telegram,
 )
 from shared.notificaciones import (
     avisar_cobros_vencidos,
@@ -106,8 +107,110 @@ async def check_plazos_proximos(app):
             )
 
 
+# ─── Autorizacion ────────────────────────────────────────
+# Antes ningun comando de este bot miraba QUIEN escribia: /contratos, /pagos y
+# /resumen ensenaban los de TODAS las empresas de la plataforma, y /ganar,
+# /factura o /pago escribian sobre cualquier propuesta o contrato cuyo id se
+# adivinara (son correlativos). Ahora cada comando resuelve la cuenta vinculada
+# al chat -- el mismo vinculo de LicitaRadar, creado desde la web con un token
+# de un solo uso -- y todo se limita a las empresas de esa cuenta por JOIN con
+# empresas.usuario_id.
+#
+# Un id ajeno responde lo mismo que uno que no existe: "no encontrado". Decir
+# "no es tuyo" convertiria el bot en un oraculo de que ids existen.
+
+MENSAJE_SIN_VINCULO = (
+    "🔒 Este chat todavía no está vinculado a ninguna cuenta.\n\n"
+    "Entra a tu panel de LicitaPro, ve a <b>Configuración</b> y pulsa "
+    "<b>Conectar Telegram</b>. Es un clic: no tienes que copiar ningún "
+    "número de identificación."
+)
+
+
+def esc(v) -> str:
+    """Escapa para parse_mode=HTML. Entidad y objeto vienen de fuera."""
+    return html.escape(str(v if v is not None else ""), quote=False)
+
+
+async def cuenta_de(update: Update):
+    """Cuenta vinculada a quien escribe, o None. El id lo pone Telegram."""
+    usuario = update.effective_user
+    if usuario is None:
+        return None
+    return await get_usuario_por_telegram(usuario.id)
+
+
+async def exige_cuenta(update: Update):
+    """Devuelve la cuenta; si no hay, explica como vincularse y devuelve None."""
+    cuenta = await cuenta_de(update)
+    if cuenta:
+        return cuenta
+    if update.effective_message is not None:
+        await update.effective_message.reply_text(MENSAJE_SIN_VINCULO, parse_mode="HTML")
+    return None
+
+
+async def contrato_es_de(contrato_id: int, usuario_id: int) -> bool:
+    """Propiedad de un contrato. Llamar ANTES de generar o registrar nada.
+
+    Los generadores (factura, acta, informe) y registrar_pago reciben el id y
+    actuan sin preguntar: la comprobacion tiene que ir aqui, en el borde.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            """SELECT EXISTS(SELECT 1 FROM contratos c
+                 JOIN empresas e ON c.empresa_id = e.id
+                WHERE c.id=$1 AND e.usuario_id=$2)""",
+            contrato_id, usuario_id,
+        )
+
+
+def _entero(texto: str) -> int | None:
+    try:
+        return int(texto)
+    except (TypeError, ValueError):
+        return None
+
+
+def _monto(texto: str) -> float | None:
+    try:
+        valor = float(texto)
+    except (TypeError, ValueError):
+        return None
+    # nan e inf pasan float() y no son un monto; negativo o cero tampoco.
+    return valor if valor > 0 and valor != float("inf") else None
+
+
+async def _contrato_desde_args(update: Update, ctx, uso: str):
+    """Resuelve (usuario, contrato_id) o responde y devuelve None."""
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return None
+    if not ctx.args:
+        await update.message.reply_text(uso)
+        return None
+    contrato_id = _entero(ctx.args[0])
+    if contrato_id is None or not await contrato_es_de(contrato_id, usuario["id"]):
+        await update.message.reply_text("❌ Contrato no encontrado")
+        return None
+    return usuario, contrato_id
+
+
+async def _enviar_documento(update: Update, path: str, texto: str) -> None:
+    """Manda el archivo generado en vez de la ruta del servidor.
+
+    Antes se respondia con la ruta en disco: al cliente no le servia para nada
+    (no tiene acceso al servidor) y le describia la estructura de carpetas.
+    """
+    with open(path, "rb") as f:
+        await update.message.reply_document(
+            document=f, filename=os.path.basename(path), caption=texto)
+
+
 # ─── Handlers ────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await exige_cuenta(update):
+        return
     await update.message.reply_text(
         "🏆 <b>LicitaWin</b> — Seguimiento post-adjudicación\n\n"
         "Monitoreo de contratos ganados, plazos y pagos.\n\n"
@@ -125,110 +228,153 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_contratos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    contratos = await get_contratos_activos()
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return
+    async with connection() as conn:
+        contratos = await conn.fetch(
+            """SELECT c.*, l.objeto, l.entidad FROM contratos c
+               JOIN licitaciones l ON c.licitacion_id = l.id
+               JOIN empresas e ON c.empresa_id = e.id
+              WHERE e.usuario_id = $1
+                AND c.estado NOT IN ('pagado','cancelado')
+              ORDER BY c.fecha_entrega_final""",
+            usuario["id"],
+        )
     if not contratos:
         await update.message.reply_text("📭 No hay contratos activos.")
         return
-    
+
     for c in contratos:
         estado_emoji = {
             "adjudicado": "📋", "contrato_firmado": "✍️",
             "en_ejecucion": "🔄", "entregado": "📦",
             "conformidad": "✅",
         }.get(c["estado"], "📄")
-        
+
         monto = format_monto(c["monto_adjudicado"]) if c["monto_adjudicado"] else "—"
-        
+
         await update.message.reply_text(
-            f"{estado_emoji} <b>Contrato #{c['id']}</b> — {c['estado']}\n\n"
-            f"🏛️ {c['entidad']}\n"
-            f"📦 {c['objeto'][:120]}\n"
+            f"{estado_emoji} <b>Contrato #{c['id']}</b> — {esc(c['estado'])}\n\n"
+            f"🏛️ {esc(c['entidad'])}\n"
+            f"📦 {esc((c['objeto'] or '')[:120])}\n"
             f"💰 {monto}\n"
             f"📅 Entrega final: {format_fecha(c['fecha_entrega_final'])}\n"
-            f"📄 N° Contrato: {c['numero_contrato'] or 'Pendiente firma'}",
+            f"📄 N° Contrato: {esc(c['numero_contrato'] or 'Pendiente firma')}",
             parse_mode="HTML",
         )
 
 
 async def cmd_plazos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    plazos = await get_plazos_proximos(dias=30)
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return
+    async with connection() as conn:
+        plazos = await conn.fetch(
+            """SELECT p.* FROM plazos p
+               JOIN contratos c ON p.contrato_id = c.id
+               JOIN empresas e ON c.empresa_id = e.id
+              WHERE e.usuario_id = $1
+                AND p.completado = FALSE
+                AND p.fecha_limite <= CURRENT_DATE + 30
+              ORDER BY p.fecha_limite""",
+            usuario["id"],
+        )
     if not plazos:
         await update.message.reply_text("✅ No hay plazos próximos en los siguientes 30 días.")
         return
-    
+
     texto = "📅 <b>Próximos plazos (30 días)</b>\n\n"
     for p in plazos:
         dias = (p["fecha_limite"] - fechas.hoy()).days
         emoji = "🔴" if dias <= 3 else "🟡" if dias <= 7 else "🟢"
         check = "✅" if p["completado"] else emoji
-        texto += f"{check} {format_fecha(p['fecha_limite'])} ({dias}d) — {p['descripcion']}\n"
-    
+        texto += f"{check} {format_fecha(p['fecha_limite'])} ({dias}d) — {esc(p['descripcion'])}\n"
+
     await update.message.reply_text(texto, parse_mode="HTML")
 
 
 async def cmd_pagos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return
     async with connection() as conn:
         pagos = await conn.fetch(
             """SELECT pg.*, c.numero_contrato, l.entidad, l.objeto
             FROM pagos pg
             JOIN contratos c ON pg.contrato_id = c.id
+            JOIN empresas e ON c.empresa_id = e.id
             JOIN licitaciones l ON c.licitacion_id = l.id
-            ORDER BY pg.estado, pg.fecha_pago_esperada"""
+            WHERE e.usuario_id = $1
+            ORDER BY pg.estado, pg.fecha_pago_esperada""",
+            usuario["id"],
         )
-    
+
     if not pagos:
         await update.message.reply_text("📭 No hay pagos registrados.")
         return
-    
+
     pendientes = [p for p in pagos if p["estado"] == "pendiente"]
     cobrados = [p for p in pagos if p["estado"] == "pagado"]
-    
+
     total_pendiente = sum(p["monto"] for p in pendientes)
     total_cobrado = sum(p["monto"] for p in cobrados)
-    
+
     texto = (
         f"💰 <b>Estado de Pagos</b>\n\n"
         f"⏳ Pendientes: {len(pendientes)} — {format_monto(total_pendiente)}\n"
         f"✅ Cobrados: {len(cobrados)} — {format_monto(total_cobrado)}\n\n"
     )
-    
+
     if pendientes:
         texto += "<b>Pendientes:</b>\n"
         for p in pendientes[:5]:
-            texto += f"• {format_monto(p['monto'])} — {p['entidad'][:30]} — {p['concepto']}\n"
-    
+            texto += (f"• {format_monto(p['monto'])} — {esc((p['entidad'] or '')[:30])}"
+                      f" — {esc(p['concepto'])}\n")
+
     await update.message.reply_text(texto, parse_mode="HTML")
 
 
 async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Registrar manualmente una buena pro: /ganar [propuesta_id] [monto]"""
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return
     if len(ctx.args) < 2:
         await update.message.reply_text("Uso: /ganar [propuesta_id] [monto_adjudicado]")
         return
-    
-    prop_id = int(ctx.args[0])
-    monto = float(ctx.args[1])
-    
+
+    prop_id = _entero(ctx.args[0])
+    monto = _monto(ctx.args[1])
+    if monto is None:
+        await update.message.reply_text("❌ Monto inválido")
+        return
+
     async with connection() as conn:
-        prop = await conn.fetchrow(
-            "SELECT p.*, l.objeto, l.entidad, l.nomenclatura "
-            "FROM propuestas p JOIN licitaciones l ON p.licitacion_id = l.id "
-            "WHERE p.id=$1", prop_id
-        )
+        # Propiedad por JOIN: una propuesta ajena no se encuentra, y por tanto no
+        # se le puede crear un contrato ni cambiar el estado a otro cliente.
+        prop = None
+        if prop_id is not None:
+            prop = await conn.fetchrow(
+                "SELECT p.*, l.objeto, l.entidad, l.nomenclatura "
+                "FROM propuestas p JOIN licitaciones l ON p.licitacion_id = l.id "
+                "JOIN empresas e ON p.empresa_id = e.id "
+                "WHERE p.id=$1 AND e.usuario_id=$2", prop_id, usuario["id"]
+            )
         if not prop:
             await update.message.reply_text("❌ Propuesta no encontrada")
             return
-        
+
         hoy = fechas.hoy()
         # Crear contrato
         contrato_id = await conn.fetchval(
-            """INSERT INTO contratos 
+            """INSERT INTO contratos
             (propuesta_id, licitacion_id, empresa_id, monto_adjudicado,
              fecha_adjudicacion, estado)
             VALUES ($1, $2, $3, $4, $5, 'adjudicado') RETURNING id""",
             prop_id, prop["licitacion_id"], prop["empresa_id"], monto, hoy,
         )
-        
+
         # Crear plazos automáticos
         plazos_default = [
             ("firma", "Firma de contrato", hoy + timedelta(days=8)),
@@ -238,14 +384,14 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ("conformidad", "Conformidad del servicio", hoy + timedelta(days=75)),
             ("pago", "Pago estimado", hoy + timedelta(days=90)),
         ]
-        
+
         for tipo, desc, fecha in plazos_default:
             await conn.execute(
                 "INSERT INTO plazos (contrato_id, tipo, descripcion, fecha_limite) "
                 "VALUES ($1, $2, $3, $4)",
                 contrato_id, tipo, desc, fecha,
             )
-        
+
         # Actualizar propuesta
         await conn.execute(
             "UPDATE propuestas SET estado='adjudicado' WHERE id=$1", prop_id
@@ -253,24 +399,24 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await conn.execute(
             "UPDATE licitaciones SET estado='adjudicado' WHERE id=$1", prop["licitacion_id"]
         )
-    
+
     await update.message.reply_text(
         f"🏆🏆🏆 <b>¡BUENA PRO REGISTRADA!</b> 🏆🏆🏆\n\n"
-        f"📋 {prop['nomenclatura'] or prop['licitacion_id']}\n"
-        f"🏛️ {prop['entidad']}\n"
-        f"📦 {prop['objeto'][:120]}\n"
+        f"📋 {esc(prop['nomenclatura'] or prop['licitacion_id'])}\n"
+        f"🏛️ {esc(prop['entidad'])}\n"
+        f"📦 {esc((prop['objeto'] or '')[:120])}\n"
         f"💰 Monto: {format_monto(monto)}\n\n"
         f"📅 Plazos creados automáticamente.\n"
         f"Usa /plazos para ver el timeline.\n\n"
         f"📧 Enviando notificación por email...",
         parse_mode="HTML",
     )
-    
+
     # Enviar email
     async with connection() as conn:
         contrato = await conn.fetchrow("SELECT * FROM contratos WHERE id=$1", contrato_id)
         lic = await conn.fetchrow("SELECT * FROM licitaciones WHERE id=$1", prop["licitacion_id"])
-    
+
     email_ok = await enviar_email_buena_pro(contrato, lic)
     if email_ok:
         await update.message.reply_text("✅ Email enviado exitosamente.")
@@ -281,16 +427,36 @@ async def cmd_ganar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Resumen de las empresas de quien pregunta.
+
+    Antes contaba la plataforma entera: cualquier usuario veia cuantos
+    contratos y cuanto dinero movian todos los demas clientes juntos.
+    """
+    usuario = await exige_cuenta(update)
+    if not usuario:
+        return
+    uid = usuario["id"]
+    mis_contratos = ("SELECT c.id FROM contratos c JOIN empresas e "
+                     "ON c.empresa_id = e.id WHERE e.usuario_id = $1")
     async with connection() as conn:
-        total_contratos = await conn.fetchval("SELECT COUNT(*) FROM contratos")
-        activos = await conn.fetchval("SELECT COUNT(*) FROM contratos WHERE estado NOT IN ('pagado','cancelado')")
-        total_monto = await conn.fetchval("SELECT COALESCE(SUM(monto_adjudicado),0) FROM contratos") or 0
-        cobrado = await conn.fetchval("SELECT COALESCE(SUM(monto),0) FROM pagos WHERE estado='pagado'") or 0
-        pendiente = await conn.fetchval("SELECT COALESCE(SUM(monto),0) FROM pagos WHERE estado='pendiente'") or 0
+        total_contratos = await conn.fetchval(
+            f"SELECT COUNT(*) FROM ({mis_contratos}) m", uid)
+        activos = await conn.fetchval(
+            "SELECT COUNT(*) FROM contratos c JOIN empresas e ON c.empresa_id = e.id "
+            "WHERE e.usuario_id = $1 AND c.estado NOT IN ('pagado','cancelado')", uid)
+        total_monto = await conn.fetchval(
+            "SELECT COALESCE(SUM(c.monto_adjudicado),0) FROM contratos c "
+            "JOIN empresas e ON c.empresa_id = e.id WHERE e.usuario_id = $1", uid) or 0
+        cobrado = await conn.fetchval(
+            f"SELECT COALESCE(SUM(monto),0) FROM pagos WHERE estado='pagado' "
+            f"AND contrato_id IN ({mis_contratos})", uid) or 0
+        pendiente = await conn.fetchval(
+            f"SELECT COALESCE(SUM(monto),0) FROM pagos WHERE estado='pendiente' "
+            f"AND contrato_id IN ({mis_contratos})", uid) or 0
         prox_plazos = await conn.fetchval(
-            "SELECT COUNT(*) FROM plazos WHERE completado=FALSE AND fecha_limite <= CURRENT_DATE + 7"
-        )
-    
+            f"SELECT COUNT(*) FROM plazos WHERE completado=FALSE "
+            f"AND fecha_limite <= CURRENT_DATE + 7 AND contrato_id IN ({mis_contratos})", uid)
+
     await update.message.reply_text(
         f"📊 <b>RESUMEN GENERAL</b>\n\n"
         f"📋 Contratos totales: {total_contratos}\n"
@@ -305,54 +471,66 @@ async def cmd_resumen(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_entrega(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Registrar entrega: /entrega [contrato_id] [descripcion]"""
-    if len(ctx.args) < 2:
-        await update.message.reply_text("Uso: /entrega [contrato_id] [descripcion]")
+    uso = "Uso: /entrega [contrato_id] [descripcion]"
+    resuelto = await _contrato_desde_args(update, ctx, uso)
+    if not resuelto:
         return
-    contrato_id = int(ctx.args[0])
+    _, contrato_id = resuelto
+    if len(ctx.args) < 2:
+        await update.message.reply_text(uso)
+        return
     descripcion = " ".join(ctx.args[1:])
     path = await generar_informe_entrega(contrato_id, descripcion)
     if path:
-        await update.message.reply_text(f"📦 Entrega registrada.\n📄 Informe: {path}", parse_mode="HTML")
+        await _enviar_documento(update, path, "📦 Entrega registrada.")
     else:
         await update.message.reply_text("❌ Contrato no encontrado")
 
 
 async def cmd_factura(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Generar factura: /factura [contrato_id] [monto] [concepto]"""
-    if len(ctx.args) < 2:
-        await update.message.reply_text("Uso: /factura [contrato_id] [monto] [concepto]")
+    uso = "Uso: /factura [contrato_id] [monto] [concepto]"
+    resuelto = await _contrato_desde_args(update, ctx, uso)
+    if not resuelto:
         return
-    contrato_id = int(ctx.args[0])
-    monto = float(ctx.args[1])
+    _, contrato_id = resuelto
+    monto = _monto(ctx.args[1]) if len(ctx.args) > 1 else None
+    if monto is None:
+        await update.message.reply_text(uso)
+        return
     concepto = " ".join(ctx.args[2:]) if len(ctx.args) > 2 else "Servicio contratado"
     path = await generar_factura(contrato_id, monto, concepto)
     if path:
-        await update.message.reply_text(f"📄 Factura generada: {format_monto(monto)}\n📎 {path}", parse_mode="HTML")
+        await _enviar_documento(update, path, f"📄 Factura generada: {format_monto(monto)}")
     else:
         await update.message.reply_text("❌ Error generando factura")
 
 
 async def cmd_conformidad(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Generar acta de conformidad: /conformidad [contrato_id]"""
-    if not ctx.args:
-        await update.message.reply_text("Uso: /conformidad [contrato_id]")
+    resuelto = await _contrato_desde_args(update, ctx, "Uso: /conformidad [contrato_id]")
+    if not resuelto:
         return
-    contrato_id = int(ctx.args[0])
+    _, contrato_id = resuelto
     obs = " ".join(ctx.args[1:]) if len(ctx.args) > 1 else ""
     path = await generar_acta_conformidad(contrato_id, obs)
     if path:
-        await update.message.reply_text(f"✅ Acta generada: {path}", parse_mode="HTML")
+        await _enviar_documento(update, path, "✅ Acta generada.")
     else:
         await update.message.reply_text("❌ Contrato no encontrado")
 
 
 async def cmd_pago(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Registrar pago: /pago [contrato_id] [monto]"""
-    if len(ctx.args) < 2:
-        await update.message.reply_text("Uso: /pago [contrato_id] [monto]")
+    uso = "Uso: /pago [contrato_id] [monto]"
+    resuelto = await _contrato_desde_args(update, ctx, uso)
+    if not resuelto:
         return
-    contrato_id = int(ctx.args[0])
-    monto = float(ctx.args[1])
+    _, contrato_id = resuelto
+    monto = _monto(ctx.args[1]) if len(ctx.args) > 1 else None
+    if monto is None:
+        await update.message.reply_text(uso)
+        return
     pago_id = await registrar_pago(contrato_id, monto)
     await update.message.reply_text(f"💰 Pago registrado (#{pago_id}): {format_monto(monto)}", parse_mode="HTML")
 
