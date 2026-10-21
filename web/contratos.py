@@ -11,15 +11,16 @@ Igual que en propuestas, la propiedad se deriva por JOIN contra
 empresas.usuario_id: nunca de un id que mande el cliente.
 """
 import logging
-import math
 import os
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from shared import fechas
+from shared.config import a_soles
 from shared.db import connection
 from shared.plazos_pago import (
     dias_de_mora,
@@ -47,13 +48,17 @@ MONTO_MAXIMO = 1_000_000_000
 PLAZO_MAXIMO_DIAS = 3650
 
 
-def _leer_monto(texto: str) -> float | None:
+def _leer_monto(texto: str) -> Decimal | None:
     """El monto del formulario, o None si no es un importe aceptable.
 
     El formulario manda el valor de un <input type=number> ("15000.50"), pero
     se acepta tambien lo que alguien pegue a mano: coma decimal ("1500,50") y
     separadores de miles ("15,000.50", "1.500,50"). Si hay coma y punto, el
     ultimo que aparece es el decimal.
+
+    Devuelve Decimal en centimos: va a columnas NUMERIC (monto_adjudicado,
+    pagos.monto), y un float de por medio redondeaba a su manera. El tope se
+    mira ANTES de redondear: "1000000000.001" no cabe aunque redondeado si.
     """
     limpio = (texto or "").strip().replace(" ", "").replace("'", "")
     if "," in limpio and "." in limpio:
@@ -61,12 +66,12 @@ def _leer_monto(texto: str) -> float | None:
         limpio = limpio.replace(miles, "")
     limpio = limpio.replace(",", ".")
     try:
-        valor = float(limpio)
-    except ValueError:
+        valor = Decimal(limpio)
+    except InvalidOperation:
         return None
-    if not math.isfinite(valor) or valor < 0 or valor > MONTO_MAXIMO:
+    if not valor.is_finite() or valor < 0 or valor > MONTO_MAXIMO:
         return None
-    return round(valor, 2)
+    return a_soles(valor)
 
 
 def _error(destino: str, mensaje: str) -> RedirectResponse:
@@ -407,7 +412,7 @@ async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
 
     try:
         from win_bot.invoice_gen import generar_factura
-        ruta = await generar_factura(contrato_id, float(pago["monto"]),
+        ruta = await generar_factura(contrato_id, pago["monto"],
                                      pago["concepto"] or "Servicio prestado",
                                      pago["numero_factura"])
     except Exception:

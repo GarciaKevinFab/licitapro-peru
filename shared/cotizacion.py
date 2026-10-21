@@ -272,9 +272,10 @@ async def _recalcular(conn, propuesta_id: int, venia_de_items: bool = False) -> 
     `quitar`: al borrar el ultimo item con precio, la propuesta seguia
     ofertando el total viejo, y el validador y el ZIP lo daban por bueno.
 
-    Se pasa el Decimal tal cual: asyncpg lo acepta para la columna REAL
-    (comprobado contra Postgres 17), y el dia que la columna pase a NUMERIC no
-    queda un float de por medio redondeando centimos.
+    Se pasa el Decimal tal cual: la columna es NUMERIC(14,2) desde la
+    migracion 0021, y asi no queda un float de por medio redondeando centimos.
+    Un total que no cabe (precio por cantidad enorme) es un DataError de
+    asyncpg, que `guardar_items` en web/propuestas.py convierte en un aviso.
     """
     filas = await conn.fetch(
         "SELECT cantidad, precio_unitario FROM propuesta_items WHERE propuesta_id=$1",

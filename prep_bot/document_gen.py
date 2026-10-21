@@ -25,7 +25,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 from shared import fechas
-from shared.config import format_fecha, format_monto
+from shared.config import desglose_igv, format_fecha, format_monto
 from shared.db import connection, get_empresa
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
 from shared.incompleto import DocumentoIncompleto
@@ -306,8 +306,13 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
 
 
 async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
-                                       licitacion: dict, precio: float) -> str:
-    """Genera propuesta económica."""
+                                       licitacion: dict, precio) -> str:
+    """Genera propuesta económica.
+
+    `precio` llega como Decimal (precio_ofertado es NUMERIC): el desglose se
+    hace en Decimal y suma el total al centimo. `precio / 1.18` era un
+    TypeError con Decimal, y con float podia descuadrar un centimo.
+    """
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
     legales = datos_legales(empresa, datos)
@@ -341,9 +346,10 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     _set_cell_text(table.rows[0].cells[0], "Concepto", bold=True)
     _set_cell_text(table.rows[0].cells[1], "Monto", bold=True)
     _set_cell_text(table.rows[1].cells[0], "Subtotal sin IGV")
-    _set_cell_text(table.rows[1].cells[1], format_monto(precio / 1.18))
+    subtotal, igv = desglose_igv(precio)
+    _set_cell_text(table.rows[1].cells[1], format_monto(subtotal))
     _set_cell_text(table.rows[2].cells[0], "IGV (18%)")
-    _set_cell_text(table.rows[2].cells[1], format_monto(precio - precio / 1.18))
+    _set_cell_text(table.rows[2].cells[1], format_monto(igv))
     _set_cell_text(table.rows[3].cells[0], "TOTAL", bold=True)
     _set_cell_text(table.rows[3].cells[1], format_monto(precio), bold=True)
 

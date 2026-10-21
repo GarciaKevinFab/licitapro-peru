@@ -1,12 +1,13 @@
 """Configuracion de la cuenta: vinculo de Telegram, credenciales y filtros."""
 import logging
 import os
+from decimal import Decimal
 from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from shared.config import DEPARTAMENTOS
+from shared.config import DEPARTAMENTOS, a_soles
 from shared.db import (
     borrar_credencial,
     borrar_cuenta,
@@ -152,10 +153,17 @@ async def borrar(request: Request, tipo: str = Form("")):
 #   sugiere la regla, deja el endpoint sin leer el formulario.
 async def guardar_filtros(request: Request, regiones: list[str] = Form([]),  # noqa: B008
                           keywords: str = Form(""), keywords_excluir: str = Form(""),
-                          monto_min: float = Form(0), monto_max: float = Form(999999999)):
+                          monto_min: str = Form("0"), monto_max: str = Form("999999999")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
+    minimo = _monto_filtro(monto_min, Decimal(0))
+    maximo = _monto_filtro(monto_max, Decimal(999999999))
+    if minimo is None or maximo is None:
+        return RedirectResponse(
+            "/configuracion?error=" + quote_plus(
+                "El rango de montos tiene que ser de números entre 0 y 999,999,999,999."),
+            status_code=303)
 
     def lista(texto: str) -> list[str]:
         return [t.strip() for t in texto.replace("\n", ",").split(",") if t.strip()]
@@ -177,10 +185,30 @@ async def guardar_filtros(request: Request, regiones: list[str] = Form([]),  # n
         regiones=limpias,
         keywords=lista(keywords),
         keywords_excluir=lista(keywords_excluir),
-        monto_min=monto_min,
-        monto_max=monto_max,
+        monto_min=minimo,
+        monto_max=maximo,
     )
     return RedirectResponse("/configuracion?aviso=Filtros+guardados", status_code=303)
+
+
+# NUMERIC(14,2): lo que no llega a un billon cabe.
+_TOPE_FILTRO = Decimal(10) ** 12
+
+
+def _monto_filtro(texto: str, si_vacio: Decimal) -> Decimal | None:
+    """Un extremo del rango de montos del radar, o None si no vale.
+
+    Llega como texto y no como `float` de FastAPI: monto_min y monto_max son
+    NUMERIC desde la migracion 0021, y un "inf" que el float aceptaba ya no
+    cabe en la columna (un 500 al guardar); "nan" se guardaba y dejaba el
+    filtro sin ninguna licitacion. Vacio es el valor por defecto.
+    """
+    if not (texto or "").strip():
+        return si_vacio
+    valor = a_soles(texto.replace(",", ""))
+    if valor is None or valor < 0 or valor >= _TOPE_FILTRO:
+        return None
+    return valor
 
 
 def _clave_config(config, usuario) -> int:

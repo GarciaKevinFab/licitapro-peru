@@ -4,6 +4,7 @@ import html
 import logging
 import os
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -15,7 +16,7 @@ load_dotenv()
 log = logging.getLogger("win_bot")
 
 from shared import fechas
-from shared.config import format_fecha, format_monto
+from shared.config import a_soles, format_fecha, format_monto
 from shared.db import (
     connection,
     get_contratos_activos,
@@ -175,13 +176,18 @@ def _entero(texto: str) -> int | None:
         return None
 
 
-def _monto(texto: str) -> float | None:
-    try:
-        valor = float(texto)
-    except (TypeError, ValueError):
-        return None
-    # nan e inf pasan float() y no son un monto; negativo o cero tampoco.
-    return valor if valor > 0 and valor != float("inf") else None
+# Lo que cabe en las columnas de dinero, NUMERIC(14,2), con margen.
+_MONTO_MAXIMO = Decimal(10) ** 11
+
+
+def _monto(texto: str) -> Decimal | None:
+    """El monto de un comando, en Decimal: es lo que se guarda en NUMERIC.
+
+    nan e inf no son un monto (`a_soles` da None); negativo o cero tampoco, y
+    uno que no cabe en la columna seria un "numeric field overflow" al guardar.
+    """
+    valor = a_soles(texto)
+    return valor if valor is not None and 0 < valor < _MONTO_MAXIMO else None
 
 
 async def _contrato_desde_args(update: Update, ctx, uso: str):

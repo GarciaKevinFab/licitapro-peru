@@ -1,31 +1,39 @@
 """Pricing — Calcula precio económico competitivo con histórico."""
 import logging
+from decimal import Decimal, InvalidOperation
 
-from shared.config import format_monto, normalizar
+from shared.config import a_soles, format_monto, normalizar
 from shared.db import connection, kb_get
 
 log = logging.getLogger("prep.autofill.pricing")
 
 
 async def calcular_precio_competitivo(propuesta_id: int, empresa_id: int,
-                                       licitacion: dict) -> float | None:
+                                       licitacion: dict) -> Decimal | None:
     """Calcula precio competitivo basado en:
     1. Monto referencial (valor base)
     2. Histórico de precios ganadores
     3. Margen configurado por el usuario
     4. Número estimado de competidores
+
+    Todo en Decimal: el monto referencial llega de una columna NUMERIC y
+    `Decimal * 0.92` es un TypeError. El precio que se guarda es el que se
+    imprime en la propuesta economica; un float de por medio podia moverle un
+    centimo.
     """
-    monto_ref = licitacion.get("monto_referencial") or 0
+    monto_ref = a_soles(licitacion.get("monto_referencial"))
     if not monto_ref:
         return None
 
     # 1. Obtener margen del usuario desde KB
     margen_str = await kb_get(empresa_id, "precios", "margen_minimo")
-    margen = 0.20  # Default 20%
+    margen = Decimal("0.20")  # Default 20%
     if margen_str:
         try:
-            margen = float(margen_str.replace("%", "")) / 100
-        except ValueError:
+            leido = Decimal(margen_str.replace("%", "").strip()) / 100
+            if leido.is_finite():
+                margen = leido
+        except InvalidOperation:
             pass
 
     # 2. Buscar histórico de precios similares
@@ -50,27 +58,27 @@ async def calcular_precio_competitivo(propuesta_id: int, empresa_id: int,
     if tipo in ("SIE",):
         # Subasta inversa: el menor precio gana
         # Ser competitivo pero no perder dinero
-        precio_sugerido = precio_base * (1 - 0.05)  # 5% debajo
+        precio_sugerido = precio_base * Decimal("0.95")  # 5% debajo
         piso = monto_ref * (1 - margen)  # No bajar del margen mínimo
         precio_sugerido = max(precio_sugerido, piso)
     elif tipo in ("AS", "CdP", "CM"):
         # Adjudicación simplificada: precio + calidad
         # Ir un poco debajo del referencial
-        precio_sugerido = monto_ref * 0.92  # ~8% debajo
+        precio_sugerido = monto_ref * Decimal("0.92")  # ~8% debajo
         piso = monto_ref * (1 - margen)
         precio_sugerido = max(precio_sugerido, piso)
     else:
         # LP, CP: precio + calidad ponderados
         # Ir cerca del referencial
-        precio_sugerido = monto_ref * 0.95
+        precio_sugerido = monto_ref * Decimal("0.95")
         piso = monto_ref * (1 - margen)
         precio_sugerido = max(precio_sugerido, piso)
 
     # Nunca superar el monto referencial
     precio_sugerido = min(precio_sugerido, monto_ref)
 
-    # Redondear
-    precio_sugerido = round(precio_sugerido, 2)
+    # Redondear a centimos, como se escribe en la propuesta
+    precio_sugerido = a_soles(precio_sugerido)
 
     # Guardar en propuesta
     async with connection() as conn:
@@ -81,13 +89,13 @@ async def calcular_precio_competitivo(propuesta_id: int, empresa_id: int,
 
     log.info(
         f"Precio propuesta #{propuesta_id}: {format_monto(precio_sugerido)} "
-        f"(ref: {format_monto(monto_ref)}, margen: {margen*100:.0f}%)"
+        f"(ref: {format_monto(monto_ref)}, margen: {margen * 100:.0f}%)"
     )
     return precio_sugerido
 
 
-async def _buscar_historico(licitacion: dict) -> list[float]:
-    """Busca precios históricos de licitaciones similares."""
+async def _buscar_historico(licitacion: dict) -> list[Decimal]:
+    """Busca precios históricos de licitaciones similares (Decimal, de NUMERIC)."""
     async with connection() as conn:
         # Buscar por palabras clave en el objeto
         palabras = [w for w in licitacion.get("objeto", "").split() if len(w) > 5][:5]
@@ -129,10 +137,10 @@ async def _buscar_historico(licitacion: dict) -> list[float]:
             return [r["monto_referencial"] for r in rows if r["monto_referencial"]]
 
 
-def _cuartil(ordenados: list[float], fraccion: float) -> float:
+def _cuartil(ordenados: list[Decimal], fraccion: float) -> Decimal:
     """Valor por debajo del cual queda `fraccion` de la muestra."""
     if not ordenados:
-        return 0.0
+        return Decimal(0)
     i = min(len(ordenados) - 1, int(len(ordenados) * fraccion))
     return ordenados[i]
 
@@ -156,7 +164,7 @@ async def estimar_precio_mercado(licitacion: dict) -> dict:
       Los extremos siguen saliendo por separado, para quien quiera mirarlos
       sabiendo lo que son.
     """
-    monto_ref = licitacion.get("monto_referencial") or 0
+    monto_ref = a_soles(licitacion.get("monto_referencial")) or Decimal(0)
     historico = await _buscar_historico(licitacion)
 
     if not monto_ref and not historico:
@@ -167,19 +175,19 @@ async def estimar_precio_mercado(licitacion: dict) -> dict:
     if len(historico) >= 4:
         precios = sorted(historico)
         return {
-            "precio_bajo": round(_cuartil(precios, 0.25), 2),
-            "precio_mediana": round(_cuartil(precios, 0.50), 2),
-            "precio_alto": round(_cuartil(precios, 0.75), 2),
-            "extremo_min": round(precios[0], 2),
-            "extremo_max": round(precios[-1], 2),
+            "precio_bajo": a_soles(_cuartil(precios, 0.25)),
+            "precio_mediana": a_soles(_cuartil(precios, 0.50)),
+            "precio_alto": a_soles(_cuartil(precios, 0.75)),
+            "extremo_min": a_soles(precios[0]),
+            "extremo_max": a_soles(precios[-1]),
             "muestras": len(precios),
             "monto_referencial": monto_ref,
         }
 
     return {
-        "precio_bajo": round(monto_ref * 0.75, 2),
-        "precio_mediana": round(monto_ref * 0.90, 2),
-        "precio_alto": round(monto_ref, 2),
+        "precio_bajo": a_soles(monto_ref * Decimal("0.75")),
+        "precio_mediana": a_soles(monto_ref * Decimal("0.90")),
+        "precio_alto": monto_ref,
         "extremo_min": None,
         "extremo_max": None,
         "muestras": len(historico),

@@ -1,6 +1,7 @@
 """Payment Tracker — Seguimiento de pagos pendientes y recibidos."""
 import logging
 from datetime import date
+from decimal import Decimal
 
 from shared import fechas
 from shared.config import format_monto
@@ -9,7 +10,7 @@ from shared.db import connection
 log = logging.getLogger("win.payments")
 
 
-async def registrar_factura(contrato_id: int, monto: float, concepto: str,
+async def registrar_factura(contrato_id: int, monto: Decimal, concepto: str,
                              factura_numero: str | None = None,
                              fecha_conformidad: date | None = None,
                              expediente_siaf: str | None = None) -> int:
@@ -112,7 +113,7 @@ async def pagos_vencidos(empresa_id: int | None = None) -> list[dict]:
     return salida
 
 
-async def registrar_pago(contrato_id: int, monto: float, concepto: str | None = None,
+async def registrar_pago(contrato_id: int, monto: Decimal, concepto: str | None = None,
                           pago_id: int | None = None) -> int:
     """Registra un pago recibido."""
     async with connection() as conn:
