@@ -35,6 +35,10 @@ Revision ID: 0005
 Revises: 0004
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 
 revision = '0005'
@@ -48,20 +52,20 @@ def upgrade() -> None:
     # E.164 con prefijo pais: +51987654321. Se normaliza al guardar, no aqui,
     # porque un CHECK en la base rechazaria el formulario con un 500 en vez de
     # explicarle al usuario que le falta el +51.
-    op.add_column('usuarios', sa.Column('whatsapp_numero', sa.Text))
+    idem.add_column('usuarios', sa.Column('whatsapp_numero', sa.Text))
 
     # Ciclo de vida del consentimiento, no del numero:
     #   sin_configurar -> pendiente -> activo -> baja
     # 'pendiente' existe porque tener el numero no autoriza a escribir: hace
     # falta que la persona confirme. Sin ese estado intermedio, guardar el
     # numero y enviar serian la misma accion.
-    op.add_column('usuarios', sa.Column(
+    idem.add_column('usuarios', sa.Column(
         'whatsapp_estado', sa.Text, nullable=False, server_default='sin_configurar'))
-    op.add_column('usuarios', sa.Column('whatsapp_opt_in_en', sa.TIMESTAMP))
-    op.add_column('usuarios', sa.Column('whatsapp_opt_out_en', sa.TIMESTAMP))
+    idem.add_column('usuarios', sa.Column('whatsapp_opt_in_en', sa.TIMESTAMP))
+    idem.add_column('usuarios', sa.Column('whatsapp_opt_out_en', sa.TIMESTAMP))
 
     # ─── Registro de envios ──────────────────────────────
-    op.create_table(
+    idem.create_table(
         'notificaciones_enviadas',
         sa.Column('id', sa.BigInteger, primary_key=True),
         sa.Column('usuario_id', sa.Integer,
@@ -73,11 +77,11 @@ def upgrade() -> None:
     )
     # Esta restriccion ES la idempotencia. Sin ella, un reintento manda el
     # mismo aviso otra vez, y en WhatsApp cada envio se cobra.
-    op.create_unique_constraint(
+    idem.create_unique_constraint(
         'uq_notif_usuario_licitacion_canal',
         'notificaciones_enviadas', ['usuario_id', 'licitacion_id', 'canal'])
     # Consulta caliente: "de estas licitaciones, cuales no le he mandado aun".
-    op.create_index('idx_notif_usuario', 'notificaciones_enviadas',
+    idem.create_index('idx_notif_usuario', 'notificaciones_enviadas',
                     ['usuario_id', 'enviado_en'])
 
 

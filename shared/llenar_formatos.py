@@ -44,7 +44,6 @@ import asyncio
 import functools
 import io
 import logging
-import os
 import re
 from decimal import Decimal
 from itertools import pairwise
@@ -52,6 +51,7 @@ from pathlib import Path
 
 from shared.config import normalizar
 from shared.incompleto import DocumentoIncompleto
+from shared.rutas import directorio
 
 log = logging.getLogger("shared.llenar_formatos")
 
@@ -124,7 +124,7 @@ def _sin_errores_crudos(fn):
 # No van a la base: son PDF de la entidad, se reemplazan enteros y solo los
 # lee el generador de esta misma propuesta.
 
-DIR = Path(os.getenv("FORMATOS_DIR", "data/formatos"))
+DIR = directorio("FORMATOS_DIR", "data/formatos")
 TIPOS = {"sc": "Solicitud de cotización", "dj": "Declaración jurada",
          "eett": "Especificaciones técnicas"}
 

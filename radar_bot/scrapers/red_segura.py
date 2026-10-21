@@ -27,10 +27,15 @@ LO QUE HACE `bajar`
   4. Lee en streaming y corta en cuanto pasa del tope: un "PDF" de 2 GB no
      llega a la memoria.
 
-  Queda una ventana entre la resolucion de 2 y la conexion (DNS rebinding).
-  Cerrarla exige fijar la IP en la conexion, que rompe el SNI de TLS; con el
-  filtro de dominio delante, para colarse hay que controlar el DNS del propio
-  portal del Estado. Se acepta.
+  5. Se conecta a la IP YA VALIDADA, no al nombre. Antes httpx volvia a
+     resolver el host al conectar, y entre las dos resoluciones habia una
+     ventana (DNS rebinding): un DNS con TTL 0 contestaba una IP publica a la
+     comprobacion y 169.254.169.254 a la conexion. Ahora la URL que se pide
+     lleva la IP, la cabecera Host lleva el nombre (lo que ve el servidor
+     virtual) y la extension `sni_hostname` de httpcore lleva el nombre al
+     TLS: el SNI y la verificacion del certificado siguen siendo contra el
+     host del portal, no contra la IP. Las cookies del cliente para ese host
+     se copian a mano, porque el tarro las busca por el host de la URL.
 
 TLS: `cliente`
 
@@ -125,7 +130,8 @@ async def _resolver(host: str, puerto: int) -> list[str]:
     return [info[4][0] for info in infos]
 
 
-async def exigir_ip_publica(u: httpx.URL) -> None:
+async def exigir_ip_publica(u: httpx.URL) -> list[str]:
+    """Las IP del host si TODAS son publicas; si no, DescargaRechazada."""
     host = _host(u)
     puerto = u.port or (443 if u.scheme == "https" else 80)
     try:
@@ -139,6 +145,45 @@ async def exigir_ip_publica(u: httpx.URL) -> None:
         # TODAS tienen que ser publicas: con una privada entre varias, la
         # conexion puede caer justo en esa.
         raise DescargaRechazada(f"{host} resuelve a una IP no publica ({malas[0]})")
+    return ips
+
+
+def fijar_ip(client: httpx.AsyncClient, u: httpx.URL, ip: str) -> httpx.Request:
+    """La peticion GET de `u` dirigida a `ip`, con el nombre en Host y en el SNI.
+
+    La conexion va a la IP que ya se valido y no se vuelve a resolver el
+    nombre: asi se cierra la ventana de DNS rebinding. El servidor sigue
+    viendo el nombre (Host) y el certificado se verifica contra el nombre
+    (sni_hostname), igual que si se hubiera pedido por nombre.
+    """
+    host = _host(u)
+    ip = ip.split("%", 1)[0]
+    destino = u.copy_with(host=ip)
+    # Host con el puerto solo si no es el de su esquema (aqui solo 80/443).
+    cabecera_host = host if u.port is None else f"{host}:{u.port}"
+    # Las cookies del cliente se guardan por dominio: pidiendo a la IP no
+    # saldria ninguna. Se calculan contra la URL con nombre.
+    con_nombre = httpx.Request("GET", u)
+    client.cookies.set_cookie_header(con_nombre)
+    cabeceras = {"Host": cabecera_host}
+    if "cookie" in con_nombre.headers:
+        cabeceras["Cookie"] = con_nombre.headers["cookie"]
+    return client.build_request("GET", destino, headers=cabeceras,
+                                extensions={"sni_hostname": host})
+
+
+def _transporte_autofirmado(client: httpx.AsyncClient, u: httpx.URL):
+    """Un cliente sin verificar TLS si `u` es https a un host autofirmado.
+
+    El montaje por host de `cliente` ya no sirve aqui: la URL que se pide
+    lleva la IP, y un montaje "https://<host>" no la reconoce. Para esos hosts
+    (y solo esos, medidos y anotados) se usa un cliente propio que copia las
+    cabeceras y el timeout del que llama. None para cualquier otro caso.
+    """
+    if u.scheme != "https" or _host(u) not in HOSTS_TLS_AUTOFIRMADO:
+        return None
+    return httpx.AsyncClient(verify=False, headers=client.headers,
+                             timeout=client.timeout)
 
 
 async def bajar(client: httpx.AsyncClient, url: str, dominios, maximo: int) -> bytes:
@@ -149,27 +194,47 @@ async def bajar(client: httpx.AsyncClient, url: str, dominios, maximo: int) -> b
     """
     actual = validar_url(url, dominios)
     for _ in range(MAX_REDIRECCIONES + 1):
-        await exigir_ip_publica(actual)
-        async with client.stream("GET", actual, follow_redirects=False) as resp:
-            if resp.status_code in _REDIRECCIONES:
-                destino = resp.headers.get("location")
-                if not destino:
-                    raise DescargaRechazada(f"HTTP {resp.status_code} sin Location")
-                actual = validar_url(actual.join(destino), dominios)
-                continue
-            if resp.status_code != 200:
-                raise DescargaRechazada(f"HTTP {resp.status_code}")
-            declarado = resp.headers.get("content-length")
-            if declarado and declarado.isdigit() and int(declarado) > maximo:
-                raise DescargaRechazada(f"{declarado} bytes, tope {maximo}")
-            partes, total = [], 0
-            async for trozo in resp.aiter_bytes():
-                total += len(trozo)
-                if total > maximo:
-                    raise DescargaRechazada(f"mas de {maximo} bytes")
-                partes.append(trozo)
-            return b"".join(partes)
+        ips = await exigir_ip_publica(actual)
+        propio = _transporte_autofirmado(client, actual)
+        quien = propio or client
+        try:
+            # `actual` sigue con el nombre: los Location relativos se resuelven
+            # contra el, y la IP solo vive en la peticion de este salto.
+            peticion = fijar_ip(quien, actual, ips[0])
+            resp = await quien.send(peticion, stream=True, follow_redirects=False)
+            try:
+                cuerpo = await _leer(resp, maximo)
+            finally:
+                await resp.aclose()
+        finally:
+            if propio is not None:
+                await propio.aclose()
+        if cuerpo is None:
+            destino = resp.headers.get("location")
+            if not destino:
+                raise DescargaRechazada(f"HTTP {resp.status_code} sin Location")
+            actual = validar_url(actual.join(destino), dominios)
+            continue
+        return cuerpo
     raise DescargaRechazada(f"mas de {MAX_REDIRECCIONES} redirecciones")
+
+
+async def _leer(resp: httpx.Response, maximo: int) -> bytes | None:
+    """El cuerpo con su tope, o None si es una redireccion (sin leerla)."""
+    if resp.status_code in _REDIRECCIONES:
+        return None
+    if resp.status_code != 200:
+        raise DescargaRechazada(f"HTTP {resp.status_code}")
+    declarado = resp.headers.get("content-length")
+    if declarado and declarado.isdigit() and int(declarado) > maximo:
+        raise DescargaRechazada(f"{declarado} bytes, tope {maximo}")
+    partes, total = [], 0
+    async for trozo in resp.aiter_bytes():
+        total += len(trozo)
+        if total > maximo:
+            raise DescargaRechazada(f"mas de {maximo} bytes")
+        partes.append(trozo)
+    return b"".join(partes)
 
 
 def cliente(**kwargs) -> httpx.AsyncClient:

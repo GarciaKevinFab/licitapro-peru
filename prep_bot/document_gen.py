@@ -30,10 +30,11 @@ from shared.db import connection, get_empresa
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
 from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.docgen")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 # POR QUE UNA TABLA Y NO strftime('%B'): '%B' depende del locale del proceso.
 # En el contenedor no hay locale es_PE y la carta salia fechada "20 de October
@@ -104,6 +105,16 @@ async def _guardar(doc, nombre: str) -> str:
     return path
 
 
+async def _documento(empresa_id: int):
+    """El Word nuevo (sobre la hoja membretada si la hay), en un hilo.
+
+    POR QUE: abrir el .docx membretado con python-docx y, si falta el .json de
+    medidas, medir la hoja con pdfium es trabajo sincrono de disco y CPU; en
+    el bucle de eventos congelaba la web entera mientras se generaba.
+    """
+    return await asyncio.to_thread(documento_word, empresa_id)
+
+
 def _set_cell_text(cell, text, bold=False, size=10):
     cell.text = ""
     run = cell.paragraphs[0].add_run(str(text))
@@ -119,7 +130,7 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     legales = datos_legales(empresa, datos)
     exigir("la carta de presentación", legales, "representante", "dni", "domicilio")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -199,7 +210,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     legales = datos_legales(empresa, datos)
     exigir("la declaración jurada", legales, "representante", "domicilio")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -263,7 +274,7 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
             empresa_id,
         )
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(10)
@@ -302,7 +313,7 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     legales = datos_legales(empresa, datos)
     exigir("la propuesta económica", legales, "representante")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)

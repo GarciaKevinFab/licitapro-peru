@@ -415,21 +415,38 @@ async def update_config(user_id: int, **kwargs):
 
 
 # ─── Contratos ───────────────────────────────────────────
-async def get_contratos_activos(empresa_id: int | None = None):
+async def get_contratos_activos(empresa_id: int | None = None, *,
+                                usuario_id: int | None = None):
+    """Contratos sin pagar ni cancelar de UNA empresa o de UNA cuenta.
+
+    POR QUE EXIGE FILTRO: sin `empresa_id` devolvia los contratos de TODAS las
+    empresas de la plataforma. Bastaba un llamador que olvidara el argumento
+    (o le pasara 0 / None de una sesion vacia) para ensenarle a un cliente los
+    contratos de los demas. Ahora sin filtro es un error de programacion, no
+    una fuga.
+    """
+    if empresa_id is None and usuario_id is None:
+        raise ValueError("get_contratos_activos exige empresa_id o usuario_id")
     async with connection() as conn:
-        if empresa_id:
+        if empresa_id is not None:
             return await conn.fetch(
                 """SELECT c.*, l.objeto, l.entidad FROM contratos c
                 JOIN licitaciones l ON c.licitacion_id = l.id
                 WHERE c.empresa_id=$1 AND c.estado NOT IN ('pagado','cancelado')
+                  AND ($2::int IS NULL OR EXISTS (
+                        SELECT 1 FROM empresas e
+                         WHERE e.id = c.empresa_id AND e.usuario_id = $2))
                 ORDER BY c.fecha_entrega_final""",
-                empresa_id,
+                empresa_id, usuario_id,
             )
         return await conn.fetch(
             """SELECT c.*, l.objeto, l.entidad FROM contratos c
             JOIN licitaciones l ON c.licitacion_id = l.id
-            WHERE c.estado NOT IN ('pagado','cancelado')
-            ORDER BY c.fecha_entrega_final"""
+            JOIN empresas e ON c.empresa_id = e.id
+            WHERE e.usuario_id = $1
+              AND c.estado NOT IN ('pagado','cancelado')
+            ORDER BY c.fecha_entrega_final""",
+            usuario_id,
         )
 
 

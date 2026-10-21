@@ -24,7 +24,6 @@ NADA DE AQUI COMPRUEBA QUIEN LLAMA
 """
 import asyncio
 import logging
-import os
 import re
 import secrets
 import shutil
@@ -395,11 +394,12 @@ def _directorios_de_propuestas() -> dict[str, Path]:
     """
     from shared.llenar_formatos import DIR as FORMATOS
     from shared.pdf_firmable import SALIDA as EXPEDIENTES
+    from shared.rutas import directorio
     try:
         from web.propuestas import PAQUETES
     except ImportError:  # un bot sin las dependencias de la web
-        PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
-    plantillas = Path(os.getenv("TEMPLATES_DIR", "templates")) / "output"
+        PAQUETES = directorio("PAQUETES_DIR", "data/paquetes")
+    plantillas = directorio("TEMPLATES_DIR", "templates") / "output"
     return {"formatos": FORMATOS, "expedientes": EXPEDIENTES,
             "paquetes": PAQUETES, "plantillas": plantillas}
 
@@ -436,6 +436,7 @@ async def borrar_archivos_de_cuenta(usuario_id: int) -> int:
     from shared import membrete as hoja_membretada
     from shared.archivos import TIPOS as TIPOS_IMAGEN
     from shared.archivos import borrar_imagen, rutas_de
+    from shared.rutas import en_raiz
 
     async with connection() as conn:
         empresas = [r["id"] for r in await conn.fetch(
@@ -501,7 +502,9 @@ async def borrar_archivos_de_cuenta(usuario_id: int) -> int:
         for ruta in rutas:
             if ruta in ajenas:
                 continue
-            p = Path(ruta)
+            # Contra la raiz del proyecto, no el cwd: las filas viejas guardan
+            # "data/expedientes/..." relativo.
+            p = en_raiz(ruta)
             raiz = next((d for d in dirs.values() if d.resolve() in p.resolve().parents), None)
             if raiz is not None:
                 n += _borrar_dentro(p, raiz)

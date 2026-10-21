@@ -22,6 +22,10 @@ Revision ID: 0004
 Revises: 0003
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 
 revision = '0004'
@@ -31,7 +35,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    idem.create_table(
         'tokens_recuperacion',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('usuario_id', sa.Integer,
@@ -44,9 +48,9 @@ def upgrade() -> None:
         sa.Column('created_at', sa.TIMESTAMP, server_default=sa.func.now()),
     )
     # Buscar por hash es la operacion caliente: pasa en cada apertura del enlace.
-    op.create_index('idx_tokrec_hash', 'tokens_recuperacion', ['token_hash'])
+    idem.create_index('idx_tokrec_hash', 'tokens_recuperacion', ['token_hash'])
     # Para el limite de peticiones por usuario y para la limpieza de vencidos.
-    op.create_index('idx_tokrec_usuario', 'tokens_recuperacion',
+    idem.create_index('idx_tokrec_usuario', 'tokens_recuperacion',
                     ['usuario_id', 'created_at'])
 
 

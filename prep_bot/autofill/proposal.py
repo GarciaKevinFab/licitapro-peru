@@ -31,10 +31,11 @@ from shared import ia
 from shared.config import ANTHROPIC_KEY, format_monto
 from shared.db import get_empresa
 from shared.membrete import documento_word
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.autofill.proposal")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 # Estable entre llamadas, asi que es lo que se cachea. Lo que cambia -- la
 # licitacion y la empresa -- viaja en el mensaje.
@@ -107,7 +108,8 @@ async def generar_propuesta_tecnica(propuesta_id: int, empresa_id: int,
         contenido = _generar_plantilla(licitacion, empresa, datos)
 
     # Crear documento DOCX
-    doc = documento_word(empresa_id)
+    # En un hilo: python-docx sobre el Word membretado bloquea el bucle.
+    doc = await asyncio.to_thread(documento_word, empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)

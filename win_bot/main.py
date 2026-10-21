@@ -18,6 +18,7 @@ from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import (
     connection,
+    get_contratos_activos,
     get_plazos_proximos,
     get_pool,
     get_usuario_por_telegram,
@@ -233,16 +234,7 @@ async def cmd_contratos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     usuario = await exige_cuenta(update)
     if not usuario:
         return
-    async with connection() as conn:
-        contratos = await conn.fetch(
-            """SELECT c.*, l.objeto, l.entidad FROM contratos c
-               JOIN licitaciones l ON c.licitacion_id = l.id
-               JOIN empresas e ON c.empresa_id = e.id
-              WHERE e.usuario_id = $1
-                AND c.estado NOT IN ('pagado','cancelado')
-              ORDER BY c.fecha_entrega_final""",
-            usuario["id"],
-        )
+    contratos = await get_contratos_activos(usuario_id=usuario["id"])
     if not contratos:
         await update.message.reply_text("📭 No hay contratos activos.")
         return
