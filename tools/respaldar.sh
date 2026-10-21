@@ -39,7 +39,15 @@
 #
 # COMO SE RESTAURA (probarlo ANTES de necesitarlo)
 #
+#   Desde la copia local (en claro, en el VPS):
 #   gunzip -c licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL_SESION"
+#
+#   Desde R2 (cifrada con age; la clave PRIVADA no esta en el VPS, ver
+#   DESPLIEGUE.md "Respaldos cifrados"):
+#   age -d -i respaldo.key licitapro-AAAAMMDD-HHMMSS.sql.gz.age | gunzip | psql ...
+#
+#   Despues de restaurar, volver a correr tools/crear_rol_app.sql: el volcado
+#   va con --no-privileges y la app (licitapro_app) no veria las tablas.
 #
 #   docker run --rm -v licitapro-peru_datos_expedientes:/destino \
 #       -v "$PWD":/origen alpine \
@@ -77,7 +85,7 @@ cd "$(dirname "$0")/.."
 #   Y hay algo peor que el fallo: ejecutar el archivo de configuracion
 #   significa que cualquier cosa escrita ahi corre como root cada madrugada.
 #
-#   Se extraen solo las cinco variables que hacen falta, literales.
+#   Se extraen solo las variables que hacen falta, literales.
 leer_env() {
   local v
   [[ -f .env ]] || return 0
@@ -93,6 +101,8 @@ leer_env() {
 : "${TELEGRAM_ADMIN_ID:=$(leer_env TELEGRAM_ADMIN_ID)}"
 : "${RESPALDO_REMOTO:=$(leer_env RESPALDO_REMOTO)}"
 : "${IMAGEN_PG:=$(leer_env IMAGEN_PG)}"
+: "${RESPALDO_CLAVE_PUBLICA:=$(leer_env RESPALDO_CLAVE_PUBLICA)}"
+RESPALDO_CLAVE_PUBLICA="${RESPALDO_CLAVE_PUBLICA:-/root/.config/licitapro/respaldo.pub}"
 
 # ─── Aviso de fallo ──────────────────────────────────────────────────────────
 # Un respaldo que falla en silencio es peor que no tener respaldo: da por
@@ -211,13 +221,73 @@ comprobar_subida() {
   echo "  verificado en el destino: $nombre ($bytes_local bytes)"
 }
 
-if [[ -n "${RESPALDO_REMOTO:-}" ]] && command -v rclone >/dev/null 2>&1; then
-  echo "[$(date '+%F %T')] Subiendo a $RESPALDO_REMOTO..."
-  rclone copy "$DUMP" "$RESPALDO_REMOTO" --no-traverse
-  comprobar_subida "$DUMP"
+# ─── Lo que sale del servidor sale CIFRADO ──────────────────────────────────
+#
+#   Antes se subia el volcado tal cual: cuentas, empresas, CCI, contratos. Quien
+#   consiga las llaves de R2 (estan en /root/.config/rclone/rclone.conf, en el
+#   mismo VPS) o un error de permisos del bucket se lleva la base entera.
+#
+#   Se cifra con `age` y una clave PUBLICA. La privada no esta en el servidor:
+#   la guarda el dueno fuera (gestor de contrasenas y una copia en papel o en
+#   un USB). Asi, si comprometen el VPS, el atacante puede leer la base viva --
+#   eso ya lo tiene --, pero no los meses de respaldos que hay en R2, y no
+#   puede descifrarlos ni con todo lo que hay en el disco.
+#
+#   POR QUE age Y NO EL `crypt` DE rclone: crypt usa una contrasena simetrica
+#   que tiene que estar en rclone.conf, o sea en el mismo VPS. Cifrar con algo
+#   que el atacante tiene al lado del cifrado no protege del caso que importa.
+#
+#   SIN CLAVE PUBLICA NO SE SUBE NADA, Y FALLA. Subir en claro "mientras tanto"
+#   es justo el descuido que esto quiere cerrar, y un respaldo que deja de
+#   subir sin avisar es peor: por eso sale con error y llega el aviso a
+#   Telegram. La copia LOCAL se hace igual (ya esta en disco a estas alturas):
+#   esa no sale del servidor y se queda en claro, como antes, para poder
+#   restaurar rapido sin la clave privada.
+#
+#   Generar el par, restaurar y rotar: DESPLIEGUE.md, "Respaldos cifrados".
+cifrar_para_subir() {
+  local archivo="$1" salida="$1.age" cabecera
+  age -R "$RESPALDO_CLAVE_PUBLICA" -o "$salida" "$archivo"
+  # age escribe siempre esta cabecera; si no esta, lo que hay no es un
+  # archivo cifrado y no se sube.
+  cabecera="$(head -c 21 "$salida" 2>/dev/null || true)"
+  if [[ "$cabecera" != "age-encryption.org/v1" ]]; then
+    echo "ERROR: $salida no parece un archivo de age. No se sube." >&2
+    rm -f "$salida"
+    return 1
+  fi
+  printf '%s' "$salida"
+}
+
+subir_cifrado() {
+  local archivo="$1" cifrado
+  cifrado="$(cifrar_para_subir "$archivo")"
+  rclone copy "$cifrado" "$RESPALDO_REMOTO" --no-traverse
+  comprobar_subida "$cifrado"
+  # El .age solo existe para subirlo. En disco ya esta el original.
+  rm -f "$cifrado"
+}
+
+if [[ -n "${RESPALDO_REMOTO:-}" ]]; then
+  if ! command -v rclone >/dev/null 2>&1; then
+    echo "ERROR: RESPALDO_REMOTO=$RESPALDO_REMOTO pero rclone no esta instalado." >&2
+    exit 1
+  fi
+  if ! command -v age >/dev/null 2>&1; then
+    echo "ERROR: falta \`age\` para cifrar antes de subir (apt install age)." >&2
+    echo "       No se sube nada en claro. La copia local SI se hizo: $DUMP" >&2
+    exit 1
+  fi
+  if [[ ! -s "$RESPALDO_CLAVE_PUBLICA" ]] || ! grep -q '^age1' "$RESPALDO_CLAVE_PUBLICA"; then
+    echo "ERROR: no hay clave publica de age en $RESPALDO_CLAVE_PUBLICA" >&2
+    echo "       (un archivo con una linea age1...). No se sube nada en claro." >&2
+    echo "       La copia local SI se hizo: $DUMP" >&2
+    exit 1
+  fi
+  echo "[$(date '+%F %T')] Cifrando y subiendo a $RESPALDO_REMOTO..."
+  subir_cifrado "$DUMP"
   if [[ -f "$FIRMAS" ]]; then
-    rclone copy "$FIRMAS" "$RESPALDO_REMOTO" --no-traverse
-    comprobar_subida "$FIRMAS"
+    subir_cifrado "$FIRMAS"
   fi
 else
   echo "AVISO: RESPALDO_REMOTO sin configurar. La copia se queda en este mismo" >&2
@@ -227,6 +297,8 @@ fi
 echo "[$(date '+%F %T')] Retirando copias de mas de $DIAS_CONSERVAR dias..."
 find "$DESTINO" -name 'licitapro-*.sql.gz' -mtime "+$DIAS_CONSERVAR" -delete
 find "$DESTINO" -name 'firmas-*.tar.gz'    -mtime "+$DIAS_CONSERVAR" -delete
+# Un .age que se quedo a medias (fallo la subida): solo existia para subirlo.
+find "$DESTINO" -name '*.age' -mmin +60 -delete
 
 echo "[$(date '+%F %T')] Listo:"
 # Sin el `|| true`, un `ls` sobre un firmas-*.tar.gz que no se genero devuelve

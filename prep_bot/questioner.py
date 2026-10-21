@@ -16,7 +16,14 @@ import logging
 
 from prep_bot.autofill.validator import NO_EXIGIDOS_EN_MENORES
 from shared.cotizacion import es_cotizacion_menor
-from shared.db import connection, get_empresa, kb_get, kb_set, kb_todos
+from shared.db import (
+    connection,
+    get_empresa,
+    kb_get,
+    kb_para_registro,
+    kb_set,
+    kb_todos,
+)
 
 log = logging.getLogger("prep.questioner")
 
@@ -82,7 +89,8 @@ async def cerrar_las_ya_resueltas(propuesta_id: int) -> int:
         async with connection() as conn:
             await conn.execute(
                 """UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW(),
-                          guardada_en_kb=TRUE WHERE id=$1""", preg["id"], valor)
+                          guardada_en_kb=TRUE WHERE id=$1""", preg["id"],
+                kb_para_registro(preg["kb_categoria"], preg["kb_clave"], valor))
         cerradas += 1
     if cerradas or retiradas:
         async with connection() as conn:
@@ -255,7 +263,8 @@ async def procesar_respuesta(pregunta_id: int, respuesta: str) -> dict:
         # Marcar respondida
         await conn.execute(
             "UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW() WHERE id=$1",
-            pregunta_id, respuesta,
+            # Del CCI o el DNI solo los ultimos digitos: el dato va cifrado a la KB.
+            pregunta_id, kb_para_registro(preg["kb_categoria"], preg["kb_clave"], respuesta),
         )
 
     # Guardar en KB
