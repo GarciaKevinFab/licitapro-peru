@@ -24,8 +24,6 @@ Por eso estos documentos salen en PDF y no en DOCX: ReFirma firma PDF.
 """
 import asyncio
 import logging
-import os
-from pathlib import Path
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -46,10 +44,11 @@ from reportlab.platypus import (
 
 from shared import fechas
 from shared.archivos import rutas_de
+from shared.rutas import directorio
 
 log = logging.getLogger("shared.pdf_firmable")
 
-SALIDA = Path(os.getenv("EXPEDIENTES_DIR", "data/expedientes"))
+SALIDA = directorio("EXPEDIENTES_DIR", "data/expedientes")
 
 # Alto reservado al bloque de firma. ReFirma coloca ahi su representacion
 # visual; si no queda sitio, la encaja donde puede y el documento queda feo.
@@ -211,7 +210,9 @@ async def generar_pdf(nombre_archivo: str, titulo: str, subtitulo: str,
     # que dibujamos nosotros (logo + razon social + RUC) sobra: la hoja de la
     # empresa ya lo dice, y repetirlo debajo se ve como un papel con dos
     # membretes.
-    membrete = hoja.de(empresa["id"])
+    # En un hilo: `de` lee el disco y, si falta el .json de medidas, mide la
+    # hoja con pdfium; en el bucle de eventos congelaba la web.
+    membrete = await asyncio.to_thread(hoja.de, empresa["id"])
     arriba, abajo = hoja.margenes_pt(membrete, 2 * cm, 2 * cm)
 
     doc = SimpleDocTemplate(

@@ -24,6 +24,10 @@ Revision ID: 0003
 Revises: 0002
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -34,7 +38,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    idem.create_table(
         'planes',
         sa.Column('codigo', sa.Text, primary_key=True),
         sa.Column('nombre', sa.Text, nullable=False),
@@ -47,7 +51,7 @@ def upgrade() -> None:
         sa.Column('activo', sa.Boolean, server_default=sa.true()),
     )
 
-    op.create_table(
+    idem.create_table(
         'suscripciones',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('usuario_id', sa.Integer,
@@ -67,9 +71,9 @@ def upgrade() -> None:
         sa.Column('ultimo_intento', sa.TIMESTAMP),
         sa.Column('created_at', sa.TIMESTAMP, server_default=sa.func.now()),
     )
-    op.create_index('idx_susc_estado', 'suscripciones', ['estado', 'vence'])
+    idem.create_index('idx_susc_estado', 'suscripciones', ['estado', 'vence'])
 
-    op.create_table(
+    idem.create_table(
         'pagos_suscripcion',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('suscripcion_id', sa.Integer,
@@ -85,7 +89,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.TIMESTAMP, server_default=sa.func.now()),
         sa.Column('confirmado_en', sa.TIMESTAMP),
     )
-    op.create_index('idx_pagosusc_susc', 'pagos_suscripcion', ['suscripcion_id'])
+    idem.create_index('idx_pagosusc_susc', 'pagos_suscripcion', ['suscripcion_id'])
 
     # Planes iniciales. Los precios son los del informe; el margen ya considera
     # que Izipay se lleva 4.06% + S/0.81 por cobro.

@@ -1,4 +1,5 @@
 """Conformity Generator — Genera actas de conformidad del servicio."""
+import asyncio
 import logging
 import os
 
@@ -9,10 +10,11 @@ from docx.shared import Pt
 from shared import fechas
 from shared.config import format_fecha, format_monto
 from shared.db import connection
+from shared.rutas import directorio
 
 log = logging.getLogger("win.conformity")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 
 async def generar_acta_conformidad(contrato_id: int, observaciones: str = "") -> str:
@@ -115,7 +117,8 @@ async def generar_acta_conformidad(contrato_id: int, observaciones: str = "") ->
     output_dir = os.path.join(TEMPLATES_DIR, "output", "conformidades")
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, f"acta_conformidad_{contrato_id}.docx")
-    doc.save(path)
+    # python-docx escribe a disco de forma sincrona: fuera del bucle.
+    await asyncio.to_thread(doc.save, path)
 
     # Actualizar estado del contrato
     async with connection() as conn:
@@ -173,7 +176,8 @@ async def generar_informe_entrega(contrato_id: int, descripcion_entrega: str) ->
     output_dir = os.path.join(TEMPLATES_DIR, "output", "entregas")
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, f"informe_entrega_{contrato_id}_{fechas.hoy().isoformat()}.docx")
-    doc.save(path)
+    # python-docx escribe a disco de forma sincrona: fuera del bucle.
+    await asyncio.to_thread(doc.save, path)
 
     # Actualizar estado
     async with connection() as conn:

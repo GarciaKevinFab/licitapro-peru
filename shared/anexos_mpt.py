@@ -66,13 +66,14 @@ from pathlib import Path
 from shared.config import normalizar
 from shared.incompleto import DocumentoIncompleto
 from shared.llenar_formatos import FormatoNoReconocido
+from shared.rutas import directorio
 
 log = logging.getLogger("shared.anexos_mpt")
 
 URL_FORMATOS = ("https://portal.munitambopata.gob.pe/storage/2025/abastecimiento/"
                 "formatos-zip.zip")
 REPO = Path(__file__).parent / "plantillas" / "mpt_tambopata"
-CACHE = Path(os.getenv("PLANTILLAS_MPT_DIR", "data/plantillas_mpt"))
+CACHE = directorio("PLANTILLAS_MPT_DIR", "data/plantillas_mpt")
 UN_DIA = 24 * 3600
 
 ANEXOS = {

@@ -25,13 +25,13 @@ producto, asi que aqui las reglas son estrictas y explicitas:
 import asyncio
 import io
 import logging
-import os
 import secrets
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
 from shared.db import connection
+from shared.rutas import directorio, en_raiz
 
 log = logging.getLogger("shared.archivos")
 
@@ -39,8 +39,7 @@ log = logging.getLogger("shared.archivos")
 # POR QUE: "data/firmas" relativo dependia del cwd; un comando lanzado desde
 # otra carpeta guardaba las firmas donde la web no las busca, y el PDF salia
 # sin firma. FIRMAS_DIR sigue mandando si esta puesta.
-RAIZ = Path(__file__).resolve().parents[1]
-DIRECTORIO = Path(os.getenv("FIRMAS_DIR") or RAIZ / "data" / "firmas")
+DIRECTORIO = directorio("FIRMAS_DIR", "data/firmas")
 
 # 5 MB. Un logo o una firma escaneada no pesan ni de lejos eso; el margen es
 # para quien fotografia su firma con el movil.
@@ -158,8 +157,7 @@ def _en_disco(ruta: str) -> Path:
     (/app, que es la raiz). Resolverlo contra la raiz las hace validas aunque
     el proceso se lance desde otra carpeta.
     """
-    p = Path(ruta)
-    return p if p.is_absolute() else RAIZ / p
+    return en_raiz(ruta)
 
 
 def _borrar_del_disco(ruta: str) -> None:

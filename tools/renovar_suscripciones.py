@@ -9,10 +9,12 @@ Cortar al primer rechazo pierde clientes que si querian pagar.
 """
 import asyncio
 import logging
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.getcwd())
+# La raiz del proyecto desde __file__ y no el cwd: el cron hace `cd /ruta`, y
+# si alguien lo lanza desde otra carpeta el import de shared fallaba.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from shared import izipay
 from shared.seguridad import descifrar
@@ -45,7 +47,10 @@ async def main() -> int:
         # queda rastro y el webhook puede casarlo despues.
         await registrar_intento(s["usuario_id"], s["monto"], orden)
 
-        r = await izipay.cobrar_con_token(token, orden, float(s["monto"]))
+        # El monto tal cual sale de la base (NUMERIC -> Decimal). Con float()
+        # se perdia la exactitud que `izipay.importe` cuida: lo cobrado podia
+        # quedar un centimo por debajo de lo registrado en registrar_intento.
+        r = await izipay.cobrar_con_token(token, orden, s["monto"])
         if r["ok"]:
             await confirmar_pago(orden, r.get("transaction_id"), r.get("detalle"))
             cobradas += 1

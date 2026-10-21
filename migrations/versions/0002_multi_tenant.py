@@ -20,6 +20,10 @@ Revision ID: 0002
 Revises: 0001
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 
 revision = '0002'
@@ -29,7 +33,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    idem.create_table(
         'usuarios',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('email', sa.Text, nullable=False, unique=True),
@@ -42,9 +46,9 @@ def upgrade() -> None:
         sa.Column('activo', sa.Boolean, server_default=sa.true()),
         sa.Column('created_at', sa.TIMESTAMP, server_default=sa.func.now()),
     )
-    op.create_index('idx_usuarios_tg', 'usuarios', ['telegram_chat_id'])
+    idem.create_index('idx_usuarios_tg', 'usuarios', ['telegram_chat_id'])
 
-    op.create_table(
+    idem.create_table(
         'credenciales',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('usuario_id', sa.Integer,
@@ -55,15 +59,15 @@ def upgrade() -> None:
         sa.UniqueConstraint('usuario_id', 'tipo', name='uq_credencial_por_tipo'),
     )
 
-    op.add_column('empresas', sa.Column('usuario_id', sa.Integer))
-    op.create_foreign_key('fk_empresas_usuario', 'empresas', 'usuarios',
+    idem.add_column('empresas', sa.Column('usuario_id', sa.Integer))
+    idem.create_foreign_key('fk_empresas_usuario', 'empresas', 'usuarios',
                           ['usuario_id'], ['id'], ondelete='CASCADE')
-    op.create_index('idx_empresas_usuario', 'empresas', ['usuario_id'])
+    idem.create_index('idx_empresas_usuario', 'empresas', ['usuario_id'])
 
-    op.add_column('user_config', sa.Column('usuario_id', sa.Integer))
-    op.create_foreign_key('fk_user_config_usuario', 'user_config', 'usuarios',
+    idem.add_column('user_config', sa.Column('usuario_id', sa.Integer))
+    idem.create_foreign_key('fk_user_config_usuario', 'user_config', 'usuarios',
                           ['usuario_id'], ['id'], ondelete='CASCADE')
-    op.create_unique_constraint('uq_user_config_usuario', 'user_config', ['usuario_id'])
+    idem.create_unique_constraint('uq_user_config_usuario', 'user_config', ['usuario_id'])
 
     # Backfill. En el diseno viejo la configuracion real vivia en la fila
     # user_id=0 (la semilla) y la fila del Telegram real quedaba vacia, porque

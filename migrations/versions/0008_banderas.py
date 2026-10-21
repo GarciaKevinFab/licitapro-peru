@@ -50,6 +50,10 @@ Revision ID: 0008
 Revises: 0007
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -61,28 +65,28 @@ depends_on = None
 
 def upgrade() -> None:
     # ─── Datos de la adjudicacion ────────────────────────
-    op.add_column('licitaciones', sa.Column('numero_postores', sa.Integer))
-    op.add_column('licitaciones', sa.Column('proveedor_ganador', sa.Text))
-    op.add_column('licitaciones', sa.Column('proveedor_ruc', sa.Text))
-    op.add_column('licitaciones', sa.Column('monto_adjudicado', sa.Numeric(14, 2)))
+    idem.add_column('licitaciones', sa.Column('numero_postores', sa.Integer))
+    idem.add_column('licitaciones', sa.Column('proveedor_ganador', sa.Text))
+    idem.add_column('licitaciones', sa.Column('proveedor_ruc', sa.Text))
+    idem.add_column('licitaciones', sa.Column('monto_adjudicado', sa.Numeric(14, 2)))
     # Dias que dio la entidad para consultas y observaciones. Se guarda tal cual
     # lo publica la API en vez de recalcularlo entre fechas: la propia fuente ya
     # lo cuenta segun su norma, y rehacer esa cuenta a mano introduciria un
     # error nuestro donde no hay ninguno.
-    op.add_column('licitaciones', sa.Column('plazo_consultas_dias', sa.Integer))
+    idem.add_column('licitaciones', sa.Column('plazo_consultas_dias', sa.Integer))
 
     # ─── Banderas calculadas ─────────────────────────────
     # Se guardan calculadas y no se computan al leer: el panel las filtra y
     # ordena, y recalcularlas en cada consulta obligaria a traer los datos de
     # todos los procesos para decidir cuales mostrar.
-    op.add_column('licitaciones', sa.Column(
+    idem.add_column('licitaciones', sa.Column(
         'banderas', postgresql.JSONB, server_default=sa.text("'[]'::jsonb")))
-    op.add_column('licitaciones', sa.Column(
+    idem.add_column('licitaciones', sa.Column(
         'banderas_nivel', sa.Integer, nullable=False, server_default='0'))
 
     # Filtrar "muestrame solo lo que tiene indicios" es la consulta que hace
     # util la funcion; sin indice recorreria la tabla entera cada vez.
-    op.create_index('idx_lic_banderas_nivel', 'licitaciones', ['banderas_nivel'])
+    idem.create_index('idx_lic_banderas_nivel', 'licitaciones', ['banderas_nivel'])
 
 
 def downgrade() -> None:

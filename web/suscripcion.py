@@ -1,6 +1,7 @@
 """Suscripcion: elegir plan, pagar con Izipay y recibir la confirmacion."""
 import logging
 import os
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
@@ -420,6 +421,51 @@ async def comprobacion_webhook():
     return JSONResponse({"ok": True, "servicio": "webhook izipay"})
 
 
+_CENTIMO = Decimal("0.01")
+
+
+def _soles(valor) -> Decimal | None:
+    """`valor` como Decimal a dos decimales, o None si no es un importe."""
+    try:
+        d = Decimal(str(valor).strip())
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not d.is_finite():
+        return None
+    return d.quantize(_CENTIMO, rounding=ROUND_HALF_UP)
+
+
+def importe_pagado(datos: dict) -> tuple[Decimal | None, str | None]:
+    """(importe en soles, moneda) que dice el aviso de Izipay; None si no viene.
+
+    POR_CONFIRMAR: el cuerpo exacto del IPN. Se aceptan las formas
+    documentadas: `amount` en soles ("99.00") arriba, en `response` o en
+    `response.order[0]`; u `orderDetails.orderTotalAmount` en CENTIMOS (9900),
+    que es como lo manda el formulario incrustado.
+    """
+    respuesta = datos.get("response") if isinstance(datos.get("response"), dict) else {}
+    ordenes = respuesta.get("order")
+    orden = ordenes[0] if isinstance(ordenes, list) and ordenes and isinstance(
+        ordenes[0], dict) else {}
+    for fuente in (datos, respuesta, orden):
+        if fuente.get("amount") not in (None, ""):
+            return _soles(fuente["amount"]), (fuente.get("currency") or None)
+    detalle = datos.get("orderDetails") if isinstance(datos.get("orderDetails"), dict) else {}
+    if detalle.get("orderTotalAmount") not in (None, ""):
+        centimos = _soles(detalle["orderTotalAmount"])
+        return ((centimos / 100).quantize(_CENTIMO) if centimos is not None else None,
+                detalle.get("orderCurrency") or None)
+    return None, None
+
+
+async def _importe_de_la_orden(numero_orden: str):
+    """(monto, moneda) registrados al crear la orden, o None si no existe."""
+    async with connection() as conn:
+        return await conn.fetchrow(
+            "SELECT monto, moneda FROM pagos_suscripcion WHERE izipay_order_number=$1",
+            numero_orden)
+
+
 @router.post("/webhooks/izipay")
 async def webhook(request: Request):
     """Confirmacion servidor-a-servidor de Izipay.
@@ -454,6 +500,27 @@ async def webhook(request: Request):
         log.info("Webhook de %s indica pago no aprobado: %s", numero_orden,
                  datos.get("message"))
         return JSONResponse({"ok": True, "aplicado": False})
+
+    # EL IMPORTE TIENE QUE SER EL DE LA ORDEN
+    #
+    #   La firma prueba que el aviso lo manda Izipay, no que se pago lo que
+    #   pedimos. Una orden de S/ 99 pagada con S/ 1 (un formulario manipulado
+    #   en el navegador, un error de la pasarela) extendia la suscripcion igual.
+    #   Si no coincide, o el aviso no dice cuanto se pago, no se aplica y queda
+    #   en el log para conciliarlo a mano. Se responde 200: reintentar el mismo
+    #   aviso no lo va a arreglar.
+    orden = await _importe_de_la_orden(numero_orden)
+    if orden is not None:
+        pagado, moneda = importe_pagado(datos)
+        esperado = _soles(orden["monto"])
+        moneda_orden = (orden["moneda"] or "PEN").upper()
+        if (pagado is None or pagado != esperado
+                or (moneda and str(moneda).upper() != moneda_orden)):
+            log.error("Webhook de Izipay: la orden %s es de %s %s y el aviso dice %s %s. "
+                      "No se aplica; conciliar a mano.", numero_orden, moneda_orden,
+                      esperado, moneda or "?", pagado if pagado is not None else "sin importe")
+            return JSONResponse({"ok": False, "aplicado": False,
+                                 "motivo": "importe no coincide con la orden"})
 
     transaction_id = (datos.get("transactionId")
                       or (datos.get("response") or {}).get("transactionId"))

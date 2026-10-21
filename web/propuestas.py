@@ -28,7 +28,6 @@ LAS DESCARGAS SE SIRVEN DESDE MEMORIA
 import asyncio
 import json
 import logging
-import os
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
@@ -51,6 +50,7 @@ from shared.db import (
 )
 from shared.documentos_menores import formato_dj, generar_cotizacion, generar_dj
 from shared.incompleto import DocumentoIncompleto
+from shared.rutas import directorio, en_raiz
 from web.auth import usuario_actual
 
 log = logging.getLogger("web.propuestas")
@@ -681,8 +681,10 @@ async def descargar(request: Request, propuesta_id: int):
         return RedirectResponse(f"/propuestas/{propuesta_id}?error=Todavia+no+hay+expediente",
                                 status_code=303)
 
-    ruta = prop["expediente_zip_path"]
-    if not os.path.isfile(ruta):
+    # Contra la raiz del proyecto: las filas viejas guardan la ruta relativa
+    # ("data/expedientes/...") y el cwd no tiene por que ser /app.
+    ruta = en_raiz(prop["expediente_zip_path"])
+    if not ruta.is_file():
         return RedirectResponse(
             f"/propuestas/{propuesta_id}?error=El+archivo+ya+no+esta+en+el+servidor",
             status_code=303)
@@ -1242,7 +1244,7 @@ async def descargar_anexo(request: Request, propuesta_id: int, tipo: str):
 # Cuando el usuario firma a mano la cotizacion y los anexos, el envio se arma
 # con sus escaneos y no con lo que genera el sistema: ese ZIP se deja aqui y
 # la descarga lo sirve tal cual.
-PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
+PAQUETES = directorio("PAQUETES_DIR", "data/paquetes")
 
 
 def paquete_armado(propuesta_id: int) -> Path | None:

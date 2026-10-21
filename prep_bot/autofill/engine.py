@@ -8,13 +8,13 @@ prep_bot/document_gen.py; las de aqui se quitaron para que nadie las use por
 error.
 """
 import logging
-import os
 
 from shared.db import connection, get_empresa, kb_get, kb_set
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.autofill")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "/app/templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 
 # Campos requeridos por tipo de anexo
