@@ -117,6 +117,22 @@ async def _principal() -> int:
     nuevas = await scrape_ocds_oece(max_paginas=40, dias_atras=7)
     log.info("OECE: guardadas %d licitaciones nuevas.", len(nuevas))
 
+    # CONTRATOS MENORES (<= 8 UIT) DEL BUSCADOR DEL OECE, TAMBIEN DESDE AQUI.
+    #
+    #   Corrian en el radar del VPS cada hora. El 20/10/2026 a las 09:55 el
+    #   SEACE empezo a devolver 403 a la IP del VPS en TODAS las consultas
+    #   (desde una linea peruana la misma consulta da 200), y el radar paso el
+    #   dia anotando "CAIDA" sin traer nada. Es el mismo bloqueo por origen que
+    #   obligo a montar este puente para OCDS. Mismo trato que GORE: si falla,
+    #   la tarea no se pone en rojo (el fallo queda en scraping_log con su
+    #   motivo), porque OCDS es lo que no puede faltar.
+    try:
+        from radar_bot.scrapers.oece_menores import scrape_oece_menores
+        menores = await scrape_oece_menores(0)
+        log.info("OECE menores: guardadas %d nuevas.", len(menores))
+    except Exception as exc:  # noqa: BLE001
+        log.error("OECE menores fallo (OCDS si entro): %s", exc)
+
     # SI GORE FALLA, LA TAREA NO SE PONE EN ROJO. A PROPOSITO.
     #
     #   OECE es el producto: si no entra, el panel de todos los clientes se
