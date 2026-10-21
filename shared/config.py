@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import unicodedata
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -191,7 +192,53 @@ def parse_monto(texto, minimo: float = 100.0, maximo: float = 1e10) -> float | N
     return None
 
 
-def format_monto(monto: float, moneda: str = "PEN") -> str:
+CENTIMO = Decimal("0.01")
+IGV = Decimal("0.18")
+
+
+def a_soles(valor) -> Decimal | None:
+    """Un monto como Decimal en centimos, venga de donde venga. None si no es uno.
+
+    POR QUE
+
+      Las columnas de dinero son NUMERIC desde la migracion 0021 y asyncpg las
+      devuelve como Decimal. `Decimal * 0.95` es un TypeError, asi que todo
+      calculo con un monto leido de la base tiene que hacerse en Decimal. Esta
+      funcion es la puerta: acepta el Decimal de la base, el float de un JSON
+      o de un scraper, un int o un texto ya limpio.
+
+      El float pasa por `str()` y no directo a Decimal: Decimal(300000.1) es
+      300000.09999999997671693563461303710937500, y str(300000.1) es lo que
+      se quiso escribir.
+
+      NaN, infinito y lo que no se puede redondear dan None, no una excepcion:
+      quien llama ya trata None como "sin monto".
+    """
+    if valor is None or isinstance(valor, bool):
+        return None
+    try:
+        d = valor if isinstance(valor, Decimal) else Decimal(str(valor).strip())
+        if not d.is_finite():
+            return None
+        return d.quantize(CENTIMO, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def desglose_igv(total) -> tuple[Decimal, Decimal]:
+    """(subtotal sin IGV, IGV) de un total que ya lo incluye.
+
+    El IGV sale por diferencia y no multiplicando: asi subtotal + IGV es el
+    total al centimo, que es lo primero que mira quien revisa una factura o
+    una propuesta economica. Con floats (`precio / 1.18`) podian no cuadrar.
+    """
+    t = a_soles(total) or Decimal(0)
+    subtotal = (t / (1 + IGV)).quantize(CENTIMO, rounding=ROUND_HALF_UP)
+    return subtotal, t - subtotal
+
+
+def format_monto(monto, moneda: str = "PEN") -> str:
+    """S/ 1,234.50. Acepta Decimal (lo que da la base), float o int."""
     if moneda == "PEN":
         return f"S/ {monto:,.2f}"
     return f"US$ {monto:,.2f}"

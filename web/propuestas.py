@@ -736,7 +736,7 @@ async def postular_con_otra_empresa(request: Request, propuesta_id: int,
                     """INSERT INTO propuestas (licitacion_id, empresa_id, estado,
                                                cotizacion_condiciones, precio_ofertado)
                        VALUES ($1, $2, 'listo', $3::jsonb, $4) RETURNING id""",
-                    prop["licitacion_id"], empresa_id, json.dumps(condiciones), float(suma))
+                    prop["licitacion_id"], empresa_id, json.dumps(condiciones), suma)
                 for it in items:
                     await conn.execute(
                         """INSERT INTO propuesta_items (propuesta_id, orden, descripcion,
@@ -794,7 +794,8 @@ async def fijar_precio(request: Request, propuesta_id: int, precio: str = Form(.
 
     Llega como texto y no como `float`: FastAPI aceptaba "nan", "inf" y
     negativos como floats validos, y un precio NaN se guardaba y salia en la
-    propuesta economica.
+    propuesta economica. Se guarda el Decimal tal cual (columna NUMERIC):
+    `float()` no aportaba nada y podia mover un centimo.
     """
     usuario = await usuario_actual(request)
     if not usuario:
@@ -811,7 +812,7 @@ async def fijar_precio(request: Request, propuesta_id: int, precio: str = Form(.
     async with connection() as conn:
         await conn.execute(
             "UPDATE propuestas SET precio_ofertado=$2, updated_at=NOW() WHERE id=$1",
-            propuesta_id, float(valor))
+            propuesta_id, valor)
     return RedirectResponse(f"/propuestas/{propuesta_id}?aviso=Precio+guardado",
                             status_code=303)
 

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from decimal import Decimal
 
 import asyncpg
 from dotenv import load_dotenv
@@ -66,6 +67,13 @@ async def _sin_reinicio(conn) -> None:
     """Ver `opciones["reset"]` en get_pool."""
 
 
+def _json_extra(valor):
+    """`default` de json.dumps para lo que asyncpg devuelve y JSON no conoce."""
+    if isinstance(valor, Decimal):
+        return float(valor)
+    raise TypeError(f"Object of type {type(valor).__name__} is not JSON serializable")
+
+
 async def _preparar_conexion(conn) -> None:
     """Hace que JSONB llegue a Python como dict o lista, no como texto.
 
@@ -77,9 +85,14 @@ async def _preparar_conexion(conn) -> None:
     El encoder deja pasar lo que ya viene serializado: hay INSERT que mandan el
     JSON hecho cadena con un ::jsonb explicito, y volver a serializarlo lo
     guardaria como un texto entrecomillado dentro del JSON.
+
+    Un Decimal (los montos son NUMERIC desde 0021) sale como numero JSON: un
+    dict armado con una fila de la base no puede tumbar el INSERT con "Object
+    of type Decimal is not JSON serializable". En un JSONB el monto es para
+    leerlo, no para cuadrar caja: el valor exacto vive en su columna.
     """
     def codificar(valor):
-        return valor if isinstance(valor, str) else json.dumps(valor)
+        return valor if isinstance(valor, str) else json.dumps(valor, default=_json_extra)
 
     for tipo in ("jsonb", "json"):
         await conn.set_type_codec(
@@ -246,7 +259,8 @@ async def upsert_licitacion(data: dict) -> bool:
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"],
             data.get("entidad_tipo"), data["objeto"],
-            data.get("monto_referencial"), data.get("moneda", "PEN"),
+            monto_para_columna(data.get("monto_referencial"), f"{data['id']} referencial"),
+            data.get("moneda", "PEN"),
             data.get("fecha_publicacion"), data.get("fecha_cierre"),
             data.get("estado", "convocado"), data.get("departamento"),
             data.get("provincia"), data.get("url"),
@@ -570,6 +584,35 @@ async def purgar_documentos_viejos(dias: int = 30, dias_pesados: int = 3) -> int
     return int(r.split()[-1]) if r else 0
 
 
+# Lo que cabe en NUMERIC(14,2), el tipo de las columnas de dinero (0021).
+_TOPE_MONTO = 10 ** 12
+
+
+def monto_para_columna(valor, que: str = "monto"):
+    """El monto listo para una columna NUMERIC(14,2), o None si no es guardable.
+
+    POR QUE
+
+      Con REAL cualquier cifra entraba, aunque fuera basura de un scraper. Con
+      NUMERIC(14,2) una de un billon o mas es un "numeric field overflow" y el
+      INSERT entero falla: una sola celda mal leida tiraba la licitacion
+      completa, con su objeto, su entidad y su cierre, que si estaban bien.
+      Se guarda la licitacion sin ese monto, que es lo que el resto del
+      codigo ya entiende como "no publicado", y queda en el log.
+
+      NaN e infinito (un float de un JSON raro) tambien van a None.
+    """
+    from shared.config import a_soles
+
+    if valor is None:
+        return None
+    d = a_soles(valor)
+    if d is None or abs(d) >= _TOPE_MONTO:
+        log.warning("%s no guardable en NUMERIC(14,2): %r -> NULL", que, valor)
+        return None
+    return d
+
+
 async def refrescar_licitacion(data: dict) -> bool:
     """Inserta la licitacion o refresca la existente. True si es nueva.
 
@@ -627,12 +670,14 @@ async def refrescar_licitacion(data: dict) -> bool:
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"], data.get("entidad_tipo"),
             data.get("entidad_ruc"), data["objeto"],
-            data.get("monto_referencial"), data.get("moneda", "PEN"),
+            monto_para_columna(data.get("monto_referencial"), f"{data['id']} referencial"),
+            data.get("moneda", "PEN"),
             data.get("fecha_publicacion"), data.get("fecha_cierre"),
             data.get("estado", "convocado"), data.get("departamento"),
             data.get("url"), data.get("bases_urls", []),
             data.get("numero_postores"), data.get("proveedor_ganador"),
-            data.get("proveedor_ruc"), data.get("monto_adjudicado"),
+            data.get("proveedor_ruc"),
+            monto_para_columna(data.get("monto_adjudicado"), f"{data['id']} adjudicado"),
             data.get("plazo_consultas_dias"),
             json.dumps(data.get("banderas") or []), data.get("banderas_nivel", 0),
             data.get("categoria"), data.get("descripcion"),
@@ -752,12 +797,14 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
     if config["regiones"]:
         params.append(list(config["regiones"]))
         condiciones.append(f"(departamento IS NULL OR departamento = ANY(${len(params)}))")
+    # Decimal tal cual (NUMERIC desde 0021): comparar contra un float
+    # convertido podia dejar fuera la licitacion de exactamente el minimo.
     if config["monto_min"] is not None:
-        params.append(float(config["monto_min"]))
+        params.append(config["monto_min"])
         condiciones.append(
             f"(monto_referencial IS NULL OR monto_referencial >= ${len(params)})")
     if config["monto_max"] is not None:
-        params.append(float(config["monto_max"]))
+        params.append(config["monto_max"])
         condiciones.append(
             f"(monto_referencial IS NULL OR monto_referencial <= ${len(params)})")
     condiciones.append("descartado = FALSE")

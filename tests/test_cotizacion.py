@@ -236,7 +236,7 @@ async def test_la_sc_5884_de_postular_a_expediente(cliente, usuario, empresa, ma
         assert "aviso=" in r.headers["location"] and "12%2C115.20" in r.headers["location"]
         async with connection() as c:
             total = await c.fetchval("SELECT precio_ofertado FROM propuestas WHERE id=$1", pid)
-        assert round(total, 2) == 12115.20
+        assert total == Decimal("12115.20")  # NUMERIC(14,2), exacto
 
         pdf = await cliente.get(f"/propuestas/{pid}/cotizacion?modo=dnie")
         assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"

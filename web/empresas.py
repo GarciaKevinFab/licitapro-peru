@@ -12,6 +12,7 @@ import asyncio
 import logging
 import re
 from datetime import date
+from decimal import Decimal
 from urllib.parse import quote_plus
 
 import asyncpg
@@ -37,7 +38,7 @@ from shared.archivos import (
     guardar_imagen,
     rutas_de,
 )
-from shared.config import DEPARTAMENTOS, normalizar, parse_monto
+from shared.config import DEPARTAMENTOS, a_soles, normalizar, parse_monto
 from shared.db import connection, empresa_es_de, empresas_de
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
@@ -353,13 +354,17 @@ def _fecha_estricta(texto: str, nombre: str):
         raise DatoInvalido(f"La {nombre} no es una fecha válida.") from None
 
 
-def _monto_formulario(texto: str) -> float | None:
+def _monto_formulario(texto: str) -> Decimal | None:
     """Monto escrito por el usuario: None si viene vacio, DatoInvalido si no vale.
 
     Se marca como soles antes de pasarlo a `parse_monto`: sin moneda esa
     funcion descarta los enteros sueltos ("15000") por si son un ano o un
     correlativo, y aqui el campo ES un monto. Los espacios entre grupos de
     miles ("120 000") se juntan para no leer solo "120".
+
+    Sale en Decimal porque va a experiencia.monto, NUMERIC desde 0021.
+    `parse_monto` da un float con a lo sumo dos decimales, que `a_soles`
+    devuelve exacto a lo que se escribio.
     """
     texto = (texto or "").strip()
     if not texto:
@@ -371,7 +376,7 @@ def _monto_formulario(texto: str) -> float | None:
     if valor is None:
         raise DatoInvalido(
             "El monto no es válido. Escríbelo en soles, por ejemplo 15000 o 15,000.50.")
-    return valor
+    return a_soles(valor)
 
 
 def _claves(objeto: str) -> list[str]:

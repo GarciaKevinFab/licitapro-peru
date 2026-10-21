@@ -52,6 +52,7 @@ from shared.admin_cuentas import (
     poner_activo,
     resumir_cuentas,
 )
+from shared.config import a_soles
 from shared.db import get_usuario
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import DIAS_PRUEBA, activar_manual
@@ -148,8 +149,12 @@ async def poner_plan(request: Request, usuario_id: int, plan: str = Form(...),
     usuario = await _exige_dueno(request)
     try:
         vence_dt = datetime.fromisoformat(vence) if vence.strip() else None
-        monto_num = float(monto.replace(",", ".")) if monto.strip() else None
     except ValueError:
+        return _volver(usuario_id, volver, error="Fecha o monto no válidos")
+    # Decimal y con tope: pagos_suscripcion.monto es NUMERIC(12,2), y un "inf"
+    # que float() aceptaba era un "numeric field overflow" (un 500) al guardar.
+    monto_num = a_soles(monto.replace(",", ".")) if monto.strip() else None
+    if monto.strip() and (monto_num is None or not 0 <= monto_num < 10 ** 10):
         return _volver(usuario_id, volver, error="Fecha o monto no válidos")
     ok = await activar_manual(usuario_id, plan, estado, periodo, vence_dt,
                               nota.strip() or None, monto_num, por=usuario["email"])

@@ -439,7 +439,7 @@ async def avisar_cobros_vencidos() -> dict:
         lineas = []
         for p in pagos[:MAX_EN_RESUMEN]:
             lineas.append(
-                f"• {p.get('concepto') or 'Cobro'} — S/ {float(p['monto'] or 0):,.2f}\n"
+                f"• {p.get('concepto') or 'Cobro'} — S/ {(p['monto'] or 0):,.2f}\n"
                 f"  {p.get('entidad') or ''} · venció el "
                 f"{p['fecha_limite_pago'].strftime('%d/%m/%Y')} "
                 f"({p['dias_mora']} días hábiles)")
@@ -608,7 +608,7 @@ async def detectar_adjudicaciones() -> dict:
 
         lineas = []
         for g in ganadas[:MAX_EN_RESUMEN]:
-            monto = (f"S/ {float(g['monto_adjudicado']):,.2f}"
+            monto = (f"S/ {g['monto_adjudicado']:,.2f}"
                      if g.get("monto_adjudicado") else "monto no publicado")
             lineas.append(f"• {_titulo(g)}")
             lineas.append(f"  {g.get('entidad') or ''} · {monto}")

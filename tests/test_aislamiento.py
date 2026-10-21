@@ -610,7 +610,7 @@ async def test_las_claves_de_busqueda_salen_normalizadas(usuario, empresa, clien
     # Sin tildes ni mayusculas en ninguna.
     assert all(k == k.lower() and k.isalnum() for k in fila["keywords"])
     # Y el monto con separadores y simbolo de moneda se guardo como numero.
-    assert fila["monto"] == pytest.approx(1240500.0)
+    assert fila["monto"] == 1240500  # NUMERIC: exacto, sin approx
 
 
 # ─── Vista de administracion ─────────────────────────────

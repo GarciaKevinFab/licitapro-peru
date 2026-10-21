@@ -634,7 +634,7 @@ async def test_experiencia_con_datos_que_no_se_entienden_no_se_guarda(usuario, e
     assert "error=" not in r.headers["location"]
     async with connection() as c:
         assert await c.fetchval(
-            "SELECT monto FROM experiencia WHERE empresa_id=$1", empresa) == pytest.approx(15000)
+            "SELECT monto FROM experiencia WHERE empresa_id=$1", empresa) == 15000  # NUMERIC: exacto
 
 
 @sin_base
