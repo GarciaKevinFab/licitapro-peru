@@ -318,6 +318,14 @@ def test_las_operaciones_idempotentes_se_pueden_repetir():
     motor = sa.create_engine(_url_sync())
     try:
         with motor.connect() as conn:
+            # Esto es trabajo de migracion: crea tablas. El rol de la app
+            # (licitapro_app, tools/crear_rol_app.sql) no puede, a proposito;
+            # las migraciones corren con el dueno.
+            puede_crear = conn.execute(sa.text(
+                "SELECT has_schema_privilege(current_user, 'public', 'CREATE')")).scalar()
+            conn.rollback()  # la consulta abrio una transaccion: se cierra antes del begin()
+            if not puede_crear:
+                pytest.skip("el rol de pruebas no puede crear tablas (rol de la app)")
             trans = conn.begin()
             try:
                 with Operations.context(MigrationContext.configure(conn)):
