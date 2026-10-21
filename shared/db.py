@@ -329,40 +329,129 @@ async def marcar_notificada(lid: str):
 
 
 # ─── Knowledge Base ──────────────────────────────────────
+#
+# LOS DATOS BANCARIOS Y EL DNI VAN CIFRADOS EN `valor`
+#
+#   El CCI, la cuenta corriente y el DNI del representante estaban en claro.
+#   Un volcado de la base (un respaldo, una copia para depurar, un acceso
+#   indebido) se llevaba con ellos lo justo para suplantar a la empresa ante
+#   una entidad o desviar el pago de un contrato. Se cifran con la misma clave
+#   Fernet que las credenciales (shared/seguridad.py, LICITAPRO_SECRET_KEY),
+#   que vive FUERA de la base.
+#
+#   Se cifra al escribir y se descifra al leer, aqui y solo aqui: el resto del
+#   codigo pide y recibe el valor en claro igual que antes. Por eso nadie fuera
+#   de este bloque debe leer `knowledge_base.valor` con SQL propio; quien
+#   necesite todo, que use `kb_todos`.
+#
+#   POR QUE ESOS TRES Y NO TODA LA CATEGORIA `financiero`
+#
+#     - `entidad_bancaria` queda en claro: el nombre del banco no sirve para
+#       nada sin la cuenta, y cifrarlo solo complica mirarlo en la base.
+#     - `margen_defecto` (precios) tampoco es un dato personal.
+#     Ninguna consulta filtra ni ordena por el valor de estos tres campos
+#     (revisado: prep_bot, web, shared, win_bot); si alguna lo hiciera, con el
+#     valor cifrado dejaria de encontrar nada sin dar error.
+#
+#   LOS VALORES VIEJOS EN CLARO SE SIGUEN LEYENDO
+#
+#     Lo cifrado lleva el prefijo `PREFIJO_CIFRADO`; lo que no lo lleva se
+#     devuelve tal cual. Asi el cambio se despliega sin parar nada, y
+#     tools/cifrar_knowledge_base.py cifra lo que ya habia cuando convenga.
+CAMPOS_KB_CIFRADOS = frozenset({
+    ("financiero", "cci"),
+    ("financiero", "cuenta_corriente"),
+    ("legal", "dni_representante"),
+})
+PREFIJO_CIFRADO = "fernet:"
+
+
+def kb_es_cifrado(categoria: str, clave: str) -> bool:
+    return (categoria, clave) in CAMPOS_KB_CIFRADOS
+
+
+def kb_cifrar_valor(categoria: str, clave: str, valor: str | None) -> str | None:
+    """El texto que se guarda en `valor`: cifrado si el campo es sensible.
+
+    Idempotente: un valor que ya viene cifrado no se vuelve a cifrar (lo
+    necesita el script de migracion, que puede pasar dos veces)."""
+    if valor is None or not kb_es_cifrado(categoria, clave):
+        return valor
+    if valor.startswith(PREFIJO_CIFRADO):
+        return valor
+    from shared.seguridad import cifrar
+    return PREFIJO_CIFRADO + cifrar(valor).decode("ascii")
+
+
+def kb_descifrar_valor(valor: str | None) -> str | None:
+    """El valor en claro. Lo que no lleva el prefijo se devuelve tal cual.
+
+    Si la clave actual no lo abre (LICITAPRO_SECRET_KEY rotada sin re-cifrar)
+    devuelve None: el dato cuenta como desconocido y el bot lo vuelve a
+    preguntar. Nunca devuelve el texto cifrado, que acabaria impreso en un
+    anexo como si fuera el CCI."""
+    if not valor or not valor.startswith(PREFIJO_CIFRADO):
+        return valor
+    from shared.seguridad import descifrar
+    return descifrar(valor[len(PREFIJO_CIFRADO):].encode("ascii"))
+
+
+def kb_para_registro(categoria: str, clave: str, valor: str | None) -> str | None:
+    """Lo que se apunta en `preguntas.respuesta` cuando el dato acaba en la KB.
+
+    Esa columna es solo un registro de que se respondio (nadie la vuelve a
+    leer para rellenar documentos: el dato bueno esta en la KB). Guardar ahi el
+    CCI en claro deshacia el cifrado de arriba, asi que de los campos sensibles
+    se apuntan solo los ultimos cuatro caracteres."""
+    if valor is None or not kb_es_cifrado(categoria, clave):
+        return valor
+    return "****" + valor[-4:] if len(valor) > 4 else "****"
+
+
 async def kb_get(empresa_id: int, categoria: str, clave: str,
                  conn=None) -> str | None:
     # Leer y contar el uso en un solo viaje: eran dos consultas por dato, y la
     # ficha de una propuesta pide una docena de datos. `conn` reutiliza la de
     # quien llama (ver `_conexion_o_nueva`).
     async with _conexion_o_nueva(conn) as c:
-        return await c.fetchval(
+        valor = await c.fetchval(
             """UPDATE knowledge_base SET usado_count = usado_count + 1
                 WHERE empresa_id=$1 AND categoria=$2 AND clave=$3
             RETURNING valor""",
             empresa_id, categoria, clave,
         )
+    return kb_descifrar_valor(valor)
 
 
 async def kb_todos(empresa_id: int, conn=None) -> dict[tuple[str, str], str]:
     """Todo lo que se sabe de la empresa, {(categoria, clave): valor}, en un
     solo viaje. Para quien revisa muchos datos a la vez (el validador pedia
-    uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar."""
+    uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar.
+
+    Un valor cifrado que la clave actual no abre se omite: cuenta como no
+    sabido, igual que en `kb_get`."""
     async with _conexion_o_nueva(conn) as c:
         filas = await c.fetch(
             "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
             empresa_id)
-    return {(f["categoria"], f["clave"]): f["valor"] for f in filas}
+    todos = {}
+    for f in filas:
+        valor = kb_descifrar_valor(f["valor"])
+        if valor is not None:
+            todos[(f["categoria"], f["clave"])] = valor
+    return todos
 
 
 async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str,
                  fuente="usuario_respuesta", conn=None):
+    guardado = kb_cifrar_valor(categoria, clave, valor)
     async with _conexion_o_nueva(conn) as c:
         await c.execute(
             """INSERT INTO knowledge_base (empresa_id, categoria, clave, valor, fuente)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (empresa_id, categoria, clave) 
+            ON CONFLICT (empresa_id, categoria, clave)
             DO UPDATE SET valor=$4, updated_at=NOW()""",
-            empresa_id, categoria, clave, valor, fuente,
+            empresa_id, categoria, clave, guardado, fuente,
         )
 
 
@@ -415,10 +504,12 @@ async def responder_pregunta(pregunta_id: int, respuesta: str):
         row = await conn.fetchrow("SELECT * FROM preguntas WHERE id=$1", pregunta_id)
         if not row:
             return
+        # Del CCI o el DNI se apuntan solo los ultimos digitos: el dato entero
+        # va cifrado a la KB (ver `kb_para_registro`).
         await conn.execute(
             """UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW()
             WHERE id=$1""",
-            pregunta_id, respuesta,
+            pregunta_id, kb_para_registro(row["kb_categoria"], row["kb_clave"], respuesta),
         )
         # Guardar en KB si tiene categoría definida
         if row["kb_categoria"] and row["kb_clave"]:

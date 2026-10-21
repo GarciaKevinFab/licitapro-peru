@@ -26,7 +26,7 @@ from docx.shared import Pt
 
 from shared import fechas
 from shared.config import desglose_igv, format_fecha, format_monto
-from shared.db import connection, get_empresa
+from shared.db import connection, get_empresa, kb_todos
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
 from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
@@ -375,10 +375,9 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
 
 
 async def _recopilar_datos(empresa_id: int) -> dict:
-    """Recopila todos los datos de KB para una empresa."""
-    async with connection() as conn:
-        rows = await conn.fetch(
-            "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
-            empresa_id,
-        )
-    return {f"{r['categoria']}.{r['clave']}": r["valor"] for r in rows}
+    """Recopila todos los datos de KB para una empresa.
+
+    Por `kb_todos` y no con SQL propio: el CCI y el DNI van cifrados en la
+    base, y solo shared/db.py sabe abrirlos."""
+    sabido = await kb_todos(empresa_id)
+    return {f"{cat}.{clave}": valor for (cat, clave), valor in sabido.items()}
