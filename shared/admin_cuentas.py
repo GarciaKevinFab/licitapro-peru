@@ -241,10 +241,16 @@ async def editar_cuenta(usuario_id: int, nombre: str | None, email: str,
     """
     if not correo_valido(email):
         return "Ese correo no parece válido."
+    # Correo nuevo = correo sin verificar (migracion 0022). Que lo escriba el
+    # dueno no demuestra que sea del cliente, y la verificacion es lo que
+    # sostiene el rol de administrador: un correo cambiado a mano no puede
+    # heredar la marca del anterior. En el CASE, `email` es el valor de antes.
     async with connection() as conn:
         try:
             hecho = await conn.fetchval(
-                """UPDATE usuarios SET nombre = $2, email = LOWER($3), activo = $4
+                """UPDATE usuarios SET nombre = $2, email = LOWER($3), activo = $4,
+                          email_verificado_en = CASE WHEN email = LOWER($3)
+                                                     THEN email_verificado_en END
                     WHERE id = $1 RETURNING id""",
                 usuario_id, (nombre or "").strip() or None, email.strip(), bool(activo))
         except asyncpg.UniqueViolationError:

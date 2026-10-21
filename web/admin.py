@@ -32,7 +32,7 @@ import os
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import fechas, ia
@@ -55,7 +55,13 @@ from shared.admin_cuentas import (
 from shared.db import get_usuario
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import DIAS_PRUEBA, activar_manual
-from web.auth import usuario_actual
+from web.auth import (
+    _origen_para_enlaces,
+    correo_verificado,
+    enviar_verificacion,
+    huella_de,
+    usuario_actual,
+)
 
 log = logging.getLogger("web.admin")
 router = APIRouter()
@@ -73,20 +79,76 @@ async def _exige_dueno(request: Request):
     suyo. Aqui se mira el original: asi el panel de administracion sigue
     respondiendo desde dentro -- para salir, para abrir otra ficha -- y las
     acciones quedan registradas a nombre del dueno, no del cliente.
+
+    EL CORREO TIENE QUE ESTAR VERIFICADO
+
+      El rol se decide por correo, y hasta la migracion 0022 el alta no
+      comprobaba que el correo fuera de quien lo escribia: si la cuenta del
+      dueno no existia todavia (base nueva, correo de dueno cambiado en el
+      .env), el primero que la registrara era administrador. Ahora, ademas de
+      casar el correo, la cuenta tiene que haberlo confirmado con el enlace
+      (web/auth.py, correo_verificado). Las cuentas anteriores a la 0022 se
+      dieron por verificadas al migrar.
+
+    LA SESION DEL DUENO SIGUE SIENDO REVOCABLE DESDE DENTRO
+
+      Mientras suplanta, la huella de la sesion es la del cliente; la suya va
+      en `admin_huella`. Se comprueba aqui: si el dueno cambio su contrasena
+      desde otro sitio (porque sospecha que le robaron la sesion), una sesion
+      metida en la cuenta de un cliente no puede seguir mandando como admin.
     """
     correo_dueno = (os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip().lower()
     if not correo_dueno:
         raise HTTPException(status_code=404)
 
     original = request.session.get("admin_original")
-    usuario = await get_usuario(original) if original else await usuario_actual(request)
-    if not usuario or (usuario["email"] or "").strip().lower() != correo_dueno:
+    if original:
+        usuario = await get_usuario(original)
+        if usuario and request.session.get("admin_huella") != huella_de(usuario):
+            log.warning("Sesion de suplantacion del admin %s revocada: su "
+                        "contrasena cambio o la sesion es anterior a la huella",
+                        original)
+            request.session.clear()
+            raise HTTPException(status_code=404)
+    else:
+        usuario = await usuario_actual(request)
+    if (not usuario or (usuario["email"] or "").strip().lower() != correo_dueno
+            or not correo_verificado(usuario)):
         # Se registra el intento CON sesion: si alguien esta probando rutas de
         # administracion, conviene que quede escrito quien.
         if usuario:
             log.warning("Acceso a /admin denegado a %s", usuario["email"])
         raise HTTPException(status_code=404)
+    if original:
+        # Sin el hash: este valor va al contexto de las plantillas, igual que
+        # el de usuario_actual.
+        usuario = {k: v for k, v in dict(usuario).items() if k != "password_hash"}
     return usuario
+
+
+def _volver_a_mi_sesion(request: Request):
+    """Deshace la suplantacion: el dueno vuelve a su id y a SU huella.
+
+    La huella se restaura, no se deja que usuario_actual la vuelva a sellar: si
+    el dueno cambio la contrasena mientras estaba dentro, la que se guardo al
+    entrar ya no casa y la sesion queda revocada, que es lo que debe pasar.
+
+    Una suplantacion sin `admin_huella` (abierta antes de que existiera) no
+    tiene con que restaurarse: se cierra la sesion entera y el dueno vuelve a
+    entrar. Dejar que se resellara le devolveria el admin sin comprobar nada.
+
+    Devuelve el id del dueno, o None si no hay sesion de dueno a la que volver.
+    """
+    original = request.session.pop("admin_original", None)
+    huella = request.session.pop("admin_huella", None)
+    if not original:
+        return None
+    if not huella:
+        request.session.clear()
+        return None
+    request.session["usuario_id"] = original
+    request.session["huella"] = huella
+    return original
 
 
 @router.get("/admin/ia", response_class=HTMLResponse)
@@ -199,8 +261,20 @@ async def entrar_como(request: Request, usuario_id: int):
         # usuario_actual limpia la sesion si la cuenta esta desactivada: el
         # dueno se quedaria fuera del todo en la peticion siguiente.
         return _volver(usuario_id, "detalle", error="Activa la cuenta antes de entrar en ella.")
+    fila = await get_usuario(c["id"])
+    if not fila:
+        raise HTTPException(status_code=404)
+    if not request.session.get("admin_original"):
+        # La huella del dueno se guarda la primera vez; si salta de un cliente
+        # a otro sin salir, la que vale sigue siendo la de cuando entro.
+        # usuario_actual (via _exige_dueno) acaba de validarla.
+        request.session["admin_huella"] = request.session.get("huella")
     request.session["admin_original"] = usuario["id"]
     request.session["usuario_id"] = c["id"]
+    # Sellada con la huella del cliente: si el cliente cambia su contrasena
+    # mientras el dueno esta dentro, la suplantacion cae como cualquier otra
+    # sesion suya.
+    request.session["huella"] = huella_de(fila)
     log.info("Admin %s entro en la cuenta %s (%s)", usuario["email"], c["id"], c["email"])
     return RedirectResponse("/panel", status_code=303)
 
@@ -214,11 +288,10 @@ async def salir_de_cuenta(request: Request):
     mientras tanto y `usuario_actual` ya no la resuelve. Por eso no pasa por
     _exige_dueno: basta con que la sesion lleve `admin_original`.
     """
-    original = request.session.pop("admin_original", None)
+    visitada = request.session.get("usuario_id")
+    original = _volver_a_mi_sesion(request)
     if not original:
         return RedirectResponse("/panel", status_code=303)
-    visitada = request.session.get("usuario_id")
-    request.session["usuario_id"] = original
     log.info("Admin %s salio de la cuenta %s", original, visitada)
     destino = f"/admin/clientes/{visitada}" if visitada else "/admin/clientes"
     return RedirectResponse(destino, status_code=303)
@@ -243,7 +316,7 @@ async def eliminar(request: Request, usuario_id: int, confirmacion: str = Form("
     if request.session.get("usuario_id") == c["id"]:
         # Se estaba dentro de esa cuenta: primero se sale, o la sesion
         # quedaria apuntando a una fila que ya no existe.
-        request.session["usuario_id"] = request.session.pop("admin_original")
+        _volver_a_mi_sesion(request)
     try:
         resumen = await borrar_cuenta_completa(usuario_id)
     except RuntimeError as e:
@@ -279,7 +352,8 @@ async def form_nueva(request: Request):
 
 
 @router.post("/admin/clientes/nueva", response_class=HTMLResponse)
-async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Form(""),
+async def crear_nueva(request: Request, tareas: BackgroundTasks,
+                      email: str = Form(...), nombre: str = Form(""),
                       password: str = Form(...), plan: str = Form(...),
                       estado: str = Form("prueba"), periodo: str = Form("mensual"),
                       vence: str = Form("")):
@@ -306,7 +380,13 @@ async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Fo
     if not fila:
         return con_error(error)
     log.info("Admin %s creo la cuenta %s (%s)", usuario["email"], fila["id"], fila["email"])
-    aviso = error or "Cuenta creada. Entrega la contraseña por un canal seguro."
+    # La cuenta nace sin verificar, como cualquier otra: que el dueno la cree no
+    # demuestra que el correo sea del cliente (una errata basta). El enlace le
+    # llega al cliente y, hasta abrirlo, ve la franja de "confirma tu correo".
+    tareas.add_task(enviar_verificacion, fila["id"], fila["email"],
+                    _origen_para_enlaces(request))
+    aviso = error or ("Cuenta creada. Entrega la contraseña por un canal seguro; "
+                      "le enviamos al cliente un enlace para confirmar su correo.")
     return _volver(fila["id"], "detalle", aviso=aviso)
 
 

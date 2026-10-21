@@ -127,9 +127,9 @@ os.environ["DATABASE_URL"] = _URL_PRUEBAS
 # blindaje lo hubiera visto.
 import shared.db  # noqa: F401
 
-# El puerto por defecto de get_pool es el 5433 (el de docker-compose). Se fija
+# El puerto por defecto de get_pool es el 5432 (shared/db.PUERTO_POR_DEFECTO). Se fija
 # aqui en el entorno, no solo en la comprobacion: si no, el blindaje miraria el
-# 5434 y la app se conectaria al 5433.
+# 5434 y la app se conectaria a otro.
 os.environ.setdefault("POSTGRES_PORT", "5434")
 
 # Hosts que son esta maquina o el contenedor de la base del compose/CI, por su

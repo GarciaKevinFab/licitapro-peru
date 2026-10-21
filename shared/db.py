@@ -56,10 +56,51 @@ def _password_obligatoria() -> str:
 # directa (5432) y el pooler de sesion no tienen ese problema.
 PUERTO_POOLER_TRANSACCION = 6543
 
+# Puerto si no hay POSTGRES_PORT ni DATABASE_URL: el de Postgres de serie.
+#
+#   Era el 5433, el que docker-compose.yml publica en el anfitrion para el
+#   desarrollo. Como valor por defecto era una trampa: en la maquina de
+#   desarrollo el 5433 lo ocupa el Postgres de OTRO proyecto, asi que un script
+#   lanzado sin .env hablaba con una base ajena. Produccion no lo usa (manda
+#   DATABASE_URL), las pruebas fijan el 5434 (tests/conftest.py) y quien usa el
+#   compose de desarrollo pone POSTGRES_PORT=5433 en su .env (.env.example).
+PUERTO_POR_DEFECTO = "5432"
+
+
+# Hosts que son esta maquina o el contenedor de la base del compose (`postgres`
+# en docker-compose.prod.yml, `db` en otros compose), por su nombre EXACTO.
+HOSTS_LOCALES = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "db"})
+
 
 def _es_gestionado(host: str) -> bool:
-    """Postgres gestionado (Supabase y compania) exige TLS; el local no lo tiene."""
-    return bool(host) and not host.startswith(("localhost", "127.", "db", "postgres"))
+    """Si la conexion a `host` tiene que ir con TLS.
+
+    POR QUE LISTA BLANCA EXACTA Y NO PREFIJOS
+
+      Antes era "todo lo que NO empiece por localhost, 127., db o postgres".
+      `db.<ref>.supabase.co` -- el host directo de Supabase -- empieza por
+      "db", asi que contaba como local y se conectaba SIN TLS: la contrasena y
+      los datos de los clientes viajaban en claro por Internet hasta donde el
+      servidor lo rechazara (o no). Lo mismo cualquier `postgres.algo.com`.
+
+      Ahora el TLS es lo de serie y solo se libra lo que esta en HOSTS_LOCALES,
+      escrito entero. Un host que falte en la lista falla RUIDOSO ("server does
+      not support SSL") y se arregla en un minuto; el fallo contrario era
+      callado.
+
+    LA SALIDA EXPLICITA
+
+      POSTGRES_SSLMODE=disable apaga el TLS para cualquier host. Es para un
+      Postgres de la red privada con otro nombre (otra maquina de la LAN, otro
+      servicio del compose): hay que escribirlo a mano, que es justo lo que lo
+      hace seguro. La miran tambien migrations/env.py y tools/crear_esquema.py,
+      que usan esta funcion.
+    """
+    if (os.getenv("POSTGRES_SSLMODE") or "").strip().lower() == "disable":
+        return False
+    host = (host or "").strip().lower()
+    # Sin host (una URL por socket unix) la conexion no sale de la maquina.
+    return bool(host) and host not in HOSTS_LOCALES
 
 
 async def _sin_reinicio(conn) -> None:
@@ -103,7 +144,7 @@ async def get_pool() -> asyncpg.Pool:
             return _pool
         url = os.getenv("DATABASE_URL") or ""
         host = os.getenv("POSTGRES_HOST", "localhost")
-        puerto = int(os.getenv("POSTGRES_PORT", "5433"))
+        puerto = int(os.getenv("POSTGRES_PORT", PUERTO_POR_DEFECTO))
 
         if url:
             from urllib.parse import urlparse
@@ -841,6 +882,72 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
         from shared.suscripciones import crear_suscripcion_prueba
         await crear_suscripcion_prueba(fila["id"])
     return fila
+
+
+# ─── Verificacion del correo (migracion 0022) ────────────
+
+async def crear_token_verificacion(usuario_id: int, email: str, token_hash: str,
+                                   expira) -> None:
+    """Guarda el hash del enlace, nunca el enlace. Ver nuevo_token_recuperacion.
+
+    Va con el `email` al que se mando: si la cuenta cambia de correo antes de
+    abrirlo, el enlace viejo deja de verificar nada (ver verificar_correo).
+    """
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO tokens_verificacion (usuario_id, email, token_hash, expira)
+               VALUES ($1, LOWER($2), $3, $4)""",
+            usuario_id, email.strip(), token_hash, expira)
+
+
+async def verificaciones_recientes(usuario_id: int, horas: int = 1) -> int:
+    """Cuantos enlaces de verificacion se mandaron a esta cuenta ultimamente.
+
+    `created_at` nace en hora de Lima (default de la 0022), asi que se compara
+    con la hora de Lima y no con NOW() a secas.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            f"""SELECT COUNT(*) FROM tokens_verificacion
+                 WHERE usuario_id = $1
+                   AND created_at > {_AHORA_LIMA} - ($2 || ' hours')::interval""",
+            usuario_id, str(horas))
+
+
+async def verificar_correo(token_hash: str) -> int | None:
+    """Consume un enlace de verificacion y marca el correo. Id del usuario o None.
+
+    Todo en una transaccion y con la condicion DENTRO del UPDATE, como en
+    consumir_token_y_cambiar_password: entre un SELECT y el UPDATE cabria un
+    segundo clic con el mismo enlace.
+
+    El enlace solo vale si el correo de la cuenta sigue siendo el que lo
+    recibio. Si no, un enlace mandado al correo viejo verificaria el nuevo, que
+    nadie ha demostrado controlar.
+    """
+    async with connection() as conn, conn.transaction():
+        uid = await conn.fetchval(
+            f"""UPDATE tokens_verificacion t SET usado_en = {_AHORA_LIMA}
+                  FROM usuarios u
+                 WHERE t.token_hash = $1
+                   AND t.usado_en IS NULL
+                   AND t.expira > {_AHORA_LIMA}
+                   AND u.id = t.usuario_id
+                   AND u.activo = TRUE
+                   AND u.email = t.email
+             RETURNING t.usuario_id""",
+            token_hash)
+        if not uid:
+            return None
+        await conn.execute(
+            f"""UPDATE usuarios
+                   SET email_verificado_en = COALESCE(email_verificado_en, {_AHORA_LIMA})
+                 WHERE id = $1""", uid)
+        # Los demas enlaces pendientes ya no hacen falta: que no queden vivos.
+        await conn.execute(
+            f"""UPDATE tokens_verificacion SET usado_en = {_AHORA_LIMA}
+                 WHERE usuario_id = $1 AND usado_en IS NULL""", uid)
+    return uid
 
 
 async def get_usuario_por_email(email: str, incluso_inactivo: bool = False):

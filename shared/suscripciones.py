@@ -863,6 +863,9 @@ async def limpiar_culqi(usuario_id: int) -> None:
 # dependen de estar al dia.
 RUTAS_LIBRES = (
     "/entrar", "/registro", "/salir", "/recuperar",
+    # Confirmar el correo no puede depender de estar al dia con el pago: es lo
+    # que hace falta para que los recibos y avisos de cobro lleguen.
+    "/verificar",
     "/suscripcion", "/webhooks/", "/salud", "/static",
     # El escaparate y el checkout publicos. Van aqui por dos motivos, y cada
     # uno basta por si solo:

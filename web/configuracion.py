@@ -256,6 +256,87 @@ async def quitar_whatsapp_web(request: Request):
         status_code=303)
 
 
+# ─── Cambiar la contrasena ───────────────────────────────
+
+@router.post("/configuracion/password")
+async def cambiar_mi_password(request: Request, actual: str = Form(""),
+                              nueva: str = Form("")):
+    """Contrasena nueva sabiendo la actual.
+
+    Hasta ahora no habia otra forma que pedir un enlace de recuperacion, que es
+    mandar al correo -- un canal que no controlamos -- algo que el titular puede
+    hacer aqui en un paso.
+
+    LAS MISMAS REGLAS QUE EL ALTA Y LA RECUPERACION
+
+      `password_debil` (minimo 10, rechaza mas de 72 bytes, que bcrypt no
+      admite) y su mensaje tal cual. Una regla mas floja aqui seria la puerta
+      trasera para guardar contrasenas que el registro rechaza; una sin
+      mensaje, un 500 con una frase larga.
+
+    LA ACTUAL SE COMPRUEBA CON EL FRENO DEL LOGIN
+
+      Sin el, una sesion olvidada abierta seria un banco de pruebas de
+      contrasenas sin tope. Los fallos cuentan en la misma tabla que /entrar.
+
+    EL RESTO DE SESIONES SE CIERRA, ESTA NO
+
+      El hash nuevo cambia la huella (web/auth.py), asi que toda cookie
+      anterior queda revocada -- es para lo que suele cambiarse una contrasena
+      --. Esta se vuelve a abrir con `iniciar_sesion` para no echar a quien
+      acaba de hacerlo bien. Los enlaces de recuperacion pendientes tambien
+      caen (`cambiar_password`).
+    """
+    from shared.admin_cuentas import cambiar_password
+    from shared.db import anotar_intento_fallido, intentos_recientes
+    from shared.seguridad import hashear_password, password_debil
+    from web.auth import (
+        MAX_INTENTOS_ACCESO,
+        MAX_INTENTOS_POR_IP,
+        VENTANA_INTENTOS_MIN,
+        iniciar_sesion,
+    )
+    from web.limites import ip_del_cliente
+
+    def con_error(msg: str):
+        return RedirectResponse("/configuracion?error=" + quote_plus(msg) + "#password",
+                                status_code=303)
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar?siguiente=/configuracion", status_code=303)
+    if request.session.get("admin_original"):
+        # iniciar_sesion vaciaria la sesion y con ella la vuelta del dueno a la
+        # suya. El dueno tiene su propio formulario en la ficha del cliente.
+        return con_error("Estás dentro de la cuenta de un cliente: cambia su "
+                         "contraseña desde el panel de administración.")
+
+    ip = ip_del_cliente(request.scope)
+    por_email, por_ip = await intentos_recientes(usuario["email"], ip,
+                                                 VENTANA_INTENTOS_MIN)
+    if por_email >= MAX_INTENTOS_ACCESO or por_ip >= MAX_INTENTOS_POR_IP:
+        log.warning("Cambio de contrasena frenado para el usuario %s", usuario["id"])
+        return con_error("Demasiados intentos seguidos. Espera unos minutos y "
+                         "vuelve a intentarlo.")
+    if not await verificar_password_de(usuario["id"], actual):
+        await anotar_intento_fallido(usuario["email"], ip)
+        return con_error("La contraseña actual no es correcta. No se cambió nada.")
+
+    motivo = password_debil(nueva)
+    if motivo:
+        return con_error(motivo)
+
+    nuevo_hash = hashear_password(nueva)
+    if not await cambiar_password(usuario["id"], nuevo_hash):
+        return RedirectResponse("/entrar", status_code=303)
+    iniciar_sesion(request, {"id": usuario["id"], "password_hash": nuevo_hash})
+    log.info("Contrasena cambiada por su titular, usuario %s", usuario["id"])
+    return RedirectResponse(
+        "/configuracion?aviso=" + quote_plus(
+            "Contraseña cambiada. Cerramos las demás sesiones abiertas de tu cuenta."),
+        status_code=303)
+
+
 # ─── Borrar la cuenta (Ley 29733) ────────────────────────
 
 @router.post("/configuracion/cuenta/borrar")
