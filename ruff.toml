@@ -4,7 +4,7 @@
 # avisos porque el flujo corria pytest y no ruff, asi que nada lo miraba.
 
 line-length = 100
-exclude = [".venv-tarea", "migrations/versions", "graphify-out"]
+exclude = [".venv-tarea", ".venv-fase2", "migrations/versions", "graphify-out"]
 
 [lint]
 ignore = [

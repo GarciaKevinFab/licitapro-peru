@@ -98,7 +98,7 @@ async def gasto_ia(request: Request):
     repartirla por plan.
     """
     usuario = await _exige_dueno(request)
-    return _plantillas(request).TemplateResponse("admin_ia.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_ia.html", {
         "request": request, "usuario": usuario,
         "g": await ia.gasto_detallado(),
     })
@@ -120,7 +120,7 @@ async def clientes(request: Request, q: str = "", plan: str = "", estado: str = 
     filas, con_acceso = await listar_cuentas()
     if estado not in FILTROS_ESTADO:
         estado = ""
-    return _plantillas(request).TemplateResponse("admin_clientes.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_clientes.html", {
         "request": request, "usuario": usuario,
         "cuentas": filtrar_cuentas(filas, q, plan, estado),
         "cifras": {**resumir_cuentas(filas), "ingresos": await ingresos_del_mes()},
@@ -141,8 +141,8 @@ def _volver(usuario_id: int, volver: str, **params) -> RedirectResponse:
 
 
 @router.post("/admin/clientes/{usuario_id}/plan")
-async def poner_plan(request: Request, usuario_id: int, plan: str = Form(...),
-                     estado: str = Form(...), periodo: str = Form("mensual"),
+async def poner_plan(request: Request, usuario_id: int, plan: str = Form(""),
+                     estado: str = Form(""), periodo: str = Form("mensual"),
                      vence: str = Form(""), monto: str = Form(""), nota: str = Form(""),
                      volver: str = Form("")):
     usuario = await _exige_dueno(request)
@@ -170,7 +170,7 @@ async def detalle(request: Request, usuario_id: int, aviso: str = "", error: str
     d = await detalle_cuenta(usuario_id)
     if not d:
         raise HTTPException(status_code=404)
-    return _plantillas(request).TemplateResponse("admin_cliente.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente.html", {
         "request": request, "usuario": usuario, **d,
         "planes": await planes_activos(), "hoy": fechas.hoy(),
         "es_dueno": (d["c"]["email"] or "").lower() == (usuario["email"] or "").lower(),
@@ -268,7 +268,7 @@ async def form_nueva(request: Request):
     """Alta de una cuenta por el dueno: para el cliente que llama por telefono
     y al que se le manda el acceso ya hecho, con su plan puesto."""
     usuario = await _exige_dueno(request)
-    return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
         "request": request, "usuario": usuario, "modo": "nueva", "c": None,
         "planes": await planes_activos(),
         "valores": {"email": "", "nombre": "", "plan": "pro", "estado": "prueba",
@@ -279,8 +279,8 @@ async def form_nueva(request: Request):
 
 
 @router.post("/admin/clientes/nueva", response_class=HTMLResponse)
-async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Form(""),
-                      password: str = Form(...), plan: str = Form(...),
+async def crear_nueva(request: Request, email: str = Form(""), nombre: str = Form(""),
+                      password: str = Form(""), plan: str = Form(""),
                       estado: str = Form("prueba"), periodo: str = Form("mensual"),
                       vence: str = Form("")):
     usuario = await _exige_dueno(request)
@@ -288,7 +288,7 @@ async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Fo
                "periodo": periodo, "vence": vence}
 
     def con_error(msg: str):
-        return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+        return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
             "request": request, "usuario": usuario, "modo": "nueva", "c": None,
             "planes": planes, "valores": valores, "password_sugerida": password,
             "error": msg}, status_code=400)
@@ -316,7 +316,7 @@ async def form_editar(request: Request, usuario_id: int, error: str = ""):
     c = await cuenta(usuario_id)
     if not c:
         raise HTTPException(status_code=404)
-    return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
         "request": request, "usuario": usuario, "modo": "editar", "c": c,
         "planes": await planes_activos(),
         "valores": {"email": c["email"], "nombre": c["nombre"] or "", "activo": c["activo"]},
@@ -325,7 +325,7 @@ async def form_editar(request: Request, usuario_id: int, error: str = ""):
 
 
 @router.post("/admin/clientes/{usuario_id}/editar", response_class=HTMLResponse)
-async def guardar_editar(request: Request, usuario_id: int, email: str = Form(...),
+async def guardar_editar(request: Request, usuario_id: int, email: str = Form(""),
                          nombre: str = Form(""), activo: str = Form("")):
     usuario = await _exige_dueno(request)
     c = await cuenta(usuario_id)
@@ -340,7 +340,7 @@ async def guardar_editar(request: Request, usuario_id: int, email: str = Form(..
     else:
         error = await editar_cuenta(usuario_id, nombre, email, bool(activo))
     if error:
-        return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+        return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
             "request": request, "usuario": usuario, "modo": "editar", "c": c,
             "planes": await planes_activos(),
             "valores": {"email": email, "nombre": nombre, "activo": bool(activo)},
@@ -351,7 +351,7 @@ async def guardar_editar(request: Request, usuario_id: int, email: str = Form(..
 
 
 @router.post("/admin/clientes/{usuario_id}/password")
-async def poner_password(request: Request, usuario_id: int, password: str = Form(...),
+async def poner_password(request: Request, usuario_id: int, password: str = Form(""),
                          volver: str = Form("detalle")):
     usuario = await _exige_dueno(request)
     motivo = password_debil(password)
@@ -364,7 +364,7 @@ async def poner_password(request: Request, usuario_id: int, password: str = Form
 
 
 @router.post("/admin/clientes/{usuario_id}/activo")
-async def poner_activo_ruta(request: Request, usuario_id: int, activo: str = Form(...),
+async def poner_activo_ruta(request: Request, usuario_id: int, activo: str = Form(""),
                             volver: str = Form("")):
     usuario = await _exige_dueno(request)
     c = await cuenta(usuario_id)

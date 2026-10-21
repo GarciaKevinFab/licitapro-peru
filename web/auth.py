@@ -148,7 +148,7 @@ async def form_entrar(request: Request, siguiente: str = "/panel", error: str = 
         # filtro que ya se aplicaba al entrar; faltaba solo en este atajo.
         return RedirectResponse(_destino_seguro(siguiente), status_code=303)
     return _plantillas(request).TemplateResponse(
-        "entrar.html", {"request": request, "modo": "entrar",
+        request, "entrar.html", {"request": request, "modo": "entrar",
                         "siguiente": siguiente, "error": error})
 
 
@@ -164,8 +164,8 @@ MAX_INTENTOS_POR_IP = 30
 
 
 @router.post("/entrar", response_class=HTMLResponse)
-async def hacer_entrar(request: Request, email: str = Form(...),
-                       password: str = Form(...), siguiente: str = Form("/panel")):
+async def hacer_entrar(request: Request, email: str = Form(""),
+                       password: str = Form(""), siguiente: str = Form("/panel")):
     """Inicio de sesion con freno a la fuerza bruta.
 
     El freno se comprueba ANTES de mirar la contrasena. Comprobarlo despues
@@ -184,7 +184,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
 
     def rechazar():
         return _plantillas(request).TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "entrar", "siguiente": siguiente,
              "error": ERROR_CREDENCIALES, "email": email},
             status_code=401)
@@ -207,7 +207,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
         # recuperacion que no le devolveria el acceso.
         log.info("Acceso a cuenta desactivada: %s", fila["id"])
         return _plantillas(request).TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "entrar", "siguiente": siguiente,
              "error": ERROR_DESACTIVADA, "email": email},
             status_code=403)
@@ -224,17 +224,17 @@ async def form_registro(request: Request):
     if await usuario_actual(request):
         return RedirectResponse("/panel", status_code=303)
     return _plantillas(request).TemplateResponse(
-        "entrar.html", {"request": request, "modo": "registro"})
+        request, "entrar.html", {"request": request, "modo": "registro"})
 
 
 @router.post("/registro", response_class=HTMLResponse)
-async def hacer_registro(request: Request, email: str = Form(...),
-                         password: str = Form(...), nombre: str = Form("")):
+async def hacer_registro(request: Request, email: str = Form(""),
+                         password: str = Form(""), nombre: str = Form("")):
     plantillas = _plantillas(request)
 
     def con_error(msg: str):
         return plantillas.TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "registro", "error": msg,
              "email": email, "nombre": nombre},
             status_code=400)
@@ -300,7 +300,7 @@ MENSAJE_ENVIADO = ("Si ese correo tiene una cuenta, te enviamos un enlace para "
 @router.get("/recuperar", response_class=HTMLResponse)
 async def form_recuperar(request: Request):
     return _plantillas(request).TemplateResponse(
-        "recuperar.html", {"request": request, "paso": "pedir"})
+        request, "recuperar.html", {"request": request, "paso": "pedir"})
 
 
 def _es_desarrollo() -> bool:
@@ -326,7 +326,7 @@ def _origen_para_enlaces(request: Request) -> str:
 
 @router.post("/recuperar", response_class=HTMLResponse)
 async def pedir_recuperar(request: Request, tareas: BackgroundTasks,
-                          email: str = Form(...)):
+                          email: str = Form("")):
     """Responde SIEMPRE lo mismo y en el mismo tiempo.
 
     El texto ya era uniforme, pero el tiempo no: con cuenta se creaba el token
@@ -339,7 +339,7 @@ async def pedir_recuperar(request: Request, tareas: BackgroundTasks,
                     ip_del_cliente(request.scope),
                     _origen_para_enlaces(request))
     return _plantillas(request).TemplateResponse(
-        "recuperar.html",
+        request, "recuperar.html",
         {"request": request, "paso": "pedir", "aviso": MENSAJE_ENVIADO})
 
 
@@ -418,18 +418,18 @@ async def form_nueva_password(request: Request, token: str):
     usuario = await usuario_por_token_recuperacion(hash_token(token))
     if not usuario:
         return _plantillas(request).TemplateResponse(
-            "recuperar.html",
+            request, "recuperar.html",
             {"request": request, "paso": "invalido"}, status_code=400)
 
     return _plantillas(request).TemplateResponse(
-        "recuperar.html",
+        request, "recuperar.html",
         {"request": request, "paso": "cambiar", "token": token,
          "email": usuario["email"]})
 
 
 @router.post("/recuperar/{token}", response_class=HTMLResponse)
 async def cambiar_password(request: Request, token: str,
-                           password: str = Form(...)):
+                           password: str = Form("")):
     from shared.db import (
         consumir_token_y_cambiar_password,
         usuario_por_token_recuperacion,
@@ -442,20 +442,20 @@ async def cambiar_password(request: Request, token: str,
     usuario = await usuario_por_token_recuperacion(th)
     if not usuario:
         return plantillas.TemplateResponse(
-            "recuperar.html", {"request": request, "paso": "invalido"},
+            request, "recuperar.html", {"request": request, "paso": "invalido"},
             status_code=400)
 
     motivo = password_debil(password)
     if motivo:
         return plantillas.TemplateResponse(
-            "recuperar.html",
+            request, "recuperar.html",
             {"request": request, "paso": "cambiar", "token": token,
              "email": usuario["email"], "error": motivo},
             status_code=400)
 
     if not await consumir_token_y_cambiar_password(th, hashear_password(password)):
         return plantillas.TemplateResponse(
-            "recuperar.html", {"request": request, "paso": "invalido"},
+            request, "recuperar.html", {"request": request, "paso": "invalido"},
             status_code=400)
 
     log.info("Contrasena restablecida para el usuario %s", usuario["id"])
@@ -464,4 +464,4 @@ async def cambiar_password(request: Request, token: str,
     # Se pide entrar con la contrasena nueva, que solo conoce quien la eligio.
     request.session.clear()
     return plantillas.TemplateResponse(
-        "recuperar.html", {"request": request, "paso": "listo"})
+        request, "recuperar.html", {"request": request, "paso": "listo"})

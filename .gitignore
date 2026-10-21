@@ -58,6 +58,7 @@ graphify-out/
 
 # Entorno aislado de la tarea programada que trae OECE desde esta maquina.
 .venv-tarea/
+.venv-fase2/
 
 # Volcado que deja Git Bash al morir. Basura local, nunca del repo.
 bash.exe.stackdump

@@ -14,31 +14,51 @@ psycopg2-binary==2.9.9
 tzdata==2025.2
 httpx==0.28.1
 beautifulsoup4==4.12.3
-lxml==5.3.0
+lxml==6.1.3
 # 1.x hace falta para output_config: las salidas estructuradas, que evitan
 # buscar el JSON dentro del texto de la respuesta. La 0.40.0 no las tiene.
 anthropic==1.2.0
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 python-docx==1.1.2
 openpyxl==3.1.5
 reportlab==4.2.5
-jinja2==3.1.4
+jinja2==3.1.6
 aiofiles==24.1.0
-aiosmtplib==3.0.2
+aiosmtplib==5.1.3
 apscheduler==3.10.4
 tenacity==9.0.0
-fastapi==0.115.0
+# POR QUE STARLETTE VA FIJADA APARTE (subida de 2026-10-20, pip-audit)
+#
+#   fastapi 0.115 arrastraba starlette 0.38.6, con catorce avisos. fastapi
+#   0.156 acepta cualquier starlette >= 0.46, asi que sin fijarla aqui la
+#   version que corre la decide pip el dia que se construye la imagen. Con la
+#   1.x, `TemplateResponse` recibe la peticion como PRIMER argumento: la forma
+#   vieja ("x.html", {"request": ...}) revienta con "unhashable type: dict".
+#   Y fastapi dejo de colar los campos de formulario vacios: ver el comentario
+#   sobre `Form("")` en web/comprar.py.
+fastapi==0.156.4
+starlette==1.9.0
 uvicorn==0.32.0
-pypdf==5.1.0
+# pypdf 6: la 5.1 tenia ochenta y cinco avisos de DoS con PDFs malformados, y
+# aqui se procesan PDFs que sube el usuario (bases, constancias, fichas RUC).
+pypdf==6.21.1
 # OCR de la constancia del RNP (shared/constancia_rnp.py): pdfium renderiza la
 # pagina y Tesseract (paquete del sistema, ver Dockerfile) la lee.
-pypdfium2==4.30.0
+pypdfium2==5.14.0
 pytesseract==0.3.13
 # Posicion de palabras y lineas para llenar los formatos de la entidad
 # (shared/llenar_formatos.py). MIT, sobre pdfminer.six.
-pdfplumber==0.11.4
+#
+#   0.11.10 y no 0.11.4: la 0.11.4 traia pdfminer.six 20231228, que podia
+#   ejecutar codigo con un PDF malicioso (pickle). La 0.11.10 fija pdfminer.six
+#   20260107 y exige pypdfium2 >= 5.9 y Pillow >= 12.2, por eso pypdfium2 salto
+#   de la 4.30 a la 5.x (render/to_pil/PdfiumError siguen igual).
+pdfplumber==0.11.10
+# Pillow llegaba suelto como dependencia de reportlab y pdfplumber. Se fija
+# porque la 12.3.0 tiene avisos y es la misma version que usa el puente.
+pillow==13.0.0
 alembic==1.19.1
 bcrypt==5.0.0
 itsdangerous==2.2.0
-python-multipart==0.0.20
-cryptography==42.0.5
+python-multipart==0.0.32
+cryptography==50.0.2

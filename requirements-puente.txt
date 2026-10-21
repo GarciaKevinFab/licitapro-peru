@@ -38,7 +38,7 @@
 #     .venv-tarea\Scripts\pip.exe install -r requirements-puente.txt
 asyncpg==0.31.0
 httpx==0.28.1
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 tenacity==9.0.0
 beautifulsoup4==4.12.3
 # tzdata: shared/fechas.py construye ZoneInfo("America/Lima") al importarse y
@@ -51,6 +51,12 @@ tzdata==2025.2
 # poco y no pasan por la compresion -- pero cada EETT falla al importar
 # pypdfium2 y queda solo con su enlace, en silencio. Las dos publican binario
 # para Windows en Python 3.13 y 3.14: no hay que compilar nada. Mismas
-# versiones que el servidor (Pillow llega alli como dependencia de reportlab).
-pypdfium2==4.30.0
-pillow==12.3.0
+# versiones que el servidor.
+#
+#   2026-10-20: pypdfium2 4.30 -> 5.14 (la pide pdfplumber 0.11.10 en el
+#   servidor), Pillow 12.3 -> 13.0 y python-dotenv 1.0 -> 1.2 por avisos de
+#   pip-audit. Las tres publican binario (o wheel puro) para Python 3.14 en
+#   Windows: comprobado con `pip download --python-version 3.14
+#   --only-binary=:all:`. Hay que reinstalar con la linea de arriba.
+pypdfium2==5.14.0
+pillow==13.0.0

@@ -69,7 +69,7 @@ async def ver_configuracion(request: Request, aviso: str = "", error: str = ""):
             "movil": f"https://t.me/{bot}?start={token}",
             "web": "https://web.telegram.org/k/#?tgaddr=" + quote(tg, safe=""),
         }
-    return _plantillas(request).TemplateResponse("configuracion.html", {
+    return _plantillas(request).TemplateResponse(request, "configuracion.html", {
         "vinculo": vinculo,
         "request": request,
         "usuario": usuario,
@@ -117,7 +117,7 @@ async def desvincular(request: Request):
 
 
 @router.post("/configuracion/credencial")
-async def guardar(request: Request, tipo: str = Form(...), valor: str = Form(...)):
+async def guardar(request: Request, tipo: str = Form(""), valor: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -132,7 +132,7 @@ async def guardar(request: Request, tipo: str = Form(...), valor: str = Form(...
 
 
 @router.post("/configuracion/credencial/borrar")
-async def borrar(request: Request, tipo: str = Form(...)):
+async def borrar(request: Request, tipo: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
