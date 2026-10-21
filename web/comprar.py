@@ -45,14 +45,19 @@ from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import quote
 
 import asyncpg
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import culqi
-from shared.db import connection, crear_usuario
+from shared.db import connection, crear_usuario, get_usuario_por_email
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import activar_por_culqi, cambiar_plan, datos_culqi
-from web.auth import usuario_actual
+from web.auth import (
+    _origen_para_enlaces,
+    enviar_verificacion,
+    iniciar_sesion,
+    usuario_actual,
+)
 from web.suscripcion import _con_error, iniciar_cobro
 
 log = logging.getLogger("web.comprar")
@@ -331,16 +336,114 @@ def _clave_correo(correo: str) -> str:
     return f"{local.split('+', 1)[0]}@{dominio}"
 
 
-# El mismo texto para "ese correo ya tiene cuenta" en los dos checkouts. Esta
-# redactado en condicional a proposito: el checkout es publico y no debe
-# confirmar a quien pregunte si un correo esta registrado.
-AVISO_CUENTA_EXISTENTE = ("Si ese correo ya tiene una cuenta, entra con tu "
-                          "contraseña y terminamos la compra.")
+# ─── Correo que ya tiene cuenta, sin decirlo ────────────
+#
+# EL PROBLEMA
+#
+#   Quien escribia en el checkout un correo ya registrado acababa en /entrar
+#   con "si ese correo ya tiene una cuenta, entra". La frase era condicional,
+#   pero el desvio no: el checkout publico servia para comprobar, correo a
+#   correo, quien es cliente de LicitaPro -- y de paso a quien conviene mandar
+#   un correo falso "de LicitaPro" pidiendo la contrasena.
+#
+# LO QUE SE HACE AHORA
+#
+#   1. El texto ya no da nada por sentado en ninguno de los dos sentidos: "si
+#      ya tienes cuenta, entra; si no, revisa tu correo". Lo mismo le vale al
+#      cliente que vuelve y al que se equivoco de letra.
+#   2. Al DUENO de ese correo le llega un aviso con el enlace para entrar y
+#      terminar la compra. Si fue el, le ahorra buscar el plan otra vez; si no
+#      fue el, se entera de que alguien uso su correo. Va en segundo plano, como
+#      la recuperacion: hablar con el SMTP solo cuando la cuenta existe
+#      convertiria el tiempo de respuesta en el chivato.
+#   3. El aviso tiene su propio tope por correo (_FRENO_AVISO): sin el, el
+#      checkout seria una forma gratuita de llenarle la bandeja a un cliente.
+#
+# LO QUE NO SE PUEDE TAPAR, Y POR QUE SE ACEPTA
+#
+#   Un correo nuevo sigue hacia la pasarela y uno registrado no: esa diferencia
+#   no se puede quitar sin pedir verificar el correo ANTES de cobrar, que es
+#   volver a poner un registro delante del precio (justo lo que tumbo la
+#   validacion de la pasarela; ver la cabecera del modulo). Lo que queda es un
+#   oraculo caro: cada correo que NO tenia cuenta queda registrado (sin
+#   verificar) a nombre del que prueba, el freno por IP de web/limites.py deja
+#   10 POST por hora, y el dueno de cada correo que si la tenia se entera.
+AVISO_CUENTA_EXISTENTE = ("Si ya tienes una cuenta con ese correo, entra con tu "
+                          "contraseña y terminamos la compra. Si no, revisa tu "
+                          "correo: te escribimos ahí.")
+
+# Avisos al dueno de un correo usado en el checkout: por correo y por hora.
+AVISOS_POR_CORREO = 2
+_FRENO_AVISO = _FrenoPorClave(AVISOS_POR_CORREO, 3600)
+
+
+def _a_entrar(volver_a: str) -> RedirectResponse:
+    """A /entrar con `siguiente` en ESTE checkout y el texto generico.
+
+    Se le devuelve al checkout y no al panel: quien vuelve a por el plan que ya
+    habia elegido no tiene que buscarlo otra vez, que es donde se abandona.
+    """
+    return RedirectResponse(
+        f"/entrar?siguiente={quote(volver_a, safe='')}"
+        f"&error={quote(AVISO_CUENTA_EXISTENTE)}",
+        status_code=303)
+
+
+async def _avisar_al_dueno_del_correo(email: str, origen: str, volver_a: str) -> None:
+    """Le cuenta al titular del correo que se uso en el checkout. Nunca lanza.
+
+    Corre despues de responder (ver "LO QUE SE HACE AHORA" arriba). Si la
+    cuenta no existe o esta desactivada no hace nada: no hay a quien avisar, y
+    el que probaba un correo nuevo ya siguio hacia la pasarela.
+    """
+    try:
+        if not _FRENO_AVISO.permitir(_clave_correo(email)):
+            log.info("Aviso de checkout con correo existente frenado (tope por hora)")
+            return
+        usuario = await get_usuario_por_email(email)
+        if not usuario:
+            return
+        from shared import plantillas_correo
+        from shared.email_sender import enviar_email
+        enlace = f"{origen}/entrar?siguiente={quote(volver_a, safe='')}"
+        texto, cuerpo = plantillas_correo.componer(
+            titulo="¿Querías contratar un plan?",
+            preencabezado="Alguien empezó una compra en LicitaPro con este correo.",
+            intro=[("Alguien empezó a contratar un plan de LicitaPro con este "
+                    "correo, que ya tiene una cuenta."),
+                   ("Si fuiste tú, entra con tu contraseña y terminamos la compra "
+                    "donde la dejaste.")],
+            boton={"texto": "Entrar y terminar la compra", "url": enlace},
+            cierre=["Si el botón no funciona, copia este enlace en tu navegador:",
+                    enlace],
+            aviso="Si no fuiste tú, no tienes que hacer nada: no se creó ninguna "
+                  "cuenta ni se cobró nada, y tu contraseña sigue igual.",
+        )
+        if not await enviar_email(usuario["email"], "Tu compra en LicitaPro",
+                                  cuerpo, texto):
+            log.warning("No se pudo avisar al usuario %s del checkout con su correo",
+                        usuario["id"])
+    except Exception:
+        log.exception("Fallo al avisar del checkout con un correo existente")
 
 # Candado por usuario para no crear dos suscripciones en Culqi. Ver
 # `comprar_con_culqi`. El primer entero separa este candado de cualquier otro
 # pg_advisory que se use con el mismo id de usuario.
 _ESPACIO_CANDADO = 0x4C503143  # "LP1C"
+
+
+def _abrir_sesion_nueva(request: Request, tareas: BackgroundTasks, usuario) -> None:
+    """Sesion para la cuenta recien creada en el checkout, y su verificacion.
+
+    Por `iniciar_sesion` y no asignando `usuario_id` a mano: asi la sesion
+    empieza vacia (nada heredado de la cookie anterior, que es la fijacion de
+    sesion) y sale ya sellada con la huella de la contrasena. El enlace de
+    verificacion va en segundo plano, como en /registro: la compra no espera
+    al SMTP ni depende de que el correo se confirme.
+    """
+    iniciar_sesion(request, usuario)
+    tareas.add_task(enviar_verificacion, usuario["id"], usuario["email"],
+                    _origen_para_enlaces(request))
 
 
 # ─── Escaparate ──────────────────────────────────────────
@@ -398,7 +501,7 @@ async def checkout(request: Request, plan_codigo: str,
 
 
 @router.post("/comprar")
-async def confirmar(request: Request, plan: str = Form(""),
+async def confirmar(request: Request, tareas: BackgroundTasks, plan: str = Form(""),
                     periodo: str = Form("mensual"), email: str = Form(""),
                     password: str = Form(""), nombre: str = Form("")):
     """Del boton de pagar a la pasarela, creando la cuenta por el camino si falta.
@@ -435,15 +538,12 @@ async def confirmar(request: Request, plan: str = Form(""),
         usuario = await crear_usuario(email, hashear_password(password),
                                       nombre.strip() or None)
         if not usuario:
-            # Ya tiene cuenta: no es un error, es un cliente que vuelve. Se le
-            # manda a entrar y se le devuelve a ESTE checkout, no al panel, para
-            # que no tenga que volver a buscar lo que ya habia elegido. El
-            # texto no afirma que la cuenta exista: ver AVISO_CUENTA_EXISTENTE.
-            return RedirectResponse(
-                f"/entrar?siguiente={quote(volver_a, safe='')}"
-                f"&error={quote(AVISO_CUENTA_EXISTENTE)}",
-                status_code=303)
-        request.session["usuario_id"] = usuario["id"]
+            # Correo ya registrado: texto generico y aviso a su dueno. Ver
+            # "Correo que ya tiene cuenta, sin decirlo" arriba.
+            tareas.add_task(_avisar_al_dueno_del_correo, email,
+                            _origen_para_enlaces(request), volver_a)
+            return _a_entrar(volver_a)
+        _abrir_sesion_nueva(request, tareas, usuario)
         log.info("Cuenta creada desde el checkout publico para el plan %s", plan)
 
     # Bajar de plan se aplica ya; subir queda pendiente de ESTE cobro, que
@@ -469,7 +569,8 @@ async def confirmar(request: Request, plan: str = Form(""),
 #   endpoint como "" y lo maneja el mismo codigo que ya lo manejaba. Los campos
 #   `int` siguen con `Form(...)`: un "" ahi ya era un 422 antes.
 @router.post("/comprar/culqi")
-async def comprar_con_culqi(request: Request, plan: str = Form(""),
+async def comprar_con_culqi(request: Request, tareas: BackgroundTasks,
+                            plan: str = Form(""),
                             periodo: str = Form("mensual"),
                             token_id: str = Form(""), email: str = Form(""),
                             password: str = Form(""), nombre: str = Form("")):
@@ -596,16 +697,13 @@ async def comprar_con_culqi(request: Request, plan: str = Form(""),
         usuario = await crear_usuario(email, hashear_password(password),
                                       nombre.strip() or None)
         if not usuario:
-            # Ya tiene cuenta: no es un error, es un cliente que vuelve. Se le
-            # manda a entrar y se le devuelve a ESTE checkout. No se ha cobrado
-            # nada: el cus_/crd_ creado arriba se reaprovecha o se queda
-            # inerte en Culqi, que no cuesta nada. El texto no afirma que la
-            # cuenta exista: ver AVISO_CUENTA_EXISTENTE.
-            return RedirectResponse(
-                f"/entrar?siguiente={quote(volver_a, safe='')}"
-                f"&error={quote(AVISO_CUENTA_EXISTENTE)}",
-                status_code=303)
-        request.session["usuario_id"] = usuario["id"]
+            # Correo ya registrado: como en POST /comprar. No se ha cobrado
+            # nada: el cus_/crd_ creado arriba se reaprovecha o se queda inerte
+            # en Culqi, que no cuesta nada.
+            tareas.add_task(_avisar_al_dueno_del_correo, email,
+                            _origen_para_enlaces(request), volver_a)
+            return _a_entrar(volver_a)
+        _abrir_sesion_nueva(request, tareas, usuario)
         log.info("Cuenta creada desde el checkout de Culqi para el plan %s", plan)
 
     # ─── 4 y 5. Bajo candado: crear alli y asentar aqui ─

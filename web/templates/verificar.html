@@ -1,0 +1,59 @@
+{% extends "_base.html" %}
+{% block titulo %}Confirmar correo · LicitaPro
+{% endblock %}
+{% set badge_tema = 'sb-oscuro' %}
+
+{# La misma concha que /entrar y /recuperar, con los dos desenlaces del enlace
+   de verificacion: confirmado o ya no sirve. #}
+{% block estilos %}{% include "_acceso_estilos.html" %}{% endblock %}
+
+{% block cuerpo %}
+<div class="acceso">
+  {% include "_acceso_panel.html" %}
+
+  <div class="lf">
+    <div class="caja">
+      <a class="marca-m" href="/">
+        <span class="logo">
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true">
+            <g fill="currentColor" opacity=".4">
+              <circle cx="12.5" cy="13.5" r="2.2"/><circle cx="52.5" cy="15" r="1.9"/><circle cx="13.5" cy="50.5" r="2"/>
+            </g>
+            <circle cx="32" cy="32" r="6.4" fill="currentColor"/>
+            <circle cx="32" cy="32" r="15.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="80 15.5" transform="rotate(-108 32 32)"/>
+          </svg>
+          LicitaPro <span class="pe">Perú</span>
+        </span>
+        <span class="linea-m rotulo">Licitaciones del Estado peruano</span>
+      </a>
+
+      <div class="tarjeta tarjeta-acc">
+        {% if ok %}
+          <div class="icono-ok" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>
+          </div>
+          <h1>Correo confirmado</h1>
+          <p class="lead">Gracias. Desde ahora te escribiremos a este correo con los
+             avisos de licitaciones y los comprobantes.</p>
+          {% if con_sesion %}
+            <a class="btn" href="/panel">Ir al panel</a>
+          {% else %}
+            <a class="btn" href="/entrar">Entrar</a>
+          {% endif %}
+        {% else %}
+          <h1>Ese enlace ya no sirve</h1>
+          <p class="lead">Los enlaces de confirmación vencen a las 48 horas y solo se
+             pueden usar una vez. Si ya confirmaste tu correo, no tienes que hacer
+             nada más. Si no, entra y pide otro desde el aviso de arriba del panel.</p>
+          <a class="btn" href="/entrar">Entrar</a>
+        {% endif %}
+      </div>
+
+      <p class="alterna"><a class="volver" href="/"><span class="fl">&larr;</span>Volver al inicio</a></p>
+
+      <p class="pie-m">&copy; 2026 LicitaPro Perú &middot;
+        <a href="/privacidad">Privacidad</a> &middot; <a href="/terminos">Términos</a></p>
+    </div>
+  </div>
+</div>
+{% endblock %}

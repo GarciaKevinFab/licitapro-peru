@@ -91,7 +91,7 @@ async def main():
     import asyncpg
     conn = await asyncpg.connect(
         host=os.getenv('POSTGRES_HOST', 'localhost'),
-        port=int(os.getenv('POSTGRES_PORT', '5433')),
+        port=int(os.getenv('POSTGRES_PORT', '5432')),
         database=os.getenv('POSTGRES_DB', 'licitapro'),
         user=os.getenv('POSTGRES_USER', 'licitapro'),
         password=os.getenv('POSTGRES_PASSWORD', 'licitapro'),

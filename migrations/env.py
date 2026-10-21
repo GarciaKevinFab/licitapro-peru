@@ -102,7 +102,7 @@ def url_bd() -> str:
         f"postgresql+psycopg2://{os.getenv('POSTGRES_USER', 'licitapro')}:"
         f"{_password_obligatoria()}@"
         f"{host}:"
-        f"{os.getenv('POSTGRES_PORT', '5433')}/"
+        f"{os.getenv('POSTGRES_PORT', '5432')}/"
         f"{os.getenv('POSTGRES_DB', 'licitapro')}"
     )
     return url + ("?sslmode=require" if _es_gestionado(host) else "")

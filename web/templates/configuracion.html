@@ -302,6 +302,25 @@ table.datos td{vertical-align:middle}
     </form>
   </section>
 
+  <section class="tarjeta" id="password">
+    <h2>Contraseña</h2>
+    <p class="sub">Al cambiarla se cierran las demás sesiones abiertas de tu cuenta.</p>
+    <form method="post" action="/configuracion/password" class="col-15" data-validar>
+      <label class="campo w-300">
+        <span>Contraseña actual</span>
+        <input type="password" name="actual" autocomplete="current-password" required>
+      </label>
+      <label class="campo w-300">
+        <span>Contraseña nueva</span>
+        <input type="password" name="nueva" autocomplete="new-password" required minlength="10">
+        <p class="ayuda">Mínimo 10 caracteres.</p>
+      </label>
+      <div class="btn-grupo">
+        <button type="submit">Cambiar contraseña</button>
+      </div>
+    </form>
+  </section>
+
   <section class="tarjeta peligro-zona" id="borrar-cuenta">
     <h2>Borrar mi cuenta</h2>
     <p class="sub">Se borra todo: tus empresas, propuestas, contratos, logos y

@@ -636,6 +636,14 @@ async def test_la_vista_de_gasto_se_cierra_a_los_clientes(usuario, cliente):
         # Y ahora ese mismo usuario SI es el dueno: tiene que verla. En
         # mayusculas a proposito, para fijar que el correo no distingue caja.
         os.environ["LICITAPRO_ADMIN_EMAIL"] = usuario["email"].upper()
+        # Desde la migracion 0022 el correo tiene que estar ademas verificado
+        # (ver web/admin._exige_dueno): la cuenta de prueba nace sin verificar
+        # y con eso solo no basta. Se verifica y entonces si la ve.
+        assert (await cliente.get("/admin/ia")).status_code == 404
+        from shared.db import connection
+        async with connection() as c:
+            await c.execute("UPDATE usuarios SET email_verificado_en = NOW() "
+                            "WHERE id = $1", usuario["id"])
         assert (await cliente.get("/admin/ia")).status_code == 200
 
         # Sin variable, cerrado incluso para el.
