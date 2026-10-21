@@ -127,7 +127,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
                 ORDER BY p.created_at DESC LIMIT 40""",
             usuario["id"])
 
-    return _plantillas(request).TemplateResponse("contratos.html", {
+    return _plantillas(request).TemplateResponse(request, "contratos.html", {
         "request": request, "usuario": usuario, "contratos": contratos,
         "candidatas": candidatas, "aviso": aviso, "error": error,
     })
@@ -135,7 +135,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
 
 @router.post("/contratos/ganar")
 async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
-                              monto: str = Form(...), plazo_dias: str = Form("30")):
+                              monto: str = Form(""), plazo_dias: str = Form("30")):
     """Registra la buena pro y arma el timeline de plazos del contrato.
 
     `monto` y `plazo_dias` llegan como texto y se validan aqui: con `float` e
@@ -212,7 +212,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
     cobrado = sum(p["monto"] or 0 for p in pagos if p["estado"] == "pagado")
     pendiente = sum(p["monto"] or 0 for p in pagos if p["estado"] != "pagado")
 
-    return _plantillas(request).TemplateResponse("contrato.html", {
+    return _plantillas(request).TemplateResponse(request, "contrato.html", {
         "request": request, "usuario": usuario, "c": contrato,
         "plazos": plazos,
         # La mora se calcula al leer: cambia sola cada dia habil, y guardarla
@@ -231,7 +231,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
 
 
 @router.post("/contratos/{contrato_id}/estado")
-async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form(...)):
+async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -250,7 +250,7 @@ async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form(
 
 @router.post("/contratos/{contrato_id}/plazo")
 async def agregar_plazo(request: Request, contrato_id: int,
-                        descripcion: str = Form(...), fecha_limite: str = Form(...),
+                        descripcion: str = Form(""), fecha_limite: str = Form(""),
                         tipo: str = Form("hito")):
     usuario = await usuario_actual(request)
     if not usuario:
@@ -296,7 +296,7 @@ async def completar_plazo(request: Request, plazo_id: int):
 
 @router.post("/contratos/{contrato_id}/pago")
 async def registrar_cobro(request: Request, contrato_id: int,
-                          concepto: str = Form(...), monto: str = Form(...),
+                          concepto: str = Form(""), monto: str = Form(""),
                           numero_factura: str = Form(""), cobrado: str = Form(""),
                           fecha_conformidad: str = Form(""),
                           expediente_siaf: str = Form("")):

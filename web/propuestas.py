@@ -164,7 +164,7 @@ async def detalle_licitacion(request: Request, licitacion_id: str,
         except ValueError:
             detalle = None
 
-    return _plantillas(request).TemplateResponse("licitacion.html", {
+    return _plantillas(request).TemplateResponse(request, "licitacion.html", {
         # Se describen aqui y no en la plantilla: el texto de cada bandera
         # vive en un solo sitio, junto a la regla que la produce.
         "banderas": [describir(c) for c in (lic["banderas"] or [])],
@@ -282,7 +282,7 @@ async def analizar_con_ia(request: Request, licitacion_id: str,
 
 
 @router.post("/postular")
-async def postular(request: Request, licitacion_id: str = Form(...),
+async def postular(request: Request, licitacion_id: str = Form(""),
                    empresa_id: int = Form(...)):
     usuario = await usuario_actual(request)
     if not usuario:
@@ -358,7 +358,7 @@ async def listar(request: Request, aviso: str = "", error: str = "", cerradas: i
     ahora = fechas.ahora()
     vigentes = [f for f in filas if not f["fecha_cierre"] or f["fecha_cierre"] >= ahora]
     pasadas = [f for f in filas if f["fecha_cierre"] and f["fecha_cierre"] < ahora][::-1]
-    return _plantillas(request).TemplateResponse("propuestas.html", {
+    return _plantillas(request).TemplateResponse(request, "propuestas.html", {
         "request": request, "usuario": usuario,
         "propuestas": pasadas if cerradas else vigentes, "cerradas": bool(cerradas),
         "n_vigentes": len(vigentes), "n_cerradas": len(pasadas), "hay_alguna": bool(filas),
@@ -416,7 +416,7 @@ async def detalle(request: Request, propuesta_id: int, aviso: str = "", error: s
     armado = paquete_armado(propuesta_id)
     contenido_armado = await asyncio.to_thread(_contenido_zip, armado) if armado else None
     menor = cotizacion.es_cotizacion_menor(prop["tipo"])
-    return _plantillas(request).TemplateResponse("propuesta.html", {
+    return _plantillas(request).TemplateResponse(request, "propuesta.html", {
         "portal": _envio_portal(dict(prop), dict(empresa) if empresa else {}, condiciones,
                                 cotizacion.total(items) if items else None),
         "request": request, "usuario": usuario, "p": prop,
@@ -507,7 +507,7 @@ async def _precio_de_mercado(prop) -> dict | None:
 
 @router.post("/propuestas/{propuesta_id}/responder")
 async def responder(request: Request, propuesta_id: int,
-                    pregunta_id: int = Form(...), respuesta: str = Form(...)):
+                    pregunta_id: int = Form(...), respuesta: str = Form("")):
     """Guarda la respuesta y la aprende: la knowledge base evita repreguntar."""
     usuario = await usuario_actual(request)
     if not usuario:
@@ -791,7 +791,7 @@ async def marcar_enviada(request: Request, propuesta_id: int, enviada: int = For
 
 
 @router.post("/propuestas/{propuesta_id}/precio")
-async def fijar_precio(request: Request, propuesta_id: int, precio: str = Form(...)):
+async def fijar_precio(request: Request, propuesta_id: int, precio: str = Form("")):
     """El precio ofertado de una propuesta de un solo monto.
 
     Llega como texto y no como `float`: FastAPI aceptaba "nan", "inf" y
@@ -948,7 +948,7 @@ async def guardar_items(request: Request, propuesta_id: int):
 
 @router.post("/propuestas/{propuesta_id}/items/nuevo")
 async def agregar_item(request: Request, propuesta_id: int,
-                       descripcion: str = Form(...), cantidad: str = Form(...),
+                       descripcion: str = Form(""), cantidad: str = Form(""),
                        unidad: str = Form("")):
     """Para las fuentes que no publican items: se cargan a mano desde la SC."""
     usuario = await usuario_actual(request)
@@ -1065,7 +1065,7 @@ async def _imagenes(empresa_id: int, modo: str) -> dict | None:
 
 
 @router.post("/propuestas/{propuesta_id}/formato")
-async def subir_formato(request: Request, propuesta_id: int, tipo: str = Form(...),
+async def subir_formato(request: Request, propuesta_id: int, tipo: str = Form(""),
                         archivo: UploadFile = File(...)):  # noqa: B008
     """Sube la SC o la DJ tal como la mando la entidad, para devolverla llena."""
     usuario = await usuario_actual(request)

@@ -354,7 +354,7 @@ async def precios(request: Request):
     "aqui esta el catalogo". Un ancla dentro de una portada con scroll animado
     no sirve para ninguna de las tres cosas.
     """
-    return _plantillas(request).TemplateResponse("precios.html", {
+    return _plantillas(request).TemplateResponse(request, "precios.html", {
         "request": request,
         "usuario": await usuario_actual(request),
         "planes": await _planes(),
@@ -381,7 +381,7 @@ async def checkout(request: Request, plan_codigo: str,
         return RedirectResponse("/precios", status_code=303)
 
     importe = _desglose(_precio(plan, periodo))
-    return _plantillas(request).TemplateResponse("comprar.html", {
+    return _plantillas(request).TemplateResponse(request, "comprar.html", {
         "request": request,
         "usuario": await usuario_actual(request),
         "plan": plan,
@@ -398,7 +398,7 @@ async def checkout(request: Request, plan_codigo: str,
 
 
 @router.post("/comprar")
-async def confirmar(request: Request, plan: str = Form(...),
+async def confirmar(request: Request, plan: str = Form(""),
                     periodo: str = Form("mensual"), email: str = Form(""),
                     password: str = Form(""), nombre: str = Form("")):
     """Del boton de pagar a la pasarela, creando la cuenta por el camino si falta.
@@ -458,10 +458,20 @@ async def confirmar(request: Request, plan: str = Form(...),
 
 # ─── Checkout recurrente con Culqi ───────────────────────
 
+# POR QUE LOS CAMPOS DE TEXTO DE TODA LA WEB SON `Form("")` Y NO `Form(...)`
+#
+#   FastAPI 0.115 dejaba pasar un campo obligatorio que llegaba VACIO: lo
+#   descartaba y luego lo volvia a meter tal cual desde el cuerpo crudo. Cada
+#   endpoint se escribio contando con eso y valida el "" a su manera (aqui, un
+#   token vacio vuelve a /comprar con "vuelve a intentarlo"). Las versiones
+#   nuevas lo tratan como AUSENTE y responden un 422 en JSON que el usuario ve
+#   como una pagina rota. Con `Form("")` el vacio y el ausente llegan al
+#   endpoint como "" y lo maneja el mismo codigo que ya lo manejaba. Los campos
+#   `int` siguen con `Form(...)`: un "" ahi ya era un 422 antes.
 @router.post("/comprar/culqi")
-async def comprar_con_culqi(request: Request, plan: str = Form(...),
+async def comprar_con_culqi(request: Request, plan: str = Form(""),
                             periodo: str = Form("mensual"),
-                            token_id: str = Form(...), email: str = Form(""),
+                            token_id: str = Form(""), email: str = Form(""),
                             password: str = Form(""), nombre: str = Form("")):
     """Del token de la tarjeta a una suscripcion que se cobra sola cada periodo.
 

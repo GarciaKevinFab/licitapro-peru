@@ -151,7 +151,7 @@ async def ver_informes(request: Request):
                 WHERE e.usuario_id = $1
                 GROUP BY p.estado ORDER BY n DESC""", uid)
 
-    return _plantillas(request).TemplateResponse("informes.html", {
+    return _plantillas(request).TemplateResponse(request, "informes.html", {
         "request": request, "usuario": usuario,
         "r": resumen, "por_entidad": por_entidad, "por_mes": por_mes,
         "por_estado": por_estado,

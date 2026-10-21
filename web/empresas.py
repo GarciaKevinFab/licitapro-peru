@@ -86,7 +86,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
         )
     uso = {f["empresa_id"]: f["n"] for f in filas}
 
-    return _plantillas(request).TemplateResponse("empresas.html", {
+    return _plantillas(request).TemplateResponse(request, "empresas.html", {
         "request": request, "usuario": usuario, "empresas": empresas,
         "uso": uso, "departamentos": DEPARTAMENTOS,
         "aviso": aviso, "error": error,
@@ -105,7 +105,7 @@ async def form_nueva(request: Request):
 
 def _vista_nueva(request: Request, usuario, pre: dict | None = None,
                  aviso: str = "", error: str = ""):
-    return _plantillas(request).TemplateResponse("empresa_form.html", {
+    return _plantillas(request).TemplateResponse(request, "empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": None,
         "departamentos": DEPARTAMENTOS, "pre": pre,
         "aviso": aviso, "error": error,
@@ -142,7 +142,7 @@ async def _vista_editar(request: Request, usuario, empresa_id: int,
             """SELECT * FROM vencimientos WHERE empresa_id=$1
                 ORDER BY fecha_vencimiento""", empresa_id)
 
-    return _plantillas(request).TemplateResponse("empresa_form.html", {
+    return _plantillas(request).TemplateResponse(request, "empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": empresa,
         "departamentos": DEPARTAMENTOS, "pre": pre,
         "imagenes": await rutas_de(empresa_id),
@@ -395,7 +395,7 @@ def _claves(objeto: str) -> list[str]:
 @router.post("/empresas/{empresa_id}/experiencia")
 async def agregar_experiencia(
         request: Request, empresa_id: int,
-        entidad_contratante: str = Form(...), objeto_contrato: str = Form(...),
+        entidad_contratante: str = Form(""), objeto_contrato: str = Form(""),
         monto: str = Form(""), numero_contrato: str = Form(""),
         fecha_inicio: str = Form(""), fecha_fin: str = Form(""),
         conformidad: str = Form("")):
@@ -462,7 +462,7 @@ async def borrar_experiencia(request: Request, empresa_id: int, exp_id: int):
 @router.post("/empresas/{empresa_id}/equipo")
 async def agregar_miembro(
         request: Request, empresa_id: int,
-        nombre_completo: str = Form(...), titulo_profesional: str = Form(""),
+        nombre_completo: str = Form(""), titulo_profesional: str = Form(""),
         especialidad: str = Form(""), colegiatura: str = Form(""),
         # Texto y no int: con `int` un "5 años" o un "cinco" daba un 422 en
         # JSON en vez de volver al formulario con el motivo.
@@ -504,8 +504,8 @@ async def agregar_miembro(
 
 @router.post("/empresas/{empresa_id}/vencimiento")
 async def agregar_vencimiento(request: Request, empresa_id: int,
-                              tipo: str = Form(...),
-                              fecha_vencimiento: str = Form(...),
+                              tipo: str = Form(""),
+                              fecha_vencimiento: str = Form(""),
                               descripcion: str = Form("")):
     """Anota algo que caduca: poliza, carta fianza, certificado, vigencia.
 
@@ -690,7 +690,7 @@ async def subir_imagen(request: Request, empresa_id: int,
                        # `File(...)` en el default es como FastAPI declara una
                        # subida, no el `def f(x=[])` que persigue B008: el
                        # objeto es el descriptor que la ruta lee al montarse.
-                       tipo: str = Form(...), archivo: UploadFile = File(...)):  # noqa: B008
+                       tipo: str = Form(""), archivo: UploadFile = File(...)):  # noqa: B008
     """Sube el logo, la firma o el sello de una empresa.
 
     La imagen se valida y se reescribe en firma_manager: aqui solo se comprueba
@@ -723,7 +723,7 @@ async def subir_imagen(request: Request, empresa_id: int,
 
 
 @router.post("/empresas/{empresa_id}/imagen/borrar")
-async def quitar_imagen(request: Request, empresa_id: int, tipo: str = Form(...)):
+async def quitar_imagen(request: Request, empresa_id: int, tipo: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)

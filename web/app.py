@@ -782,7 +782,7 @@ async def portada(request: Request):
     if await usuario_actual(request):
         return RedirectResponse("/panel", status_code=303)
     from web.comprar import _comercio
-    return templates.TemplateResponse("landing.html", {
+    return templates.TemplateResponse(request, "landing.html", {
         "request": request,
         # Para el pie: quien presta el servicio y bajo que marca.
         "comercio": _comercio(),
@@ -813,7 +813,7 @@ async def privacidad(request: Request):
     exige la Ley 29733.
     """
     from web.comprar import _comercio, identidad_completa
-    return templates.TemplateResponse("privacidad.html", {
+    return templates.TemplateResponse(request, "privacidad.html", {
         "request": request,
         "usuario": await usuario_actual(request),
         # Los datos del responsable salen del entorno, como en el checkout: son
@@ -827,7 +827,7 @@ async def privacidad(request: Request):
 @app.get("/terminos", response_class=HTMLResponse)
 async def terminos(request: Request):
     from web.comprar import _comercio
-    return templates.TemplateResponse("terminos.html", {
+    return templates.TemplateResponse(request, "terminos.html", {
         "request": request,
         "usuario": await usuario_actual(request),
         "comercio": _comercio(),
@@ -930,7 +930,7 @@ async def panel(request: Request, q: str = "", region: str = "",
                                        bool(banderas), pagina,
                                        filas=las_vigentes if vigentes else suyas)
     resumen = await _resumen(uid, suyas, las_vigentes)
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "resumen": resumen,
         "licitaciones": filas,
@@ -957,7 +957,7 @@ async def parte_tabla(request: Request, q: str = "", region: str = "",
     vigentes = _vigentes_efectivo(request, vigentes)
     filas, total = await _licitaciones(usuario["id"], q, region, score_min,
                                        bool(vigentes), bool(banderas), pagina)
-    return templates.TemplateResponse("_tabla.html", {
+    return templates.TemplateResponse(request, "_tabla.html", {
         "request": request,
         "licitaciones": filas,
         **_contexto_paginado(q, region, score_min, vigentes, banderas, pagina, total),

@@ -129,7 +129,7 @@ async def ver(request: Request, aviso: str = "", error: str = ""):
     # si se ensena el boton de pagar a mano, que dice la confirmacion de
     # cancelar y que avisa el cambio de plan.
     culqi_datos = await datos_culqi(usuario["id"]) if susc.get("existe") else None
-    return _plantillas(request).TemplateResponse("suscripcion.html", {
+    return _plantillas(request).TemplateResponse(request, "suscripcion.html", {
         "request": request, "usuario": usuario, "s": susc,
         "planes": await _planes(), "historial": historial,
         "modo_pasarela": izipay.modo(),
@@ -150,7 +150,7 @@ async def ver(request: Request, aviso: str = "", error: str = ""):
 
 
 @router.post("/suscripcion/elegir")
-async def elegir(request: Request, plan: str = Form(...), periodo: str = Form("mensual")):
+async def elegir(request: Request, plan: str = Form(""), periodo: str = Form("mensual")):
     """Cambia de plan. Con Culqi eso es cancelar una suscripcion y crear otra.
 
     POR QUE NO ES UN UPDATE
@@ -344,7 +344,7 @@ async def iniciar_cobro(request: Request, usuario, volver_a: str = "/suscripcion
             _con_error(volver_a, "La pasarela no respondio. Intenta de nuevo"),
             status_code=303)
 
-    return _plantillas(request).TemplateResponse("pagar.html", {
+    return _plantillas(request).TemplateResponse(request, "pagar.html", {
         "request": request, "usuario": usuario,
         "token": resultado["token"], "modo": resultado["modo"],
         "numero_orden": numero_orden, "monto": monto,
@@ -362,7 +362,7 @@ async def pagar(request: Request):
 
 
 @router.post("/suscripcion/retorno")
-async def retorno(request: Request, numero_orden: str = Form(...),
+async def retorno(request: Request, numero_orden: str = Form(""),
                   simulado: str = Form("")):
     """Vuelta del navegador tras el formulario de pago.
 
