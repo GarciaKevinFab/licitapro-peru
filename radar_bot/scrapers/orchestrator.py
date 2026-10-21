@@ -521,6 +521,11 @@ FUENTES_DEL_PUENTE = {
     # cambia el enrutado. Esta aqui por lo otro que implica la lista: su fallo
     # desde el VPS es ESPERADO y no se reporta como novedad. Ver _diagnosticos.
     "ocds_oece": "OECE devuelve 403 al VPS; cosecha el puente peruano",
+    # Desde el 20/10/2026 09:55 el buscador de contratos menores tambien
+    # devuelve 403 al VPS en todas las consultas (desde Peru da 200). La
+    # cosecha paso a tools/traer_oece.py y SALE de la pasada del servidor:
+    # insistir cada hora desde una IP bloqueada solo alarga el bloqueo.
+    "oece_menores": "el buscador del OECE devuelve 403 al VPS; cosecha el puente",
 }
 
 
@@ -599,9 +604,9 @@ async def run_all_scrapers(user_id: int = 0) -> dict:
         # docstring de gob_pe.py: es la unica fuente de <8 UIT que cubre todo
         # el pais, y responde tambien al VPS.
         ("gob_pe", _run_gob_pe),
-        # Contratos menores (<=8 UIT) de las 25 regiones, desde la herramienta
-        # del OECE para la Ley 32069. Responde al VPS. Ver oece_menores.py.
-        ("oece_menores", _run_oece_menores),
+        # oece_menores (contratos menores <=8 UIT de las 25 regiones) ya NO
+        # corre aqui: el OECE bloquea al VPS desde el 20/10/2026 y lo cosecha
+        # la PC puente (tools/traer_oece.py). Ver FUENTES_DEL_PUENTE.
         # Estudios de mercado <8 UIT de la Municipalidad Provincial de
         # Tambopata, desde la API de su portal: no pasan por SEACE. Responde
         # al VPS y guarda la SC y el TDR de cada una. Ver mpt_tambopata.py.
