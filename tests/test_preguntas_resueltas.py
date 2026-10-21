@@ -46,8 +46,11 @@ async def test_al_abrir_la_propuesta_se_cierran_las_que_ya_tienen_respuesta(
                                                 "password": usuario["password"]})
         assert r.status_code == 303
         pagina = (await cliente.get(f"/propuestas/{pid}")).text
-        # Siguen a la vista, pero respondidas con el dato que ya se sabia.
-        assert "Respondida:</span> 00235500199892905762" in pagina
+        # Siguen a la vista, pero respondidas con el dato que ya se sabia. Del
+        # CCI solo el final: el entero va cifrado en la KB y no se copia en
+        # claro a la pregunta (ver tests/test_auditoria_cifrado.py).
+        assert "Respondida:</span> ****5762" in pagina
+        assert "00235500199892905762" not in pagina
         assert "Respondida:</span> GERENTE GENERAL" in pagina
 
         async with connection() as c:
@@ -58,7 +61,8 @@ async def test_al_abrir_la_propuesta_se_cierran_las_que_ya_tienen_respuesta(
                 "AND kb_clave='cuenta_corriente'", pid)
             pendientes = await c.fetchval(
                 "SELECT preguntas_pendientes FROM propuestas WHERE id=$1", pid)
-        assert fila["respuesta"] == "00235500199892905762"
+        assert fila["respuesta"] == "****5762"
+        assert await kb_get(empresa, "financiero", "cci") == "00235500199892905762"
         assert sigue == 1                 # lo que de verdad falta se sigue pidiendo
         assert pendientes == len(abiertas) - 3
         assert await kb_get(empresa, "legal", "cargo_representante") == "GERENTE GENERAL"

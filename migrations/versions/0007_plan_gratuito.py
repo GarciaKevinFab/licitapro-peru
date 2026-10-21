@@ -35,6 +35,10 @@ Revision ID: 0007
 Revises: 0006
 """
 from alembic import op
+
+# Idempotentes: no fallan si la tabla, columna o indice ya existe (ver
+# migrations/idempotente.py). Crean exactamente lo mismo que `op`.
+from migrations import idempotente as idem
 import sqlalchemy as sa
 
 revision = '0007'
@@ -46,7 +50,7 @@ depends_on = None
 def upgrade() -> None:
     # Por defecto TRUE para que los planes de pago que ya existen no se queden
     # mudos al aplicar la migracion. Solo el gratuito se marca en FALSE.
-    op.add_column('planes', sa.Column(
+    idem.add_column('planes', sa.Column(
         'alertas', sa.Boolean, nullable=False, server_default=sa.true()))
 
     op.execute("""

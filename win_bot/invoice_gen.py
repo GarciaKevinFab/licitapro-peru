@@ -1,24 +1,30 @@
 """Invoice Generator — Genera facturas para cobro."""
+import asyncio
 import logging
 import os
+from decimal import Decimal
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 from shared import fechas
-from shared.config import format_fecha, format_monto
+from shared.config import a_soles, desglose_igv, format_fecha, format_monto
 from shared.db import connection
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
+from shared.rutas import directorio
 
 log = logging.getLogger("win.invoice")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 
-async def generar_factura(contrato_id: int, monto: float, concepto: str,
+async def generar_factura(contrato_id: int, monto, concepto: str,
                            numero_factura: str | None = None) -> str:
     """Genera documento de factura para cobro.
+
+    `monto` en Decimal (o algo que `a_soles` entienda): es lo que se guarda en
+    pagos.monto, NUMERIC, y lo que se desglosa en subtotal e IGV.
 
     Returns: path al archivo generado
     """
@@ -113,7 +119,8 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     row = table.add_row()
     row.cells[0].text = "1"
     row.cells[1].text = f"{concepto}\n({contrato['objeto'][:150]})"
-    subtotal = monto / 1.18
+    monto = a_soles(monto) or Decimal(0)
+    subtotal, igv = desglose_igv(monto)
     row.cells[2].text = format_monto(subtotal)
     row.cells[3].text = format_monto(subtotal)
 
@@ -124,7 +131,7 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     total_table.style = "Table Grid"
     totales = [
         ("Sub Total:", format_monto(subtotal)),
-        ("IGV (18%):", format_monto(monto - subtotal)),
+        ("IGV (18%):", format_monto(igv)),
         ("TOTAL:", format_monto(monto)),
     ]
     for i, (label, value) in enumerate(totales):
@@ -166,7 +173,8 @@ async def generar_factura(contrato_id: int, monto: float, concepto: str,
     output_dir = os.path.join(TEMPLATES_DIR, "output", "facturas")
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, f"factura_{numero_factura.replace('-', '_')}.docx")
-    doc.save(path)
+    # python-docx escribe a disco de forma sincrona: fuera del bucle.
+    await asyncio.to_thread(doc.save, path)
 
     # Registrar en DB
     async with connection() as conn:

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from decimal import Decimal
 
 import asyncpg
 from dotenv import load_dotenv
@@ -56,14 +57,62 @@ def _password_obligatoria() -> str:
 # directa (5432) y el pooler de sesion no tienen ese problema.
 PUERTO_POOLER_TRANSACCION = 6543
 
+# Puerto si no hay POSTGRES_PORT ni DATABASE_URL: el de Postgres de serie.
+#
+#   Era el 5433, el que docker-compose.yml publica en el anfitrion para el
+#   desarrollo. Como valor por defecto era una trampa: en la maquina de
+#   desarrollo el 5433 lo ocupa el Postgres de OTRO proyecto, asi que un script
+#   lanzado sin .env hablaba con una base ajena. Produccion no lo usa (manda
+#   DATABASE_URL), las pruebas fijan el 5434 (tests/conftest.py) y quien usa el
+#   compose de desarrollo pone POSTGRES_PORT=5433 en su .env (.env.example).
+PUERTO_POR_DEFECTO = "5432"
+
+
+# Hosts que son esta maquina o el contenedor de la base del compose (`postgres`
+# en docker-compose.prod.yml, `db` en otros compose), por su nombre EXACTO.
+HOSTS_LOCALES = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "db"})
+
 
 def _es_gestionado(host: str) -> bool:
-    """Postgres gestionado (Supabase y compania) exige TLS; el local no lo tiene."""
-    return bool(host) and not host.startswith(("localhost", "127.", "db", "postgres"))
+    """Si la conexion a `host` tiene que ir con TLS.
+
+    POR QUE LISTA BLANCA EXACTA Y NO PREFIJOS
+
+      Antes era "todo lo que NO empiece por localhost, 127., db o postgres".
+      `db.<ref>.supabase.co` -- el host directo de Supabase -- empieza por
+      "db", asi que contaba como local y se conectaba SIN TLS: la contrasena y
+      los datos de los clientes viajaban en claro por Internet hasta donde el
+      servidor lo rechazara (o no). Lo mismo cualquier `postgres.algo.com`.
+
+      Ahora el TLS es lo de serie y solo se libra lo que esta en HOSTS_LOCALES,
+      escrito entero. Un host que falte en la lista falla RUIDOSO ("server does
+      not support SSL") y se arregla en un minuto; el fallo contrario era
+      callado.
+
+    LA SALIDA EXPLICITA
+
+      POSTGRES_SSLMODE=disable apaga el TLS para cualquier host. Es para un
+      Postgres de la red privada con otro nombre (otra maquina de la LAN, otro
+      servicio del compose): hay que escribirlo a mano, que es justo lo que lo
+      hace seguro. La miran tambien migrations/env.py y tools/crear_esquema.py,
+      que usan esta funcion.
+    """
+    if (os.getenv("POSTGRES_SSLMODE") or "").strip().lower() == "disable":
+        return False
+    host = (host or "").strip().lower()
+    # Sin host (una URL por socket unix) la conexion no sale de la maquina.
+    return bool(host) and host not in HOSTS_LOCALES
 
 
 async def _sin_reinicio(conn) -> None:
     """Ver `opciones["reset"]` en get_pool."""
+
+
+def _json_extra(valor):
+    """`default` de json.dumps para lo que asyncpg devuelve y JSON no conoce."""
+    if isinstance(valor, Decimal):
+        return float(valor)
+    raise TypeError(f"Object of type {type(valor).__name__} is not JSON serializable")
 
 
 async def _preparar_conexion(conn) -> None:
@@ -77,9 +126,14 @@ async def _preparar_conexion(conn) -> None:
     El encoder deja pasar lo que ya viene serializado: hay INSERT que mandan el
     JSON hecho cadena con un ::jsonb explicito, y volver a serializarlo lo
     guardaria como un texto entrecomillado dentro del JSON.
+
+    Un Decimal (los montos son NUMERIC desde 0021) sale como numero JSON: un
+    dict armado con una fila de la base no puede tumbar el INSERT con "Object
+    of type Decimal is not JSON serializable". En un JSONB el monto es para
+    leerlo, no para cuadrar caja: el valor exacto vive en su columna.
     """
     def codificar(valor):
-        return valor if isinstance(valor, str) else json.dumps(valor)
+        return valor if isinstance(valor, str) else json.dumps(valor, default=_json_extra)
 
     for tipo in ("jsonb", "json"):
         await conn.set_type_codec(
@@ -103,7 +157,7 @@ async def get_pool() -> asyncpg.Pool:
             return _pool
         url = os.getenv("DATABASE_URL") or ""
         host = os.getenv("POSTGRES_HOST", "localhost")
-        puerto = int(os.getenv("POSTGRES_PORT", "5433"))
+        puerto = int(os.getenv("POSTGRES_PORT", PUERTO_POR_DEFECTO))
 
         if url:
             from urllib.parse import urlparse
@@ -246,7 +300,8 @@ async def upsert_licitacion(data: dict) -> bool:
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"],
             data.get("entidad_tipo"), data["objeto"],
-            data.get("monto_referencial"), data.get("moneda", "PEN"),
+            monto_para_columna(data.get("monto_referencial"), f"{data['id']} referencial"),
+            data.get("moneda", "PEN"),
             data.get("fecha_publicacion"), data.get("fecha_cierre"),
             data.get("estado", "convocado"), data.get("departamento"),
             data.get("provincia"), data.get("url"),
@@ -274,40 +329,129 @@ async def marcar_notificada(lid: str):
 
 
 # ─── Knowledge Base ──────────────────────────────────────
+#
+# LOS DATOS BANCARIOS Y EL DNI VAN CIFRADOS EN `valor`
+#
+#   El CCI, la cuenta corriente y el DNI del representante estaban en claro.
+#   Un volcado de la base (un respaldo, una copia para depurar, un acceso
+#   indebido) se llevaba con ellos lo justo para suplantar a la empresa ante
+#   una entidad o desviar el pago de un contrato. Se cifran con la misma clave
+#   Fernet que las credenciales (shared/seguridad.py, LICITAPRO_SECRET_KEY),
+#   que vive FUERA de la base.
+#
+#   Se cifra al escribir y se descifra al leer, aqui y solo aqui: el resto del
+#   codigo pide y recibe el valor en claro igual que antes. Por eso nadie fuera
+#   de este bloque debe leer `knowledge_base.valor` con SQL propio; quien
+#   necesite todo, que use `kb_todos`.
+#
+#   POR QUE ESOS TRES Y NO TODA LA CATEGORIA `financiero`
+#
+#     - `entidad_bancaria` queda en claro: el nombre del banco no sirve para
+#       nada sin la cuenta, y cifrarlo solo complica mirarlo en la base.
+#     - `margen_defecto` (precios) tampoco es un dato personal.
+#     Ninguna consulta filtra ni ordena por el valor de estos tres campos
+#     (revisado: prep_bot, web, shared, win_bot); si alguna lo hiciera, con el
+#     valor cifrado dejaria de encontrar nada sin dar error.
+#
+#   LOS VALORES VIEJOS EN CLARO SE SIGUEN LEYENDO
+#
+#     Lo cifrado lleva el prefijo `PREFIJO_CIFRADO`; lo que no lo lleva se
+#     devuelve tal cual. Asi el cambio se despliega sin parar nada, y
+#     tools/cifrar_knowledge_base.py cifra lo que ya habia cuando convenga.
+CAMPOS_KB_CIFRADOS = frozenset({
+    ("financiero", "cci"),
+    ("financiero", "cuenta_corriente"),
+    ("legal", "dni_representante"),
+})
+PREFIJO_CIFRADO = "fernet:"
+
+
+def kb_es_cifrado(categoria: str, clave: str) -> bool:
+    return (categoria, clave) in CAMPOS_KB_CIFRADOS
+
+
+def kb_cifrar_valor(categoria: str, clave: str, valor: str | None) -> str | None:
+    """El texto que se guarda en `valor`: cifrado si el campo es sensible.
+
+    Idempotente: un valor que ya viene cifrado no se vuelve a cifrar (lo
+    necesita el script de migracion, que puede pasar dos veces)."""
+    if valor is None or not kb_es_cifrado(categoria, clave):
+        return valor
+    if valor.startswith(PREFIJO_CIFRADO):
+        return valor
+    from shared.seguridad import cifrar
+    return PREFIJO_CIFRADO + cifrar(valor).decode("ascii")
+
+
+def kb_descifrar_valor(valor: str | None) -> str | None:
+    """El valor en claro. Lo que no lleva el prefijo se devuelve tal cual.
+
+    Si la clave actual no lo abre (LICITAPRO_SECRET_KEY rotada sin re-cifrar)
+    devuelve None: el dato cuenta como desconocido y el bot lo vuelve a
+    preguntar. Nunca devuelve el texto cifrado, que acabaria impreso en un
+    anexo como si fuera el CCI."""
+    if not valor or not valor.startswith(PREFIJO_CIFRADO):
+        return valor
+    from shared.seguridad import descifrar
+    return descifrar(valor[len(PREFIJO_CIFRADO):].encode("ascii"))
+
+
+def kb_para_registro(categoria: str, clave: str, valor: str | None) -> str | None:
+    """Lo que se apunta en `preguntas.respuesta` cuando el dato acaba en la KB.
+
+    Esa columna es solo un registro de que se respondio (nadie la vuelve a
+    leer para rellenar documentos: el dato bueno esta en la KB). Guardar ahi el
+    CCI en claro deshacia el cifrado de arriba, asi que de los campos sensibles
+    se apuntan solo los ultimos cuatro caracteres."""
+    if valor is None or not kb_es_cifrado(categoria, clave):
+        return valor
+    return "****" + valor[-4:] if len(valor) > 4 else "****"
+
+
 async def kb_get(empresa_id: int, categoria: str, clave: str,
                  conn=None) -> str | None:
     # Leer y contar el uso en un solo viaje: eran dos consultas por dato, y la
     # ficha de una propuesta pide una docena de datos. `conn` reutiliza la de
     # quien llama (ver `_conexion_o_nueva`).
     async with _conexion_o_nueva(conn) as c:
-        return await c.fetchval(
+        valor = await c.fetchval(
             """UPDATE knowledge_base SET usado_count = usado_count + 1
                 WHERE empresa_id=$1 AND categoria=$2 AND clave=$3
             RETURNING valor""",
             empresa_id, categoria, clave,
         )
+    return kb_descifrar_valor(valor)
 
 
 async def kb_todos(empresa_id: int, conn=None) -> dict[tuple[str, str], str]:
     """Todo lo que se sabe de la empresa, {(categoria, clave): valor}, en un
     solo viaje. Para quien revisa muchos datos a la vez (el validador pedia
-    uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar."""
+    uno por uno, con su ida y vuelta cada uno). No cuenta usos: mirar no es usar.
+
+    Un valor cifrado que la clave actual no abre se omite: cuenta como no
+    sabido, igual que en `kb_get`."""
     async with _conexion_o_nueva(conn) as c:
         filas = await c.fetch(
             "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
             empresa_id)
-    return {(f["categoria"], f["clave"]): f["valor"] for f in filas}
+    todos = {}
+    for f in filas:
+        valor = kb_descifrar_valor(f["valor"])
+        if valor is not None:
+            todos[(f["categoria"], f["clave"])] = valor
+    return todos
 
 
 async def kb_set(empresa_id: int, categoria: str, clave: str, valor: str,
                  fuente="usuario_respuesta", conn=None):
+    guardado = kb_cifrar_valor(categoria, clave, valor)
     async with _conexion_o_nueva(conn) as c:
         await c.execute(
             """INSERT INTO knowledge_base (empresa_id, categoria, clave, valor, fuente)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (empresa_id, categoria, clave) 
+            ON CONFLICT (empresa_id, categoria, clave)
             DO UPDATE SET valor=$4, updated_at=NOW()""",
-            empresa_id, categoria, clave, valor, fuente,
+            empresa_id, categoria, clave, guardado, fuente,
         )
 
 
@@ -360,10 +504,12 @@ async def responder_pregunta(pregunta_id: int, respuesta: str):
         row = await conn.fetchrow("SELECT * FROM preguntas WHERE id=$1", pregunta_id)
         if not row:
             return
+        # Del CCI o el DNI se apuntan solo los ultimos digitos: el dato entero
+        # va cifrado a la KB (ver `kb_para_registro`).
         await conn.execute(
             """UPDATE preguntas SET respuesta=$2, respondida=TRUE, responded_at=NOW()
             WHERE id=$1""",
-            pregunta_id, respuesta,
+            pregunta_id, kb_para_registro(row["kb_categoria"], row["kb_clave"], respuesta),
         )
         # Guardar en KB si tiene categoría definida
         if row["kb_categoria"] and row["kb_clave"]:
@@ -415,21 +561,38 @@ async def update_config(user_id: int, **kwargs):
 
 
 # ─── Contratos ───────────────────────────────────────────
-async def get_contratos_activos(empresa_id: int | None = None):
+async def get_contratos_activos(empresa_id: int | None = None, *,
+                                usuario_id: int | None = None):
+    """Contratos sin pagar ni cancelar de UNA empresa o de UNA cuenta.
+
+    POR QUE EXIGE FILTRO: sin `empresa_id` devolvia los contratos de TODAS las
+    empresas de la plataforma. Bastaba un llamador que olvidara el argumento
+    (o le pasara 0 / None de una sesion vacia) para ensenarle a un cliente los
+    contratos de los demas. Ahora sin filtro es un error de programacion, no
+    una fuga.
+    """
+    if empresa_id is None and usuario_id is None:
+        raise ValueError("get_contratos_activos exige empresa_id o usuario_id")
     async with connection() as conn:
-        if empresa_id:
+        if empresa_id is not None:
             return await conn.fetch(
                 """SELECT c.*, l.objeto, l.entidad FROM contratos c
                 JOIN licitaciones l ON c.licitacion_id = l.id
                 WHERE c.empresa_id=$1 AND c.estado NOT IN ('pagado','cancelado')
+                  AND ($2::int IS NULL OR EXISTS (
+                        SELECT 1 FROM empresas e
+                         WHERE e.id = c.empresa_id AND e.usuario_id = $2))
                 ORDER BY c.fecha_entrega_final""",
-                empresa_id,
+                empresa_id, usuario_id,
             )
         return await conn.fetch(
             """SELECT c.*, l.objeto, l.entidad FROM contratos c
             JOIN licitaciones l ON c.licitacion_id = l.id
-            WHERE c.estado NOT IN ('pagado','cancelado')
-            ORDER BY c.fecha_entrega_final"""
+            JOIN empresas e ON c.empresa_id = e.id
+            WHERE e.usuario_id = $1
+              AND c.estado NOT IN ('pagado','cancelado')
+            ORDER BY c.fecha_entrega_final""",
+            usuario_id,
         )
 
 
@@ -570,6 +733,35 @@ async def purgar_documentos_viejos(dias: int = 30, dias_pesados: int = 3) -> int
     return int(r.split()[-1]) if r else 0
 
 
+# Lo que cabe en NUMERIC(14,2), el tipo de las columnas de dinero (0021).
+_TOPE_MONTO = 10 ** 12
+
+
+def monto_para_columna(valor, que: str = "monto"):
+    """El monto listo para una columna NUMERIC(14,2), o None si no es guardable.
+
+    POR QUE
+
+      Con REAL cualquier cifra entraba, aunque fuera basura de un scraper. Con
+      NUMERIC(14,2) una de un billon o mas es un "numeric field overflow" y el
+      INSERT entero falla: una sola celda mal leida tiraba la licitacion
+      completa, con su objeto, su entidad y su cierre, que si estaban bien.
+      Se guarda la licitacion sin ese monto, que es lo que el resto del
+      codigo ya entiende como "no publicado", y queda en el log.
+
+      NaN e infinito (un float de un JSON raro) tambien van a None.
+    """
+    from shared.config import a_soles
+
+    if valor is None:
+        return None
+    d = a_soles(valor)
+    if d is None or abs(d) >= _TOPE_MONTO:
+        log.warning("%s no guardable en NUMERIC(14,2): %r -> NULL", que, valor)
+        return None
+    return d
+
+
 async def refrescar_licitacion(data: dict) -> bool:
     """Inserta la licitacion o refresca la existente. True si es nueva.
 
@@ -627,12 +819,14 @@ async def refrescar_licitacion(data: dict) -> bool:
             data["id"], data["fuente"], data.get("tipo"),
             data.get("nomenclatura"), data["entidad"], data.get("entidad_tipo"),
             data.get("entidad_ruc"), data["objeto"],
-            data.get("monto_referencial"), data.get("moneda", "PEN"),
+            monto_para_columna(data.get("monto_referencial"), f"{data['id']} referencial"),
+            data.get("moneda", "PEN"),
             data.get("fecha_publicacion"), data.get("fecha_cierre"),
             data.get("estado", "convocado"), data.get("departamento"),
             data.get("url"), data.get("bases_urls", []),
             data.get("numero_postores"), data.get("proveedor_ganador"),
-            data.get("proveedor_ruc"), data.get("monto_adjudicado"),
+            data.get("proveedor_ruc"),
+            monto_para_columna(data.get("monto_adjudicado"), f"{data['id']} adjudicado"),
             data.get("plazo_consultas_dias"),
             json.dumps(data.get("banderas") or []), data.get("banderas_nivel", 0),
             data.get("categoria"), data.get("descripcion"),
@@ -752,12 +946,14 @@ async def licitaciones_para_usuario(usuario_id: int, limite: int = 50,
     if config["regiones"]:
         params.append(list(config["regiones"]))
         condiciones.append(f"(departamento IS NULL OR departamento = ANY(${len(params)}))")
+    # Decimal tal cual (NUMERIC desde 0021): comparar contra un float
+    # convertido podia dejar fuera la licitacion de exactamente el minimo.
     if config["monto_min"] is not None:
-        params.append(float(config["monto_min"]))
+        params.append(config["monto_min"])
         condiciones.append(
             f"(monto_referencial IS NULL OR monto_referencial >= ${len(params)})")
     if config["monto_max"] is not None:
-        params.append(float(config["monto_max"]))
+        params.append(config["monto_max"])
         condiciones.append(
             f"(monto_referencial IS NULL OR monto_referencial <= ${len(params)})")
     condiciones.append("descartado = FALSE")
@@ -841,6 +1037,72 @@ async def crear_usuario(email: str, password_hash: str, nombre: str | None = Non
         from shared.suscripciones import crear_suscripcion_prueba
         await crear_suscripcion_prueba(fila["id"])
     return fila
+
+
+# ─── Verificacion del correo (migracion 0022) ────────────
+
+async def crear_token_verificacion(usuario_id: int, email: str, token_hash: str,
+                                   expira) -> None:
+    """Guarda el hash del enlace, nunca el enlace. Ver nuevo_token_recuperacion.
+
+    Va con el `email` al que se mando: si la cuenta cambia de correo antes de
+    abrirlo, el enlace viejo deja de verificar nada (ver verificar_correo).
+    """
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO tokens_verificacion (usuario_id, email, token_hash, expira)
+               VALUES ($1, LOWER($2), $3, $4)""",
+            usuario_id, email.strip(), token_hash, expira)
+
+
+async def verificaciones_recientes(usuario_id: int, horas: int = 1) -> int:
+    """Cuantos enlaces de verificacion se mandaron a esta cuenta ultimamente.
+
+    `created_at` nace en hora de Lima (default de la 0022), asi que se compara
+    con la hora de Lima y no con NOW() a secas.
+    """
+    async with connection() as conn:
+        return await conn.fetchval(
+            f"""SELECT COUNT(*) FROM tokens_verificacion
+                 WHERE usuario_id = $1
+                   AND created_at > {_AHORA_LIMA} - ($2 || ' hours')::interval""",
+            usuario_id, str(horas))
+
+
+async def verificar_correo(token_hash: str) -> int | None:
+    """Consume un enlace de verificacion y marca el correo. Id del usuario o None.
+
+    Todo en una transaccion y con la condicion DENTRO del UPDATE, como en
+    consumir_token_y_cambiar_password: entre un SELECT y el UPDATE cabria un
+    segundo clic con el mismo enlace.
+
+    El enlace solo vale si el correo de la cuenta sigue siendo el que lo
+    recibio. Si no, un enlace mandado al correo viejo verificaria el nuevo, que
+    nadie ha demostrado controlar.
+    """
+    async with connection() as conn, conn.transaction():
+        uid = await conn.fetchval(
+            f"""UPDATE tokens_verificacion t SET usado_en = {_AHORA_LIMA}
+                  FROM usuarios u
+                 WHERE t.token_hash = $1
+                   AND t.usado_en IS NULL
+                   AND t.expira > {_AHORA_LIMA}
+                   AND u.id = t.usuario_id
+                   AND u.activo = TRUE
+                   AND u.email = t.email
+             RETURNING t.usuario_id""",
+            token_hash)
+        if not uid:
+            return None
+        await conn.execute(
+            f"""UPDATE usuarios
+                   SET email_verificado_en = COALESCE(email_verificado_en, {_AHORA_LIMA})
+                 WHERE id = $1""", uid)
+        # Los demas enlaces pendientes ya no hacen falta: que no queden vivos.
+        await conn.execute(
+            f"""UPDATE tokens_verificacion SET usado_en = {_AHORA_LIMA}
+                 WHERE usuario_id = $1 AND usado_en IS NULL""", uid)
+    return uid
 
 
 async def get_usuario_por_email(email: str, incluso_inactivo: bool = False):

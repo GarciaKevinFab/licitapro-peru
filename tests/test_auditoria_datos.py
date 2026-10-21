@@ -135,7 +135,7 @@ async def test_quitar_el_ultimo_item_con_precio_deja_el_total_en_null(empresa, m
         async with connection() as c:
             await cotizacion._recalcular(c, pid)
             assert await c.fetchval(
-                "SELECT precio_ofertado FROM propuestas WHERE id=$1", pid) == pytest.approx(9.0)
+                "SELECT precio_ofertado FROM propuestas WHERE id=$1", pid) == Decimal("9.00")
             con_precio = await c.fetchval(
                 "SELECT id FROM propuesta_items WHERE propuesta_id=$1 AND orden=1", pid)
         await cotizacion.quitar(pid, con_precio)
@@ -159,7 +159,7 @@ async def test_quitar_un_item_sin_precio_respeta_el_monto_puesto_a_mano(empresa,
         await cotizacion.quitar(pid, uno)
         async with connection() as c:
             assert await c.fetchval(
-                "SELECT precio_ofertado FROM propuestas WHERE id=$1", pid) == pytest.approx(1500)
+                "SELECT precio_ofertado FROM propuestas WHERE id=$1", pid) == Decimal("1500.00")
     finally:
         await _limpiar(lic)
 

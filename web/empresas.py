@@ -12,6 +12,7 @@ import asyncio
 import logging
 import re
 from datetime import date
+from decimal import Decimal
 from urllib.parse import quote_plus
 
 import asyncpg
@@ -37,7 +38,7 @@ from shared.archivos import (
     guardar_imagen,
     rutas_de,
 )
-from shared.config import DEPARTAMENTOS, normalizar, parse_monto
+from shared.config import DEPARTAMENTOS, a_soles, normalizar, parse_monto
 from shared.db import connection, empresa_es_de, empresas_de
 from shared.suscripciones import puede_agregar_empresa
 from web.auth import usuario_actual
@@ -86,7 +87,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
         )
     uso = {f["empresa_id"]: f["n"] for f in filas}
 
-    return _plantillas(request).TemplateResponse("empresas.html", {
+    return _plantillas(request).TemplateResponse(request, "empresas.html", {
         "request": request, "usuario": usuario, "empresas": empresas,
         "uso": uso, "departamentos": DEPARTAMENTOS,
         "aviso": aviso, "error": error,
@@ -105,7 +106,7 @@ async def form_nueva(request: Request):
 
 def _vista_nueva(request: Request, usuario, pre: dict | None = None,
                  aviso: str = "", error: str = ""):
-    return _plantillas(request).TemplateResponse("empresa_form.html", {
+    return _plantillas(request).TemplateResponse(request, "empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": None,
         "departamentos": DEPARTAMENTOS, "pre": pre,
         "aviso": aviso, "error": error,
@@ -142,7 +143,7 @@ async def _vista_editar(request: Request, usuario, empresa_id: int,
             """SELECT * FROM vencimientos WHERE empresa_id=$1
                 ORDER BY fecha_vencimiento""", empresa_id)
 
-    return _plantillas(request).TemplateResponse("empresa_form.html", {
+    return _plantillas(request).TemplateResponse(request, "empresa_form.html", {
         "request": request, "usuario": usuario, "empresa": empresa,
         "departamentos": DEPARTAMENTOS, "pre": pre,
         "imagenes": await rutas_de(empresa_id),
@@ -353,13 +354,17 @@ def _fecha_estricta(texto: str, nombre: str):
         raise DatoInvalido(f"La {nombre} no es una fecha válida.") from None
 
 
-def _monto_formulario(texto: str) -> float | None:
+def _monto_formulario(texto: str) -> Decimal | None:
     """Monto escrito por el usuario: None si viene vacio, DatoInvalido si no vale.
 
     Se marca como soles antes de pasarlo a `parse_monto`: sin moneda esa
     funcion descarta los enteros sueltos ("15000") por si son un ano o un
     correlativo, y aqui el campo ES un monto. Los espacios entre grupos de
     miles ("120 000") se juntan para no leer solo "120".
+
+    Sale en Decimal porque va a experiencia.monto, NUMERIC desde 0021.
+    `parse_monto` da un float con a lo sumo dos decimales, que `a_soles`
+    devuelve exacto a lo que se escribio.
     """
     texto = (texto or "").strip()
     if not texto:
@@ -371,7 +376,7 @@ def _monto_formulario(texto: str) -> float | None:
     if valor is None:
         raise DatoInvalido(
             "El monto no es válido. Escríbelo en soles, por ejemplo 15000 o 15,000.50.")
-    return valor
+    return a_soles(valor)
 
 
 def _claves(objeto: str) -> list[str]:
@@ -395,7 +400,7 @@ def _claves(objeto: str) -> list[str]:
 @router.post("/empresas/{empresa_id}/experiencia")
 async def agregar_experiencia(
         request: Request, empresa_id: int,
-        entidad_contratante: str = Form(...), objeto_contrato: str = Form(...),
+        entidad_contratante: str = Form(""), objeto_contrato: str = Form(""),
         monto: str = Form(""), numero_contrato: str = Form(""),
         fecha_inicio: str = Form(""), fecha_fin: str = Form(""),
         conformidad: str = Form("")):
@@ -462,7 +467,7 @@ async def borrar_experiencia(request: Request, empresa_id: int, exp_id: int):
 @router.post("/empresas/{empresa_id}/equipo")
 async def agregar_miembro(
         request: Request, empresa_id: int,
-        nombre_completo: str = Form(...), titulo_profesional: str = Form(""),
+        nombre_completo: str = Form(""), titulo_profesional: str = Form(""),
         especialidad: str = Form(""), colegiatura: str = Form(""),
         # Texto y no int: con `int` un "5 años" o un "cinco" daba un 422 en
         # JSON en vez de volver al formulario con el motivo.
@@ -504,8 +509,8 @@ async def agregar_miembro(
 
 @router.post("/empresas/{empresa_id}/vencimiento")
 async def agregar_vencimiento(request: Request, empresa_id: int,
-                              tipo: str = Form(...),
-                              fecha_vencimiento: str = Form(...),
+                              tipo: str = Form(""),
+                              fecha_vencimiento: str = Form(""),
                               descripcion: str = Form("")):
     """Anota algo que caduca: poliza, carta fianza, certificado, vigencia.
 
@@ -690,7 +695,7 @@ async def subir_imagen(request: Request, empresa_id: int,
                        # `File(...)` en el default es como FastAPI declara una
                        # subida, no el `def f(x=[])` que persigue B008: el
                        # objeto es el descriptor que la ruta lee al montarse.
-                       tipo: str = Form(...), archivo: UploadFile = File(...)):  # noqa: B008
+                       tipo: str = Form(""), archivo: UploadFile = File(...)):  # noqa: B008
     """Sube el logo, la firma o el sello de una empresa.
 
     La imagen se valida y se reescribe en firma_manager: aqui solo se comprueba
@@ -723,7 +728,7 @@ async def subir_imagen(request: Request, empresa_id: int,
 
 
 @router.post("/empresas/{empresa_id}/imagen/borrar")
-async def quitar_imagen(request: Request, empresa_id: int, tipo: str = Form(...)):
+async def quitar_imagen(request: Request, empresa_id: int, tipo: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)

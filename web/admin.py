@@ -32,7 +32,7 @@ import os
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared import fechas, ia
@@ -52,10 +52,17 @@ from shared.admin_cuentas import (
     poner_activo,
     resumir_cuentas,
 )
+from shared.config import a_soles
 from shared.db import get_usuario
 from shared.seguridad import hashear_password, password_debil
 from shared.suscripciones import DIAS_PRUEBA, activar_manual
-from web.auth import usuario_actual
+from web.auth import (
+    _origen_para_enlaces,
+    correo_verificado,
+    enviar_verificacion,
+    huella_de,
+    usuario_actual,
+)
 
 log = logging.getLogger("web.admin")
 router = APIRouter()
@@ -73,20 +80,76 @@ async def _exige_dueno(request: Request):
     suyo. Aqui se mira el original: asi el panel de administracion sigue
     respondiendo desde dentro -- para salir, para abrir otra ficha -- y las
     acciones quedan registradas a nombre del dueno, no del cliente.
+
+    EL CORREO TIENE QUE ESTAR VERIFICADO
+
+      El rol se decide por correo, y hasta la migracion 0022 el alta no
+      comprobaba que el correo fuera de quien lo escribia: si la cuenta del
+      dueno no existia todavia (base nueva, correo de dueno cambiado en el
+      .env), el primero que la registrara era administrador. Ahora, ademas de
+      casar el correo, la cuenta tiene que haberlo confirmado con el enlace
+      (web/auth.py, correo_verificado). Las cuentas anteriores a la 0022 se
+      dieron por verificadas al migrar.
+
+    LA SESION DEL DUENO SIGUE SIENDO REVOCABLE DESDE DENTRO
+
+      Mientras suplanta, la huella de la sesion es la del cliente; la suya va
+      en `admin_huella`. Se comprueba aqui: si el dueno cambio su contrasena
+      desde otro sitio (porque sospecha que le robaron la sesion), una sesion
+      metida en la cuenta de un cliente no puede seguir mandando como admin.
     """
     correo_dueno = (os.getenv("LICITAPRO_ADMIN_EMAIL") or "").strip().lower()
     if not correo_dueno:
         raise HTTPException(status_code=404)
 
     original = request.session.get("admin_original")
-    usuario = await get_usuario(original) if original else await usuario_actual(request)
-    if not usuario or (usuario["email"] or "").strip().lower() != correo_dueno:
+    if original:
+        usuario = await get_usuario(original)
+        if usuario and request.session.get("admin_huella") != huella_de(usuario):
+            log.warning("Sesion de suplantacion del admin %s revocada: su "
+                        "contrasena cambio o la sesion es anterior a la huella",
+                        original)
+            request.session.clear()
+            raise HTTPException(status_code=404)
+    else:
+        usuario = await usuario_actual(request)
+    if (not usuario or (usuario["email"] or "").strip().lower() != correo_dueno
+            or not correo_verificado(usuario)):
         # Se registra el intento CON sesion: si alguien esta probando rutas de
         # administracion, conviene que quede escrito quien.
         if usuario:
             log.warning("Acceso a /admin denegado a %s", usuario["email"])
         raise HTTPException(status_code=404)
+    if original:
+        # Sin el hash: este valor va al contexto de las plantillas, igual que
+        # el de usuario_actual.
+        usuario = {k: v for k, v in dict(usuario).items() if k != "password_hash"}
     return usuario
+
+
+def _volver_a_mi_sesion(request: Request):
+    """Deshace la suplantacion: el dueno vuelve a su id y a SU huella.
+
+    La huella se restaura, no se deja que usuario_actual la vuelva a sellar: si
+    el dueno cambio la contrasena mientras estaba dentro, la que se guardo al
+    entrar ya no casa y la sesion queda revocada, que es lo que debe pasar.
+
+    Una suplantacion sin `admin_huella` (abierta antes de que existiera) no
+    tiene con que restaurarse: se cierra la sesion entera y el dueno vuelve a
+    entrar. Dejar que se resellara le devolveria el admin sin comprobar nada.
+
+    Devuelve el id del dueno, o None si no hay sesion de dueno a la que volver.
+    """
+    original = request.session.pop("admin_original", None)
+    huella = request.session.pop("admin_huella", None)
+    if not original:
+        return None
+    if not huella:
+        request.session.clear()
+        return None
+    request.session["usuario_id"] = original
+    request.session["huella"] = huella
+    return original
 
 
 @router.get("/admin/ia", response_class=HTMLResponse)
@@ -98,7 +161,7 @@ async def gasto_ia(request: Request):
     repartirla por plan.
     """
     usuario = await _exige_dueno(request)
-    return _plantillas(request).TemplateResponse("admin_ia.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_ia.html", {
         "request": request, "usuario": usuario,
         "g": await ia.gasto_detallado(),
     })
@@ -120,7 +183,7 @@ async def clientes(request: Request, q: str = "", plan: str = "", estado: str = 
     filas, con_acceso = await listar_cuentas()
     if estado not in FILTROS_ESTADO:
         estado = ""
-    return _plantillas(request).TemplateResponse("admin_clientes.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_clientes.html", {
         "request": request, "usuario": usuario,
         "cuentas": filtrar_cuentas(filas, q, plan, estado),
         "cifras": {**resumir_cuentas(filas), "ingresos": await ingresos_del_mes()},
@@ -141,15 +204,19 @@ def _volver(usuario_id: int, volver: str, **params) -> RedirectResponse:
 
 
 @router.post("/admin/clientes/{usuario_id}/plan")
-async def poner_plan(request: Request, usuario_id: int, plan: str = Form(...),
-                     estado: str = Form(...), periodo: str = Form("mensual"),
+async def poner_plan(request: Request, usuario_id: int, plan: str = Form(""),
+                     estado: str = Form(""), periodo: str = Form("mensual"),
                      vence: str = Form(""), monto: str = Form(""), nota: str = Form(""),
                      volver: str = Form("")):
     usuario = await _exige_dueno(request)
     try:
         vence_dt = datetime.fromisoformat(vence) if vence.strip() else None
-        monto_num = float(monto.replace(",", ".")) if monto.strip() else None
     except ValueError:
+        return _volver(usuario_id, volver, error="Fecha o monto no válidos")
+    # Decimal y con tope: pagos_suscripcion.monto es NUMERIC(12,2), y un "inf"
+    # que float() aceptaba era un "numeric field overflow" (un 500) al guardar.
+    monto_num = a_soles(monto.replace(",", ".")) if monto.strip() else None
+    if monto.strip() and (monto_num is None or not 0 <= monto_num < 10 ** 10):
         return _volver(usuario_id, volver, error="Fecha o monto no válidos")
     ok = await activar_manual(usuario_id, plan, estado, periodo, vence_dt,
                               nota.strip() or None, monto_num, por=usuario["email"])
@@ -170,7 +237,7 @@ async def detalle(request: Request, usuario_id: int, aviso: str = "", error: str
     d = await detalle_cuenta(usuario_id)
     if not d:
         raise HTTPException(status_code=404)
-    return _plantillas(request).TemplateResponse("admin_cliente.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente.html", {
         "request": request, "usuario": usuario, **d,
         "planes": await planes_activos(), "hoy": fechas.hoy(),
         "es_dueno": (d["c"]["email"] or "").lower() == (usuario["email"] or "").lower(),
@@ -199,8 +266,20 @@ async def entrar_como(request: Request, usuario_id: int):
         # usuario_actual limpia la sesion si la cuenta esta desactivada: el
         # dueno se quedaria fuera del todo en la peticion siguiente.
         return _volver(usuario_id, "detalle", error="Activa la cuenta antes de entrar en ella.")
+    fila = await get_usuario(c["id"])
+    if not fila:
+        raise HTTPException(status_code=404)
+    if not request.session.get("admin_original"):
+        # La huella del dueno se guarda la primera vez; si salta de un cliente
+        # a otro sin salir, la que vale sigue siendo la de cuando entro.
+        # usuario_actual (via _exige_dueno) acaba de validarla.
+        request.session["admin_huella"] = request.session.get("huella")
     request.session["admin_original"] = usuario["id"]
     request.session["usuario_id"] = c["id"]
+    # Sellada con la huella del cliente: si el cliente cambia su contrasena
+    # mientras el dueno esta dentro, la suplantacion cae como cualquier otra
+    # sesion suya.
+    request.session["huella"] = huella_de(fila)
     log.info("Admin %s entro en la cuenta %s (%s)", usuario["email"], c["id"], c["email"])
     return RedirectResponse("/panel", status_code=303)
 
@@ -214,11 +293,10 @@ async def salir_de_cuenta(request: Request):
     mientras tanto y `usuario_actual` ya no la resuelve. Por eso no pasa por
     _exige_dueno: basta con que la sesion lleve `admin_original`.
     """
-    original = request.session.pop("admin_original", None)
+    visitada = request.session.get("usuario_id")
+    original = _volver_a_mi_sesion(request)
     if not original:
         return RedirectResponse("/panel", status_code=303)
-    visitada = request.session.get("usuario_id")
-    request.session["usuario_id"] = original
     log.info("Admin %s salio de la cuenta %s", original, visitada)
     destino = f"/admin/clientes/{visitada}" if visitada else "/admin/clientes"
     return RedirectResponse(destino, status_code=303)
@@ -243,7 +321,7 @@ async def eliminar(request: Request, usuario_id: int, confirmacion: str = Form("
     if request.session.get("usuario_id") == c["id"]:
         # Se estaba dentro de esa cuenta: primero se sale, o la sesion
         # quedaria apuntando a una fila que ya no existe.
-        request.session["usuario_id"] = request.session.pop("admin_original")
+        _volver_a_mi_sesion(request)
     try:
         resumen = await borrar_cuenta_completa(usuario_id)
     except RuntimeError as e:
@@ -268,7 +346,7 @@ async def form_nueva(request: Request):
     """Alta de una cuenta por el dueno: para el cliente que llama por telefono
     y al que se le manda el acceso ya hecho, con su plan puesto."""
     usuario = await _exige_dueno(request)
-    return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
         "request": request, "usuario": usuario, "modo": "nueva", "c": None,
         "planes": await planes_activos(),
         "valores": {"email": "", "nombre": "", "plan": "pro", "estado": "prueba",
@@ -279,8 +357,9 @@ async def form_nueva(request: Request):
 
 
 @router.post("/admin/clientes/nueva", response_class=HTMLResponse)
-async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Form(""),
-                      password: str = Form(...), plan: str = Form(...),
+async def crear_nueva(request: Request, tareas: BackgroundTasks,
+                      email: str = Form(""), nombre: str = Form(""),
+                      password: str = Form(""), plan: str = Form(""),
                       estado: str = Form("prueba"), periodo: str = Form("mensual"),
                       vence: str = Form("")):
     usuario = await _exige_dueno(request)
@@ -288,7 +367,7 @@ async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Fo
                "periodo": periodo, "vence": vence}
 
     def con_error(msg: str):
-        return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+        return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
             "request": request, "usuario": usuario, "modo": "nueva", "c": None,
             "planes": planes, "valores": valores, "password_sugerida": password,
             "error": msg}, status_code=400)
@@ -306,7 +385,13 @@ async def crear_nueva(request: Request, email: str = Form(...), nombre: str = Fo
     if not fila:
         return con_error(error)
     log.info("Admin %s creo la cuenta %s (%s)", usuario["email"], fila["id"], fila["email"])
-    aviso = error or "Cuenta creada. Entrega la contraseña por un canal seguro."
+    # La cuenta nace sin verificar, como cualquier otra: que el dueno la cree no
+    # demuestra que el correo sea del cliente (una errata basta). El enlace le
+    # llega al cliente y, hasta abrirlo, ve la franja de "confirma tu correo".
+    tareas.add_task(enviar_verificacion, fila["id"], fila["email"],
+                    _origen_para_enlaces(request))
+    aviso = error or ("Cuenta creada. Entrega la contraseña por un canal seguro; "
+                      "le enviamos al cliente un enlace para confirmar su correo.")
     return _volver(fila["id"], "detalle", aviso=aviso)
 
 
@@ -316,7 +401,7 @@ async def form_editar(request: Request, usuario_id: int, error: str = ""):
     c = await cuenta(usuario_id)
     if not c:
         raise HTTPException(status_code=404)
-    return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+    return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
         "request": request, "usuario": usuario, "modo": "editar", "c": c,
         "planes": await planes_activos(),
         "valores": {"email": c["email"], "nombre": c["nombre"] or "", "activo": c["activo"]},
@@ -325,7 +410,7 @@ async def form_editar(request: Request, usuario_id: int, error: str = ""):
 
 
 @router.post("/admin/clientes/{usuario_id}/editar", response_class=HTMLResponse)
-async def guardar_editar(request: Request, usuario_id: int, email: str = Form(...),
+async def guardar_editar(request: Request, usuario_id: int, email: str = Form(""),
                          nombre: str = Form(""), activo: str = Form("")):
     usuario = await _exige_dueno(request)
     c = await cuenta(usuario_id)
@@ -340,7 +425,7 @@ async def guardar_editar(request: Request, usuario_id: int, email: str = Form(..
     else:
         error = await editar_cuenta(usuario_id, nombre, email, bool(activo))
     if error:
-        return _plantillas(request).TemplateResponse("admin_cliente_form.html", {
+        return _plantillas(request).TemplateResponse(request, "admin_cliente_form.html", {
             "request": request, "usuario": usuario, "modo": "editar", "c": c,
             "planes": await planes_activos(),
             "valores": {"email": email, "nombre": nombre, "activo": bool(activo)},
@@ -351,7 +436,7 @@ async def guardar_editar(request: Request, usuario_id: int, email: str = Form(..
 
 
 @router.post("/admin/clientes/{usuario_id}/password")
-async def poner_password(request: Request, usuario_id: int, password: str = Form(...),
+async def poner_password(request: Request, usuario_id: int, password: str = Form(""),
                          volver: str = Form("detalle")):
     usuario = await _exige_dueno(request)
     motivo = password_debil(password)
@@ -364,7 +449,7 @@ async def poner_password(request: Request, usuario_id: int, password: str = Form
 
 
 @router.post("/admin/clientes/{usuario_id}/activo")
-async def poner_activo_ruta(request: Request, usuario_id: int, activo: str = Form(...),
+async def poner_activo_ruta(request: Request, usuario_id: int, activo: str = Form(""),
                             volver: str = Form("")):
     usuario = await _exige_dueno(request)
     c = await cuenta(usuario_id)

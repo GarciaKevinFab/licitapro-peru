@@ -33,6 +33,7 @@ from prep_bot.document_gen import (
 from shared.db import connection, get_empresa
 from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.autofill.annexes")
 
@@ -82,7 +83,7 @@ async def generar_anexos_complementarios(
         return []
 
     salida = []
-    output_dir = os.path.join(os.getenv("TEMPLATES_DIR", "templates"), "output")
+    output_dir = os.path.join(directorio("TEMPLATES_DIR", "templates"), "output")
     os.makedirs(output_dir, exist_ok=True)
 
     async with connection() as conn:
@@ -136,7 +137,7 @@ async def llenar_anexos(propuesta_id: int, empresa_id: int,
     empresa = await get_empresa(empresa_id)
     completados = 0
     detalle = []
-    templates_dir = os.getenv("TEMPLATES_DIR", "templates")
+    templates_dir = str(directorio("TEMPLATES_DIR", "templates"))
     output_dir = os.path.join(templates_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -223,7 +224,7 @@ async def _generar_dj_plazo(propuesta_id, empresa, licitacion, datos, output_dir
     legales = datos_legales(empresa, datos)
     exigir("la declaración jurada de plazo de entrega", legales, "representante")
 
-    doc = documento_word(empresa["id"])
+    doc = await asyncio.to_thread(documento_word, empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 
@@ -279,7 +280,7 @@ async def _generar_compromiso_personal(propuesta_id, empresa_id, licitacion, out
     if faltan:
         raise DocumentoIncompleto(documento, faltan)
 
-    doc = documento_word(empresa_id)
+    doc = await asyncio.to_thread(documento_word, empresa_id)
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 
@@ -309,7 +310,7 @@ async def _generar_pacto_integridad(propuesta_id, empresa, licitacion, datos, ou
     legales = datos_legales(empresa, datos)
     exigir("el pacto de integridad", legales, "representante")
 
-    doc = documento_word(empresa["id"])
+    doc = await asyncio.to_thread(documento_word, empresa["id"])
     doc.styles["Normal"].font.name = "Arial"
     doc.styles["Normal"].font.size = Pt(11)
 

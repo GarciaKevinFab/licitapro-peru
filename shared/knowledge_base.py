@@ -5,7 +5,14 @@ Después de 10-15 licitaciones, el bot ya sabe TODO.
 """
 import logging
 
-from shared.db import connection, kb_get, kb_set
+from shared.db import (
+    connection,
+    kb_descifrar_valor,
+    kb_get,
+    kb_para_registro,
+    kb_set,
+    kb_todos,
+)
 
 log = logging.getLogger("licitapro.kb")
 
@@ -68,14 +75,10 @@ async def obtener_datos_empresa_completos(empresa_id: int) -> dict:
         if empresa:
             datos["empresa"] = dict(empresa)
 
-        # Datos de KB
-        kb_rows = await conn.fetch(
-            "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
-            empresa_id,
-        )
-        for row in kb_rows:
-            key = f"{row['categoria']}.{row['clave']}"
-            datos[key] = row["valor"]
+        # Datos de KB. Por kb_todos y no con SQL propio: el CCI y el DNI van
+        # cifrados en la base y solo shared/db.py sabe abrirlos.
+        for (cat, clave), valor in (await kb_todos(empresa_id, conn=conn)).items():
+            datos[f"{cat}.{clave}"] = valor
 
         # Equipo técnico
         equipo = await conn.fetch(
@@ -137,12 +140,19 @@ async def estadisticas_kb(empresa_id: int) -> dict:
             empresa_id,
         )
         mas_usados = await conn.fetch(
-            "SELECT clave, valor, usado_count FROM knowledge_base WHERE empresa_id=$1 ORDER BY usado_count DESC LIMIT 10",
+            "SELECT categoria, clave, valor, usado_count FROM knowledge_base WHERE empresa_id=$1 ORDER BY usado_count DESC LIMIT 10",
             empresa_id,
         )
 
+    # Una estadistica no necesita el CCI ni el DNI: de los campos cifrados se
+    # ensena solo el final, igual que en el registro de preguntas.
     return {
         "total_campos": total,
         "por_categoria": {r["categoria"]: r["cnt"] for r in por_categoria},
-        "mas_usados": [dict(r) for r in mas_usados],
+        "mas_usados": [
+            {"clave": r["clave"], "usado_count": r["usado_count"],
+             "valor": kb_para_registro(r["categoria"], r["clave"],
+                                       kb_descifrar_valor(r["valor"]))}
+            for r in mas_usados
+        ],
     }

@@ -62,7 +62,11 @@ CASCADAS = [
 
 def upgrade() -> None:
     for tabla, restriccion, columna, regla in CASCADAS:
-        op.drop_constraint(restriccion, tabla, type_='foreignkey')
+        # IF EXISTS: sobre una base creada con schema.sql (o ya migrada) la
+        # restriccion puede no estar, o estar ya con la regla nueva. Se quita
+        # si esta y se vuelve a crear: el resultado es el mismo en los dos
+        # casos.
+        op.execute(f'ALTER TABLE {tabla} DROP CONSTRAINT IF EXISTS {restriccion}')
         op.create_foreign_key(restriccion, tabla, 'empresas',
                               [columna], ['id'], ondelete=regla)
 

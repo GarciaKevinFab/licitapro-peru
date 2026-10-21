@@ -25,15 +25,16 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 from shared import fechas
-from shared.config import format_fecha, format_monto
-from shared.db import connection, get_empresa
+from shared.config import desglose_igv, format_fecha, format_monto
+from shared.db import connection, get_empresa, kb_todos
 from shared.firma_manager import insertar_imagen_en_docx, obtener_firma
 from shared.incompleto import DocumentoIncompleto
 from shared.membrete import documento_word
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.docgen")
 
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 # POR QUE UNA TABLA Y NO strftime('%B'): '%B' depende del locale del proceso.
 # En el contenedor no hay locale es_PE y la carta salia fechada "20 de October
@@ -104,6 +105,16 @@ async def _guardar(doc, nombre: str) -> str:
     return path
 
 
+async def _documento(empresa_id: int):
+    """El Word nuevo (sobre la hoja membretada si la hay), en un hilo.
+
+    POR QUE: abrir el .docx membretado con python-docx y, si falta el .json de
+    medidas, medir la hoja con pdfium es trabajo sincrono de disco y CPU; en
+    el bucle de eventos congelaba la web entera mientras se generaba.
+    """
+    return await asyncio.to_thread(documento_word, empresa_id)
+
+
 def _set_cell_text(cell, text, bold=False, size=10):
     cell.text = ""
     run = cell.paragraphs[0].add_run(str(text))
@@ -119,7 +130,7 @@ async def generar_carta_presentacion(propuesta_id: int, empresa_id: int, licitac
     legales = datos_legales(empresa, datos)
     exigir("la carta de presentación", legales, "representante", "dni", "domicilio")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -199,7 +210,7 @@ async def generar_declaracion_jurada(propuesta_id: int, empresa_id: int, licitac
     legales = datos_legales(empresa, datos)
     exigir("la declaración jurada", legales, "representante", "domicilio")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -263,7 +274,7 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
             empresa_id,
         )
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(10)
@@ -295,14 +306,19 @@ async def generar_experiencia_postor(propuesta_id: int, empresa_id: int, licitac
 
 
 async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
-                                       licitacion: dict, precio: float) -> str:
-    """Genera propuesta económica."""
+                                       licitacion: dict, precio) -> str:
+    """Genera propuesta económica.
+
+    `precio` llega como Decimal (precio_ofertado es NUMERIC): el desglose se
+    hace en Decimal y suma el total al centimo. `precio / 1.18` era un
+    TypeError con Decimal, y con float podia descuadrar un centimo.
+    """
     empresa = await get_empresa(empresa_id)
     datos = await _recopilar_datos(empresa_id)
     legales = datos_legales(empresa, datos)
     exigir("la propuesta económica", legales, "representante")
 
-    doc = documento_word(empresa_id)
+    doc = await _documento(empresa_id)
     style = doc.styles["Normal"]
     style.font.name = "Arial"
     style.font.size = Pt(11)
@@ -330,9 +346,10 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
     _set_cell_text(table.rows[0].cells[0], "Concepto", bold=True)
     _set_cell_text(table.rows[0].cells[1], "Monto", bold=True)
     _set_cell_text(table.rows[1].cells[0], "Subtotal sin IGV")
-    _set_cell_text(table.rows[1].cells[1], format_monto(precio / 1.18))
+    subtotal, igv = desglose_igv(precio)
+    _set_cell_text(table.rows[1].cells[1], format_monto(subtotal))
     _set_cell_text(table.rows[2].cells[0], "IGV (18%)")
-    _set_cell_text(table.rows[2].cells[1], format_monto(precio - precio / 1.18))
+    _set_cell_text(table.rows[2].cells[1], format_monto(igv))
     _set_cell_text(table.rows[3].cells[0], "TOTAL", bold=True)
     _set_cell_text(table.rows[3].cells[1], format_monto(precio), bold=True)
 
@@ -358,10 +375,9 @@ async def generar_propuesta_economica(propuesta_id: int, empresa_id: int,
 
 
 async def _recopilar_datos(empresa_id: int) -> dict:
-    """Recopila todos los datos de KB para una empresa."""
-    async with connection() as conn:
-        rows = await conn.fetch(
-            "SELECT categoria, clave, valor FROM knowledge_base WHERE empresa_id=$1",
-            empresa_id,
-        )
-    return {f"{r['categoria']}.{r['clave']}": r["valor"] for r in rows}
+    """Recopila todos los datos de KB para una empresa.
+
+    Por `kb_todos` y no con SQL propio: el CCI y el DNI van cifrados en la
+    base, y solo shared/db.py sabe abrirlos."""
+    sabido = await kb_todos(empresa_id)
+    return {f"{cat}.{clave}": valor for (cat, clave), valor in sabido.items()}

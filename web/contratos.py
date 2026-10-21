@@ -11,15 +11,16 @@ Igual que en propuestas, la propiedad se deriva por JOIN contra
 empresas.usuario_id: nunca de un id que mande el cliente.
 """
 import logging
-import math
 import os
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from shared import fechas
+from shared.config import a_soles
 from shared.db import connection
 from shared.plazos_pago import (
     dias_de_mora,
@@ -47,13 +48,17 @@ MONTO_MAXIMO = 1_000_000_000
 PLAZO_MAXIMO_DIAS = 3650
 
 
-def _leer_monto(texto: str) -> float | None:
+def _leer_monto(texto: str) -> Decimal | None:
     """El monto del formulario, o None si no es un importe aceptable.
 
     El formulario manda el valor de un <input type=number> ("15000.50"), pero
     se acepta tambien lo que alguien pegue a mano: coma decimal ("1500,50") y
     separadores de miles ("15,000.50", "1.500,50"). Si hay coma y punto, el
     ultimo que aparece es el decimal.
+
+    Devuelve Decimal en centimos: va a columnas NUMERIC (monto_adjudicado,
+    pagos.monto), y un float de por medio redondeaba a su manera. El tope se
+    mira ANTES de redondear: "1000000000.001" no cabe aunque redondeado si.
     """
     limpio = (texto or "").strip().replace(" ", "").replace("'", "")
     if "," in limpio and "." in limpio:
@@ -61,12 +66,12 @@ def _leer_monto(texto: str) -> float | None:
         limpio = limpio.replace(miles, "")
     limpio = limpio.replace(",", ".")
     try:
-        valor = float(limpio)
-    except ValueError:
+        valor = Decimal(limpio)
+    except InvalidOperation:
         return None
-    if not math.isfinite(valor) or valor < 0 or valor > MONTO_MAXIMO:
+    if not valor.is_finite() or valor < 0 or valor > MONTO_MAXIMO:
         return None
-    return round(valor, 2)
+    return a_soles(valor)
 
 
 def _error(destino: str, mensaje: str) -> RedirectResponse:
@@ -127,7 +132,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
                 ORDER BY p.created_at DESC LIMIT 40""",
             usuario["id"])
 
-    return _plantillas(request).TemplateResponse("contratos.html", {
+    return _plantillas(request).TemplateResponse(request, "contratos.html", {
         "request": request, "usuario": usuario, "contratos": contratos,
         "candidatas": candidatas, "aviso": aviso, "error": error,
     })
@@ -135,7 +140,7 @@ async def listar(request: Request, aviso: str = "", error: str = ""):
 
 @router.post("/contratos/ganar")
 async def registrar_buena_pro(request: Request, propuesta_id: int = Form(...),
-                              monto: str = Form(...), plazo_dias: str = Form("30")):
+                              monto: str = Form(""), plazo_dias: str = Form("30")):
     """Registra la buena pro y arma el timeline de plazos del contrato.
 
     `monto` y `plazo_dias` llegan como texto y se validan aqui: con `float` e
@@ -212,7 +217,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
     cobrado = sum(p["monto"] or 0 for p in pagos if p["estado"] == "pagado")
     pendiente = sum(p["monto"] or 0 for p in pagos if p["estado"] != "pagado")
 
-    return _plantillas(request).TemplateResponse("contrato.html", {
+    return _plantillas(request).TemplateResponse(request, "contrato.html", {
         "request": request, "usuario": usuario, "c": contrato,
         "plazos": plazos,
         # La mora se calcula al leer: cambia sola cada dia habil, y guardarla
@@ -231,7 +236,7 @@ async def detalle(request: Request, contrato_id: int, aviso: str = "", error: st
 
 
 @router.post("/contratos/{contrato_id}/estado")
-async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form(...)):
+async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form("")):
     usuario = await usuario_actual(request)
     if not usuario:
         return RedirectResponse("/entrar", status_code=303)
@@ -250,7 +255,7 @@ async def cambiar_estado(request: Request, contrato_id: int, estado: str = Form(
 
 @router.post("/contratos/{contrato_id}/plazo")
 async def agregar_plazo(request: Request, contrato_id: int,
-                        descripcion: str = Form(...), fecha_limite: str = Form(...),
+                        descripcion: str = Form(""), fecha_limite: str = Form(""),
                         tipo: str = Form("hito")):
     usuario = await usuario_actual(request)
     if not usuario:
@@ -296,7 +301,7 @@ async def completar_plazo(request: Request, plazo_id: int):
 
 @router.post("/contratos/{contrato_id}/pago")
 async def registrar_cobro(request: Request, contrato_id: int,
-                          concepto: str = Form(...), monto: str = Form(...),
+                          concepto: str = Form(""), monto: str = Form(""),
                           numero_factura: str = Form(""), cobrado: str = Form(""),
                           fecha_conformidad: str = Form(""),
                           expediente_siaf: str = Form("")):
@@ -407,7 +412,7 @@ async def descargar_proforma(request: Request, contrato_id: int, pago_id: int):
 
     try:
         from win_bot.invoice_gen import generar_factura
-        ruta = await generar_factura(contrato_id, float(pago["monto"]),
+        ruta = await generar_factura(contrato_id, pago["monto"],
                                      pago["concepto"] or "Servicio prestado",
                                      pago["numero_factura"])
     except Exception:

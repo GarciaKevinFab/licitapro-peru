@@ -9,11 +9,14 @@ contrasena; ver `_huella`.
 import hashlib
 import logging
 import os
-from urllib.parse import urlparse
+import secrets
+from datetime import datetime, timedelta
+from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from shared import fechas
 from shared.admin_cuentas import anotar_acceso
 from shared.db import (
     anotar_intento_fallido,
@@ -63,16 +66,26 @@ ERROR_REGISTRO = ("No pudimos crear la cuenta con ese correo. Si ya tienes una, 
 #   cualquiera que la tenga lee su contenido. Un trozo de 16 hex de un sha256 no
 #   sirve para atacar la contrasena; el hash bcrypt entero si.
 #
-#   La huella lleva delante el id del usuario. La suplantacion del admin
-#   (web/admin.py) y el alta desde /comprar cambian `usuario_id` sin pasar por
-#   iniciar_sesion; si la huella es de otro usuario, se toma por una sesion
-#   recien abierta y no por una revocada. Ver `usuario_actual`.
+#   La huella lleva delante el id del usuario. El alta desde /comprar pasa ya
+#   por iniciar_sesion, y la suplantacion del admin (web/admin.py) sella la
+#   sesion con `huella_de` y guarda aparte la del dueno (`admin_huella`) para
+#   restaurarla al salir. Si aun asi llega una huella de otro usuario, se toma
+#   por una sesion recien abierta y no por una revocada. Ver `usuario_actual`.
 _CLAVE_HUELLA = "huella"
 
 
 def _huella(usuario_id: int, password_hash: str | None) -> str:
     resumen = hashlib.sha256((password_hash or "").encode()).hexdigest()[:16]
     return f"{usuario_id}:{resumen}"
+
+
+def huella_de(fila) -> str:
+    """Huella de sesion de `fila` (necesita `id` y `password_hash`).
+
+    Para quien cambia de usuario dentro de una sesion sin vaciarla -- la
+    suplantacion del admin, web/admin.py -- y tiene que dejarla sellada.
+    """
+    return _huella(fila["id"], fila["password_hash"])
 
 
 def iniciar_sesion(request: Request, fila) -> None:
@@ -148,7 +161,7 @@ async def form_entrar(request: Request, siguiente: str = "/panel", error: str = 
         # filtro que ya se aplicaba al entrar; faltaba solo en este atajo.
         return RedirectResponse(_destino_seguro(siguiente), status_code=303)
     return _plantillas(request).TemplateResponse(
-        "entrar.html", {"request": request, "modo": "entrar",
+        request, "entrar.html", {"request": request, "modo": "entrar",
                         "siguiente": siguiente, "error": error})
 
 
@@ -164,8 +177,8 @@ MAX_INTENTOS_POR_IP = 30
 
 
 @router.post("/entrar", response_class=HTMLResponse)
-async def hacer_entrar(request: Request, email: str = Form(...),
-                       password: str = Form(...), siguiente: str = Form("/panel")):
+async def hacer_entrar(request: Request, email: str = Form(""),
+                       password: str = Form(""), siguiente: str = Form("/panel")):
     """Inicio de sesion con freno a la fuerza bruta.
 
     El freno se comprueba ANTES de mirar la contrasena. Comprobarlo despues
@@ -184,7 +197,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
 
     def rechazar():
         return _plantillas(request).TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "entrar", "siguiente": siguiente,
              "error": ERROR_CREDENCIALES, "email": email},
             status_code=401)
@@ -207,7 +220,7 @@ async def hacer_entrar(request: Request, email: str = Form(...),
         # recuperacion que no le devolveria el acceso.
         log.info("Acceso a cuenta desactivada: %s", fila["id"])
         return _plantillas(request).TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "entrar", "siguiente": siguiente,
              "error": ERROR_DESACTIVADA, "email": email},
             status_code=403)
@@ -224,17 +237,18 @@ async def form_registro(request: Request):
     if await usuario_actual(request):
         return RedirectResponse("/panel", status_code=303)
     return _plantillas(request).TemplateResponse(
-        "entrar.html", {"request": request, "modo": "registro"})
+        request, "entrar.html", {"request": request, "modo": "registro"})
 
 
 @router.post("/registro", response_class=HTMLResponse)
-async def hacer_registro(request: Request, email: str = Form(...),
-                         password: str = Form(...), nombre: str = Form("")):
+async def hacer_registro(request: Request, tareas: BackgroundTasks,
+                         email: str = Form(""), password: str = Form(""),
+                         nombre: str = Form("")):
     plantillas = _plantillas(request)
 
     def con_error(msg: str):
         return plantillas.TemplateResponse(
-            "entrar.html",
+            request, "entrar.html",
             {"request": request, "modo": "registro", "error": msg,
              "email": email, "nombre": nombre},
             status_code=400)
@@ -256,6 +270,10 @@ async def hacer_registro(request: Request, email: str = Form(...),
         return con_error(ERROR_REGISTRO)
 
     iniciar_sesion(request, {"id": fila["id"], "password_hash": password_hash})
+    # El enlace sale despues de responder: hablar con el SMTP no debe retrasar
+    # la entrada al panel, que se usa igual mientras el correo no se confirma.
+    tareas.add_task(enviar_verificacion, fila["id"], fila["email"],
+                    _origen_para_enlaces(request))
     return RedirectResponse("/configuracion", status_code=303)
 
 
@@ -300,7 +318,7 @@ MENSAJE_ENVIADO = ("Si ese correo tiene una cuenta, te enviamos un enlace para "
 @router.get("/recuperar", response_class=HTMLResponse)
 async def form_recuperar(request: Request):
     return _plantillas(request).TemplateResponse(
-        "recuperar.html", {"request": request, "paso": "pedir"})
+        request, "recuperar.html", {"request": request, "paso": "pedir"})
 
 
 def _es_desarrollo() -> bool:
@@ -326,7 +344,7 @@ def _origen_para_enlaces(request: Request) -> str:
 
 @router.post("/recuperar", response_class=HTMLResponse)
 async def pedir_recuperar(request: Request, tareas: BackgroundTasks,
-                          email: str = Form(...)):
+                          email: str = Form("")):
     """Responde SIEMPRE lo mismo y en el mismo tiempo.
 
     El texto ya era uniforme, pero el tiempo no: con cuenta se creaba el token
@@ -339,7 +357,7 @@ async def pedir_recuperar(request: Request, tareas: BackgroundTasks,
                     ip_del_cliente(request.scope),
                     _origen_para_enlaces(request))
     return _plantillas(request).TemplateResponse(
-        "recuperar.html",
+        request, "recuperar.html",
         {"request": request, "paso": "pedir", "aviso": MENSAJE_ENVIADO})
 
 
@@ -418,18 +436,18 @@ async def form_nueva_password(request: Request, token: str):
     usuario = await usuario_por_token_recuperacion(hash_token(token))
     if not usuario:
         return _plantillas(request).TemplateResponse(
-            "recuperar.html",
+            request, "recuperar.html",
             {"request": request, "paso": "invalido"}, status_code=400)
 
     return _plantillas(request).TemplateResponse(
-        "recuperar.html",
+        request, "recuperar.html",
         {"request": request, "paso": "cambiar", "token": token,
          "email": usuario["email"]})
 
 
 @router.post("/recuperar/{token}", response_class=HTMLResponse)
 async def cambiar_password(request: Request, token: str,
-                           password: str = Form(...)):
+                           password: str = Form("")):
     from shared.db import (
         consumir_token_y_cambiar_password,
         usuario_por_token_recuperacion,
@@ -442,20 +460,20 @@ async def cambiar_password(request: Request, token: str,
     usuario = await usuario_por_token_recuperacion(th)
     if not usuario:
         return plantillas.TemplateResponse(
-            "recuperar.html", {"request": request, "paso": "invalido"},
+            request, "recuperar.html", {"request": request, "paso": "invalido"},
             status_code=400)
 
     motivo = password_debil(password)
     if motivo:
         return plantillas.TemplateResponse(
-            "recuperar.html",
+            request, "recuperar.html",
             {"request": request, "paso": "cambiar", "token": token,
              "email": usuario["email"], "error": motivo},
             status_code=400)
 
     if not await consumir_token_y_cambiar_password(th, hashear_password(password)):
         return plantillas.TemplateResponse(
-            "recuperar.html", {"request": request, "paso": "invalido"},
+            request, "recuperar.html", {"request": request, "paso": "invalido"},
             status_code=400)
 
     log.info("Contrasena restablecida para el usuario %s", usuario["id"])
@@ -464,4 +482,160 @@ async def cambiar_password(request: Request, token: str,
     # Se pide entrar con la contrasena nueva, que solo conoce quien la eligio.
     request.session.clear()
     return plantillas.TemplateResponse(
-        "recuperar.html", {"request": request, "paso": "listo"})
+        request, "recuperar.html", {"request": request, "paso": "listo"})
+
+
+# ─── Verificacion del correo ─────────────────────────────
+#
+# POR QUE
+#
+#   El alta solo pedia una "@". Con eso cualquiera abria una cuenta con un
+#   correo ajeno, y el rol de administrador se decide por correo
+#   (LICITAPRO_ADMIN_EMAIL): si la cuenta del dueno aun no existia, el primero
+#   que la registrara se quedaba con /admin. Desde la migracion 0022 una cuenta
+#   nace sin verificar y se verifica abriendo el enlace que se le manda.
+#
+# QUE CAMBIA PARA QUIEN NO HA VERIFICADO
+#
+#   Casi nada, a proposito: entra, usa el panel y paga igual. Ve una franja que
+#   le pide confirmar el correo (_nav.html) y NO cuenta como administrador
+#   (web/admin.py, _exige_dueno). Bloquear el panel hasta verificar haria
+#   perder justo la prueba de 14 dias que decide si paga, por un correo que a
+#   veces llega al spam.
+#
+# EL MISMO PATRON QUE LA RECUPERACION
+#
+#   Token aleatorio de un solo uso, en la base solo su hash, vencimiento en hora
+#   de Lima comparado contra (NOW() AT TIME ZONE 'America/Lima'), y el enlace
+#   colgando del origen configurado y no de la cabecera Host (ver
+#   _origen_para_enlaces). Vence en 48 horas y no en una: no da acceso a nada,
+#   solo confirma un correo, y el que se registra un viernes lo abre el lunes.
+
+HORAS_TOKEN_VERIFICACION = 48
+# Enlaces por hora y cuenta. Sin tope, el boton de reenviar sirve para llenar
+# de correos la bandeja de quien sea cuyo correo se use al registrarse.
+MAX_VERIFICACIONES_POR_HORA = 3
+
+
+def correo_verificado(usuario) -> bool:
+    """Si la cuenta demostro que el correo es suyo.
+
+    Falla cerrado: una fila sin la columna (base anterior a la 0022) cuenta
+    como NO verificada. Lo unico que cuelga de esto es el rol de
+    administrador, y el despliegue migra antes de arrancar la web.
+    """
+    if not usuario:
+        return False
+    try:
+        return bool(usuario["email_verificado_en"])
+    except (KeyError, IndexError):
+        return False
+
+
+def nuevo_token_verificacion() -> tuple[str, str, datetime]:
+    """(token_en_claro, hash_para_guardar, vencimiento en hora de Lima)."""
+    from shared.seguridad import hash_token
+    token = secrets.token_urlsafe(32)
+    return (token, hash_token(token),
+            fechas.ahora() + timedelta(hours=HORAS_TOKEN_VERIFICACION))
+
+
+async def enviar_verificacion(usuario_id: int, email: str, origen: str) -> bool:
+    """Crea el enlace y lo manda. Nunca lanza: corre despues de responder.
+
+    Devuelve si el enlace salio (o, en desarrollo sin SMTP, si quedo en el log).
+    El tope de envios lo mira quien lo llama cuando hace falta (el boton de
+    reenviar); al registrarse la cuenta es nueva y no hay nada que contar.
+    """
+    from shared.db import crear_token_verificacion
+    try:
+        token, token_hash, expira = nuevo_token_verificacion()
+        await crear_token_verificacion(usuario_id, email, token_hash, expira)
+        enlace = f"{origen}/verificar/{token}"
+        if await _enviar_correo_verificacion(email, enlace):
+            return True
+        if _es_desarrollo():
+            log.warning("SMTP no disponible. Enlace de verificacion: %s", enlace)
+            return True
+        # Fuera de desarrollo el enlace NO va al log, igual que el de
+        # recuperacion: los logs los leen mas ojos de los que deberian.
+        log.error("No se pudo enviar el correo de verificacion al usuario %s",
+                  usuario_id)
+    except Exception:
+        log.exception("Fallo al preparar la verificacion del usuario %s", usuario_id)
+    return False
+
+
+async def _enviar_correo_verificacion(destinatario: str, enlace: str) -> bool:
+    from shared import plantillas_correo
+    from shared.email_sender import enviar_email
+    texto, cuerpo = plantillas_correo.componer(
+        titulo="Confirma tu correo",
+        preencabezado="Un clic para confirmar el correo de tu cuenta en LicitaPro.",
+        intro=["Gracias por crear tu cuenta en LicitaPro.",
+               ("Confirma que este correo es tuyo: es a donde te mandaremos los "
+                "avisos de licitaciones y los comprobantes.")],
+        boton={"texto": "Confirmar mi correo", "url": enlace},
+        cierre=["Si el botón no funciona, copia este enlace en tu navegador:",
+                enlace],
+        aviso="El enlace vence en 48 horas y solo se puede usar una vez. Si no "
+              "creaste una cuenta en LicitaPro, ignora este correo.",
+    )
+    try:
+        return await enviar_email(destinatario, "Confirma tu correo en LicitaPro",
+                                  cuerpo, texto)
+    except Exception:
+        log.exception("Fallo al enviar el correo de verificacion")
+        return False
+
+
+@router.post("/verificar/reenviar")
+async def reenviar_verificacion(request: Request, tareas: BackgroundTasks):
+    """El boton de la franja "Confirma tu correo". Con tope por hora."""
+    from shared.db import verificaciones_recientes
+
+    usuario = await usuario_actual(request)
+    if not usuario:
+        return RedirectResponse("/entrar", status_code=303)
+    if correo_verificado(usuario):
+        return RedirectResponse(
+            "/configuracion?" + urlencode({"aviso": "Tu correo ya está confirmado."}),
+            status_code=303)
+    if await verificaciones_recientes(usuario["id"]) >= MAX_VERIFICACIONES_POR_HORA:
+        log.warning("Tope de reenvios de verificacion para el usuario %s",
+                    usuario["id"])
+        return RedirectResponse(
+            "/configuracion?" + urlencode({
+                "error": "Ya te enviamos varios enlaces en la última hora. Revisa "
+                         "tu bandeja y la carpeta de spam, o vuelve a intentarlo "
+                         "más tarde."}),
+            status_code=303)
+    tareas.add_task(enviar_verificacion, usuario["id"], usuario["email"],
+                    _origen_para_enlaces(request))
+    return RedirectResponse(
+        "/configuracion?" + urlencode({
+            "aviso": f"Te enviamos un enlace nuevo a {usuario['email']}. "
+                     "Revisa también la carpeta de spam."}),
+        status_code=303)
+
+
+@router.get("/verificar/{token}", response_class=HTMLResponse)
+async def verificar(request: Request, token: str):
+    """Abre el enlace del correo. No inicia sesion: solo confirma el correo.
+
+    No exige sesion porque el correo se abre a menudo en otro dispositivo (el
+    movil) que el del registro. Y no la abre por lo mismo que la recuperacion:
+    un enlace que se filtra no debe dar acceso a la cuenta.
+    """
+    from shared.db import verificar_correo
+    from shared.seguridad import hash_token
+
+    uid = await verificar_correo(hash_token(token))
+    if not uid:
+        return _plantillas(request).TemplateResponse(
+            request, "verificar.html", {"request": request, "ok": False}, status_code=400)
+    log.info("Correo verificado para el usuario %s", uid)
+    return _plantillas(request).TemplateResponse(
+        request, "verificar.html",
+        {"request": request, "ok": True,
+         "con_sesion": request.session.get("usuario_id") == uid})

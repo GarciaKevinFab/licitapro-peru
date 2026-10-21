@@ -36,11 +36,14 @@ from shared.config import format_monto
 from shared.db import connection, get_empresa, kb_get
 from shared.documentos_menores import formato_dj, generar_cotizacion, generar_dj
 from shared.incompleto import DocumentoIncompleto
+from shared.rutas import directorio
 
 log = logging.getLogger("prep.zip")
 
-EXPEDIENTES_DIR = os.getenv("EXPEDIENTES_DIR", "data/expedientes")
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "templates")
+# Anclados a la raiz del proyecto (shared/rutas.py): relativos al cwd, un
+# proceso lanzado desde otra carpeta armaba el ZIP donde la web no lo busca.
+EXPEDIENTES_DIR = str(directorio("EXPEDIENTES_DIR", "data/expedientes"))
+TEMPLATES_DIR = str(directorio("TEMPLATES_DIR", "templates"))
 
 
 class ExpedienteError(Exception):

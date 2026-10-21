@@ -29,6 +29,39 @@
 #   web/limites.py cuando se levante mas de un worker de uvicorn --, se vuelve
 #   a anadir junto con el codigo que lo use, en el mismo cambio.
 
+# ── Con que rol entra la aplicacion a la base ─────────────────────────────
+#
+#   web, radar, prep y win entran como `licitapro_app`, que NO es superusuario:
+#   solo lee y escribe filas (tools/crear_rol_app.sql). `licitapro`, el
+#   superusuario que crea la imagen de postgres y dueno de las tablas, queda
+#   para `migraciones` y para tools/respaldar.sh, que siguen leyendo la
+#   DATABASE_URL del .env.
+#
+#   POR QUE: con un superusuario, cualquier fallo que deje ejecutar SQL desde
+#   la app (una inyeccion) ejecuta tambien comandos en el contenedor
+#   (`COPY ... TO PROGRAM`) y lee archivos del servidor. Con este rol se queda
+#   en las filas de LicitaPro.
+#
+#   DATABASE_URL se vacia a proposito: en el .env de produccion esta puesta
+#   (con el superusuario) y manda sobre las piezas sueltas (shared/db.py).
+#   Vacia, la app arma la conexion con las piezas de abajo, que son las del rol
+#   de la app. Sin URL tampoco hay contrasena metida en una cadena de conexion
+#   (los escaneres de secretos la marcaban, y un @ o un / en la clave la
+#   rompian).
+#
+#   PG_APP_PASSWORD va en el .env. Sin `:?`, como PG_VPS_PASSWORD: compose
+#   interpola todos los servicios y exigirla aqui impediria hasta correr las
+#   migraciones. Vacia, la app no entra a la base y lo dice en el log al
+#   arrancar. Pasos completos: DESPLIEGUE.md, "Rol de la aplicacion sin
+#   superusuario".
+x-bd-app: &bd-app
+  DATABASE_URL: ""
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: licitapro
+  POSTGRES_USER: licitapro_app
+  POSTGRES_PASSWORD: ${PG_APP_PASSWORD:-}
+
 services:
   # ── La base, en el mismo servidor ─────────────────────────────────────
   #
@@ -82,6 +115,9 @@ services:
   migraciones:
     build: .
     command: alembic upgrade head
+    # Con `licitapro` (la DATABASE_URL del .env): crear y alterar tablas es
+    # cosa del dueno. Lo que cree, licitapro_app lo ve por los ALTER DEFAULT
+    # PRIVILEGES de tools/crear_rol_app.sql.
     env_file: .env
     restart: "no"
     depends_on:
@@ -113,6 +149,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      <<: *bd-app
       LICITAPRO_ENTORNO: produccion
     ports:
       - "127.0.0.1:8200:8200"   # detras de un proxy con TLS, nunca expuesto directo
@@ -153,6 +190,7 @@ services:
       disable: true
     restart: unless-stopped
     env_file: .env
+    environment: *bd-app
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -188,6 +226,7 @@ services:
       disable: true
     restart: unless-stopped
     env_file: .env
+    environment: *bd-app
     depends_on:
       migraciones:
         condition: service_completed_successfully
@@ -225,6 +264,7 @@ services:
       disable: true
     restart: unless-stopped
     env_file: .env
+    environment: *bd-app
     depends_on:
       migraciones:
         condition: service_completed_successfully

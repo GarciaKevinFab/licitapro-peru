@@ -86,17 +86,17 @@ def _contexto(request, usuario, **extra) -> dict:
 @router.get("/reclamaciones", response_class=HTMLResponse)
 async def formulario(request: Request):
     return _plantillas(request).TemplateResponse(
-        "reclamaciones.html", _contexto(request, await usuario_actual(request)))
+        request, "reclamaciones.html", _contexto(request, await usuario_actual(request)))
 
 
 @router.post("/reclamaciones", response_class=HTMLResponse)
 async def registrar(
     request: Request,
-    tipo: str = Form(...),
-    nombre: str = Form(...),
+    tipo: str = Form(""),
+    nombre: str = Form(""),
     documento_tipo: str = Form("DNI"),
-    documento_numero: str = Form(...),
-    email: str = Form(...),
+    documento_numero: str = Form(""),
+    email: str = Form(""),
     telefono: str = Form(""),
     direccion: str = Form(""),
     es_menor_edad: str = Form(""),
@@ -104,8 +104,8 @@ async def registrar(
     bien_contratado: str = Form("servicio"),
     descripcion_bien: str = Form(""),
     monto_reclamado: str = Form(""),
-    detalle: str = Form(...),
-    pedido: str = Form(...),
+    detalle: str = Form(""),
+    pedido: str = Form(""),
 ):
     """Registra la hoja y devuelve su numero. La hoja NO se borra nunca."""
     usuario = await usuario_actual(request)
@@ -127,7 +127,7 @@ async def registrar(
 
     def con_error(msg: str):
         return _plantillas(request).TemplateResponse(
-            "reclamaciones.html",
+            request, "reclamaciones.html",
             _contexto(request, usuario, error=msg, v=datos, menor=menor),
             status_code=400)
 
@@ -178,7 +178,7 @@ async def registrar(
     await _enviar_copias(codigo, datos, fila["limite_respuesta"])
 
     return _plantillas(request).TemplateResponse(
-        "reclamaciones.html",
+        request, "reclamaciones.html",
         _contexto(request, usuario, hoja={
             "codigo": codigo, "limite": fila["limite_respuesta"],
             "email": datos["email"], "tipo": datos["tipo"]}))

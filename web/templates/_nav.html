@@ -12,7 +12,19 @@
   </form>
 </div>
 {% endif %}
-{% set es_admin = request.app.state.admin_email and usuario.email and usuario.email|lower == request.app.state.admin_email %}
+{# Correo sin verificar. `is defined`: con la base anterior a la migracion 0022
+   la columna no existe y no hay nada que pedir. #}
+{% if usuario.email_verificado_en is defined and not usuario.email_verificado_en %}
+<div class="confirma-correo" role="status">
+  <span><strong>Confirma tu correo.</strong> Te enviamos un enlace a
+    <strong>{{ usuario.email }}</strong>; ábrelo para terminar de activar tu cuenta.</span>
+  <form method="post" action="/verificar/reenviar">
+    <button type="submit" class="sec">Reenviar enlace</button>
+  </form>
+</div>
+{% endif %}
+{# El enlace a Admin exige ademas el correo verificado, como _exige_dueno. #}
+{% set es_admin = request.app.state.admin_email and usuario.email and usuario.email|lower == request.app.state.admin_email and usuario.email_verificado_en %}
 {% set susc_aviso = request.state.susc_aviso | default(none) %}
 <aside class="barra-lateral" id="barra-lateral" aria-label="Navegación principal">
   <a class="brand" href="/panel">

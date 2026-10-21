@@ -176,7 +176,11 @@ async def test_prep_una_pregunta_ajena_no_se_puede_responder(escena):
                                 escena.pregunta)
         estado = await c.fetchval("SELECT estado FROM propuestas WHERE id=$1",
                                   escena.propuesta)
-    assert fila["respondida"] and fila["respuesta"] == "CCI-BUENO"
+    # El CCI entero va cifrado a la KB; en la pregunta solo queda el final
+    # (ver shared.db.kb_para_registro y tests/test_auditoria_cifrado.py).
+    assert fila["respondida"] and fila["respuesta"] == "****UENO"
+    from shared.db import kb_get
+    assert await kb_get(escena.empresa, "financiero", "cci") == "CCI-BUENO"
     assert estado == "listo"
 
 

@@ -416,6 +416,135 @@ clásico de una restauración a medias.
 gunzip -c /respaldos/licitapro-AAAAMMDD-HHMMSS.sql.gz | psql "${DATABASE_URL/:6543/:5432}"
 ```
 
+Y **después de restaurar, vuelve a correr `tools/crear_rol_app.sql`** (ver
+11.bis). El volcado va con `--no-privileges`: las tablas restauradas no traen
+los permisos de `licitapro_app` y la app respondería «permission denied».
+
+### Respaldos cifrados con `age`
+
+Lo que sube a R2 sale **cifrado** con [`age`](https://age-encryption.org) y una
+clave **pública**. La clave **privada no está en el VPS**: la guardas tú. Si
+alguien compromete el servidor se lleva la base viva —eso ya lo tiene—, pero no
+puede leer los meses de respaldos que hay en R2, porque nada de lo que hay en
+el disco los abre.
+
+No se usa el `crypt` de rclone a propósito: su contraseña tiene que vivir en
+`rclone.conf`, en el mismo VPS, al lado de las llaves de R2.
+
+Lo que **no** cambia: la copia local en `/respaldos` sigue en claro (no sale
+del servidor y sirve para restaurar rápido sin la clave privada).
+
+Si `RESPALDO_REMOTO` está puesto y falta `age` o la clave pública, el script
+**falla y avisa por Telegram** sin subir nada. Nunca sube en claro.
+
+**Generar el par (una vez, en TU PC, no en el VPS):**
+
+```powershell
+winget install FiloSottile.age        # o descárgalo de github.com/FiloSottile/age/releases
+age-keygen -o respaldo-licitapro.key
+# Imprime: "Public key: age1....". Esa línea es la pública.
+```
+
+- `respaldo-licitapro.key` (la **privada**): al gestor de contraseñas y una
+  copia offline (USB o papel). Si se pierde, los respaldos de R2 no se pueden
+  abrir nunca. **No la subas al VPS ni al repositorio.**
+- La pública (`age1...`) va al VPS:
+
+```bash
+apt install -y age
+install -d -m 700 /root/.config/licitapro
+echo 'age1PEGA_AQUI_LA_CLAVE_PUBLICA' > /root/.config/licitapro/respaldo.pub
+chmod 600 /root/.config/licitapro/respaldo.pub
+```
+
+La ruta se cambia con `RESPALDO_CLAVE_PUBLICA` en el `.env`.
+
+**Restaurar desde R2** (la clave privada nunca toca el servidor: el archivo
+cifrado viaja hasta tu PC, o el descifrado se hace en tu PC y solo baja el SQL):
+
+```bash
+# En tu PC, con ssh al VPS y age instalado:
+ssh root@VPS "rclone cat r2:BUCKET/licitapro-AAAAMMDD-HHMMSS.sql.gz.age" \
+  | age -d -i respaldo-licitapro.key | gunzip | head -20      # comprobar
+ssh root@VPS "rclone cat r2:BUCKET/licitapro-AAAAMMDD-HHMMSS.sql.gz.age" \
+  | age -d -i respaldo-licitapro.key > licitapro-AAAAMMDD-HHMMSS.sql.gz
+```
+
+Ese `.sql.gz` ya es el de siempre: se verifica y se restaura como arriba. Las
+firmas igual, con `firmas-AAAAMMDD-HHMMSS.tar.gz.age`.
+
+**Rotar la clave:** genera otro par, cambia `respaldo.pub` en el VPS y guarda
+la privada vieja mientras queden en R2 respaldos cifrados con ella.
+
+## 11.bis Rol de la aplicación sin superusuario
+
+La imagen de postgres crea `licitapro` como **superusuario**, y con él entraban
+la web y los bots. Una inyección SQL con un superusuario no se queda en la
+base: `COPY ... TO PROGRAM` ejecuta comandos en el contenedor y
+`pg_read_server_files` lee archivos. Por eso web, radar, prep y win entran
+ahora como **`licitapro_app`** (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE`),
+que solo puede leer y escribir filas de las tablas de `public` y usar sus
+secuencias.
+
+`licitapro` sigue siendo el dueño de las tablas y lo siguen usando el servicio
+`migraciones` y `tools/respaldar.sh` (la `DATABASE_URL` del `.env`). Las tablas
+que creen las migraciones futuras le llegan solas a `licitapro_app` por los
+`ALTER DEFAULT PRIVILEGES` del script. El rol `puente` (PC puente) no cambia.
+
+`docker-compose.prod.yml` vacía `DATABASE_URL` en esos cuatro servicios y
+les fija las piezas sueltas (`POSTGRES_HOST=postgres`, `POSTGRES_USER=licitapro_app`,
+`POSTGRES_PASSWORD=${PG_APP_PASSWORD}`). Hay que vaciar la URL y no solo cambiar
+el usuario porque en el `.env` de producción `DATABASE_URL` está puesta (con el
+superusuario) y manda sobre las piezas.
+
+**Orden, que importa** (si el compose nuevo arranca antes de que exista el
+rol, la app no entra a la base):
+
+```bash
+cd /opt/licitapro
+# 1. La contraseña, directa al .env (solo hex: va dentro de una URL)
+printf 'PG_APP_PASSWORD=%s\n' "$(openssl rand -hex 24)" >> .env
+# 2. Crear el rol (idempotente; volver a correrlo también rota la contraseña)
+docker exec -i licitapro-postgres-1 psql -U licitapro -d licitapro -v ON_ERROR_STOP=1 \
+  -v clave="$(sed -n 's/^PG_APP_PASSWORD=//p' .env)" < tools/crear_rol_app.sql
+# 3. Comprobar que entra por contraseña y ve las tablas
+docker exec -e PGPASSWORD="$(sed -n 's/^PG_APP_PASSWORD=//p' .env)" licitapro-postgres-1 \
+  psql -h 127.0.0.1 -U licitapro_app -d licitapro -c "SELECT current_user, count(*) FROM licitaciones"
+# 4. Levantar con el compose nuevo
+docker compose -f docker-compose.prod.yml up -d --build
+docker exec licitapro-web-1 python -c "import asyncio; from shared.db import connection
+async def m():
+    async with connection() as c: print(await c.fetchval('select current_user'))
+asyncio.run(m())"                      # tiene que decir licitapro_app
+```
+
+Vuelta atrás: el `docker-compose.prod.yml` anterior y `up -d`; el rol puede
+quedarse, no estorba.
+
+Probado el 20/10/2026 contra una base de pruebas: la suite completa pasa
+conectada como `licitapro_app`, y `CREATE TABLE`, `TRUNCATE` y
+`COPY ... TO PROGRAM` responden «permission denied».
+
+## 11.ter Datos bancarios y DNI cifrados en la base
+
+`knowledge_base.valor` guardaba en claro el CCI, la cuenta corriente y el DNI
+del representante. Ahora `shared/db.py` los cifra al guardar (Fernet con
+`LICITAPRO_SECRET_KEY`, la misma clave que las credenciales) y los descifra al
+leer; el resto del código no cambia. Lo viejo en claro se sigue leyendo, así
+que el código nuevo se despliega sin parar nada. En `preguntas.respuesta`, que
+también los copiaba, queda solo el final (`****9012`).
+
+Lo ya guardado se cifra una vez con:
+
+```bash
+docker exec -w /app licitapro-web-1 python tools/cifrar_knowledge_base.py --dry-run
+docker exec -w /app licitapro-web-1 python tools/cifrar_knowledge_base.py
+```
+
+Idempotente: una segunda pasada dice 0. **Antes**, ten un respaldo reciente y
+`LICITAPRO_SECRET_KEY` guardada fuera del servidor: sin ella, lo cifrado no se
+recupera nunca.
+
 ## 12. Comprobaciones de salud
 
 ### Auditorías del código

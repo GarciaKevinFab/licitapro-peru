@@ -24,7 +24,6 @@ NADA DE AQUI COMPRUEBA QUIEN LLAMA
 """
 import asyncio
 import logging
-import os
 import re
 import secrets
 import shutil
@@ -241,10 +240,16 @@ async def editar_cuenta(usuario_id: int, nombre: str | None, email: str,
     """
     if not correo_valido(email):
         return "Ese correo no parece válido."
+    # Correo nuevo = correo sin verificar (migracion 0022). Que lo escriba el
+    # dueno no demuestra que sea del cliente, y la verificacion es lo que
+    # sostiene el rol de administrador: un correo cambiado a mano no puede
+    # heredar la marca del anterior. En el CASE, `email` es el valor de antes.
     async with connection() as conn:
         try:
             hecho = await conn.fetchval(
-                """UPDATE usuarios SET nombre = $2, email = LOWER($3), activo = $4
+                """UPDATE usuarios SET nombre = $2, email = LOWER($3), activo = $4,
+                          email_verificado_en = CASE WHEN email = LOWER($3)
+                                                     THEN email_verificado_en END
                     WHERE id = $1 RETURNING id""",
                 usuario_id, (nombre or "").strip() or None, email.strip(), bool(activo))
         except asyncpg.UniqueViolationError:
@@ -395,11 +400,12 @@ def _directorios_de_propuestas() -> dict[str, Path]:
     """
     from shared.llenar_formatos import DIR as FORMATOS
     from shared.pdf_firmable import SALIDA as EXPEDIENTES
+    from shared.rutas import directorio
     try:
         from web.propuestas import PAQUETES
     except ImportError:  # un bot sin las dependencias de la web
-        PAQUETES = Path(os.getenv("PAQUETES_DIR", "data/paquetes"))
-    plantillas = Path(os.getenv("TEMPLATES_DIR", "templates")) / "output"
+        PAQUETES = directorio("PAQUETES_DIR", "data/paquetes")
+    plantillas = directorio("TEMPLATES_DIR", "templates") / "output"
     return {"formatos": FORMATOS, "expedientes": EXPEDIENTES,
             "paquetes": PAQUETES, "plantillas": plantillas}
 
@@ -436,6 +442,7 @@ async def borrar_archivos_de_cuenta(usuario_id: int) -> int:
     from shared import membrete as hoja_membretada
     from shared.archivos import TIPOS as TIPOS_IMAGEN
     from shared.archivos import borrar_imagen, rutas_de
+    from shared.rutas import en_raiz
 
     async with connection() as conn:
         empresas = [r["id"] for r in await conn.fetch(
@@ -501,7 +508,9 @@ async def borrar_archivos_de_cuenta(usuario_id: int) -> int:
         for ruta in rutas:
             if ruta in ajenas:
                 continue
-            p = Path(ruta)
+            # Contra la raiz del proyecto, no el cwd: las filas viejas guardan
+            # "data/expedientes/..." relativo.
+            p = en_raiz(ruta)
             raiz = next((d for d in dirs.values() if d.resolve() in p.resolve().parents), None)
             if raiz is not None:
                 n += _borrar_dentro(p, raiz)

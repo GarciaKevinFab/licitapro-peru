@@ -356,7 +356,7 @@ async def test_precios_imposibles_son_un_mensaje_y_no_un_500(usuario, empresa, c
             assert r.status_code == 303 and "error=" in r.headers["location"], malo
         async with connection() as c:
             precio = await c.fetchval("SELECT precio_ofertado FROM propuestas WHERE id=$1", pid)
-        assert precio == pytest.approx(37.5)          # el de los items, intacto
+        assert precio == Decimal("37.50")          # el de los items, intacto
 
         item = (await cotizacion.items_de(pid))[0]
         r = await cliente.post(f"/propuestas/{pid}/items",

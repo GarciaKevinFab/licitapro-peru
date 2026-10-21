@@ -45,12 +45,13 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from shared.rutas import directorio
+
 log = logging.getLogger("shared.membrete")
 
 # Anclado a la raiz del proyecto: "data/membretes" relativo dependia del
 # directorio desde el que se arrancara el proceso. MEMBRETES_DIR sigue mandando.
-DIR = Path(os.getenv("MEMBRETES_DIR")
-           or Path(__file__).resolve().parents[1] / "data" / "membretes")
+DIR = directorio("MEMBRETES_DIR", "data/membretes")
 TAMANO_MAXIMO = 10 * 1024 * 1024
 # Lo que puede ocupar el Word DESCOMPRIMIDO. Un .docx es un zip: 10 MB en el
 # disco pueden ser gigas al abrirlo (la bomba zip), y quien lo abre es
