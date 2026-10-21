@@ -87,6 +87,23 @@ def literales_sql():
                     yield py, nodo.lineno, texto, True
 
 
+_NOMBRADO = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
+
+
+def _a_posicionales(sql: str) -> str:
+    """`:nombre` (SQLAlchemy, en las migraciones) -> `$n` (asyncpg).
+
+    Las migraciones consultan el catalogo con `text("... = :t")`. Postgres no
+    entiende `:t`, y `prepare` lo daba como error de sintaxis aunque la
+    consulta este bien. Los `::tipo` no se tocan (el lookbehind lo impide).
+    """
+    nombres: dict[str, int] = {}
+
+    def numero(m):
+        return f"${nombres.setdefault(m.group(1), len(nombres) + 1)}"
+    return _NOMBRADO.sub(numero, sql)
+
+
 async def main():
     import asyncpg
     conn = await asyncpg.connect(
@@ -103,7 +120,7 @@ async def main():
             dinamicos.append((ref, sql))
             continue
         try:
-            await conn.prepare(sql)
+            await conn.prepare(_a_posicionales(sql))
             ok += 1
         except Exception as e:  # noqa: BLE001
             fallos.append((ref, sql, f"{type(e).__name__}: {e}"))

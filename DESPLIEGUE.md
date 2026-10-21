@@ -491,10 +491,11 @@ secuencias.
 que creen las migraciones futuras le llegan solas a `licitapro_app` por los
 `ALTER DEFAULT PRIVILEGES` del script. El rol `puente` (PC puente) no cambia.
 
-`docker-compose.prod.yml` pisa `DATABASE_URL`, `POSTGRES_USER` y
-`POSTGRES_PASSWORD` en esos cuatro servicios con `licitapro_app` y
-`PG_APP_PASSWORD`. Hay que pisar la URL y no solo el usuario porque en el
-`.env` de producción `DATABASE_URL` está puesta y manda sobre las piezas.
+`docker-compose.prod.yml` vacía `DATABASE_URL` en esos cuatro servicios y
+les fija las piezas sueltas (`POSTGRES_HOST=postgres`, `POSTGRES_USER=licitapro_app`,
+`POSTGRES_PASSWORD=${PG_APP_PASSWORD}`). Hay que vaciar la URL y no solo cambiar
+el usuario porque en el `.env` de producción `DATABASE_URL` está puesta (con el
+superusuario) y manda sobre las piezas.
 
 **Orden, que importa** (si el compose nuevo arranca antes de que exista el
 rol, la app no entra a la base):
